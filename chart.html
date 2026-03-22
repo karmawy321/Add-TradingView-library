@@ -23,7 +23,7 @@ try {
   });
 } catch(e){}
 
-var symbol   = params.symbol   || 'BTCUSDT';
+var symbol   = params.symbol   || null;
 var interval = params.interval || '240';
 var locale   = params.locale   || 'en';
 var tvWidget = null;
@@ -35,12 +35,17 @@ function initTV() {
     setTimeout(initTV, 200);
     return;
   }
+  /* Don't init until a symbol is provided */
+  if (!symbol) {
+    /* Wait for set_symbol message from parent */
+    return;
+  }
 
   tvWidget = new TradingView.widget({
     container:      'tv_chart_container',
     library_path:   RAILWAY + '/charting_library/',
     datafeed:       FractalDatafeed,
-    symbol:         symbol,
+    symbol:         symbol || 'BTCUSDT', /* default only if parent sends one */
     interval:       interval,
     locale:         locale,
     theme:          'Dark',
@@ -106,14 +111,21 @@ function addSMAs() {
 window.addEventListener('message', function(e) {
   if (!e.data || !e.data.type) return;
 
-  if (e.data.type === 'set_symbol' && tvWidget) {
-    tvWidget.onChartReady(function() {
-      tvWidget.setSymbol(e.data.symbol, e.data.interval || interval, function(){
-        /* Re-add SMAs after symbol change */
-        setTimeout(addSMAs, 500);
-        try { window.parent.postMessage({ type:'symbol_changed', symbol:e.data.symbol }, '*'); } catch(e){}
+  if (e.data.type === 'set_symbol') {
+    symbol   = e.data.symbol;
+    interval = e.data.interval || interval;
+    if (!tvWidget) {
+      /* First symbol — init the chart */
+      initTV();
+    } else {
+      /* Chart exists — just switch symbol */
+      tvWidget.onChartReady(function() {
+        tvWidget.setSymbol(e.data.symbol, e.data.interval || interval, function(){
+          setTimeout(addSMAs, 500);
+          try { window.parent.postMessage({ type:'symbol_changed', symbol:e.data.symbol }, '*'); } catch(e){}
+        });
       });
-    });
+    }
   }
 
   if (e.data.type === 'toggle_sma' && tvWidget) {
