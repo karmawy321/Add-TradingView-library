@@ -121,7 +121,37 @@ var FractalDatafeed = (function() {
       var clean = symbolName.replace('BINANCE:','').replace('FX:','').toUpperCase();
       if (symbolCache[clean]) { onResolve(symbolCache[clean]); return; }
 
-      /* Try Binance first */
+      /* Known forex pairs — resolve immediately without Binance call */
+      var FOREX = ['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF',
+                   'NZDUSD','EURGBP','EURJPY','GBPJPY','XAUUSD','XAGUSD',
+                   'EURCAD','EURCHF','AUDCAD','CADJPY','GBPCAD','AUDNZD',
+                   'USDMXN','USDZAR','USDSGD','USDHKD','USDNOK','USDSEK'];
+      if (FOREX.indexOf(clean) !== -1) {
+        var fxInfo = {
+          name:        clean,
+          full_name:   'FX:' + clean,
+          description: clean.slice(0,3) + ' / ' + clean.slice(3),
+          type:        'forex',
+          session:     '0000-2400:1234567',
+          timezone:    'Etc/UTC',
+          exchange:    'FX',
+          listed_exchange: 'FX',
+          minmov:      1,
+          pricescale:  100000,
+          has_intraday: true,
+          has_daily:    true,
+          has_weekly_and_monthly: true,
+          supported_resolutions: ['1','5','15','30','60','240','1D','1W'],
+          volume_precision: 0,
+          data_status: 'endofday',
+          format:      'price'
+        };
+        symbolCache[clean] = fxInfo;
+        onResolve(fxInfo);
+        return;
+      }
+
+      /* Try Binance for crypto */
       fetch('https://api.binance.com/api/v3/exchangeInfo?symbol=' + clean)
         .then(function(r){ return r.json(); })
         .then(function(d){
@@ -135,6 +165,7 @@ var FractalDatafeed = (function() {
               session:     '24x7',
               timezone:    'Etc/UTC',
               exchange:    'BINANCE',
+              listed_exchange: 'BINANCE',
               minmov:      1,
               pricescale:  100,
               has_intraday: true,
@@ -148,15 +179,16 @@ var FractalDatafeed = (function() {
             symbolCache[clean] = info;
             onResolve(info);
           } else {
-            /* Forex fallback */
-            var fxInfo = {
+            /* Unknown symbol — resolve as generic with no data */
+            var generic = {
               name:        clean,
-              full_name:   'FX:' + clean,
-              description: clean.slice(0,3) + ' / ' + clean.slice(3),
+              full_name:   clean,
+              description: clean,
               type:        'forex',
-              session:     '0000-2400:1234567',
+              session:     '24x7',
               timezone:    'Etc/UTC',
-              exchange:    'FX',
+              exchange:    '',
+              listed_exchange: '',
               minmov:      1,
               pricescale:  100000,
               has_intraday: true,
@@ -164,14 +196,25 @@ var FractalDatafeed = (function() {
               has_weekly_and_monthly: true,
               supported_resolutions: ['1','5','15','30','60','240','1D','1W'],
               volume_precision: 0,
-              data_status: 'delayed_streaming',
+              data_status: 'endofday',
               format:      'price'
             };
-            symbolCache[clean] = fxInfo;
-            onResolve(fxInfo);
+            symbolCache[clean] = generic;
+            onResolve(generic);
           }
         })
-        .catch(function(){ onError('Resolution failed'); });
+        .catch(function(){
+          /* Network error — still resolve so TV doesn't crash */
+          onResolve({
+            name: clean, full_name: clean, description: clean,
+            type: 'forex', session: '24x7', timezone: 'Etc/UTC',
+            exchange: '', listed_exchange: '',
+            minmov: 1, pricescale: 100, has_intraday: true,
+            has_daily: true, has_weekly_and_monthly: true,
+            supported_resolutions: ['1','5','15','30','60','240','1D','1W'],
+            volume_precision: 0, data_status: 'endofday', format: 'price'
+          });
+        });
     },
 
     getBars: function(symbolInfo, resolution, periodParams, onResult, onError) {
@@ -191,8 +234,8 @@ var FractalDatafeed = (function() {
       fetch(url)
         .then(function(r){ return r.json(); })
         .then(function(data){
-          if (!Array.isArray(data) || data.length === 0) {
-            /* Symbol not on Binance — return no data so TV shows "no data" cleanly */
+          if (!Array.isArray(data) || data.length === 0 || data.code) {
+            /* Symbol not on Binance — show "no data" message cleanly */
             onResult([], { noData: true });
             return;
           }
@@ -215,8 +258,8 @@ var FractalDatafeed = (function() {
       var symbol   = symbolInfo.name.replace('BINANCE:','').replace('FX:','').toLowerCase();
       var interval = BINANCE_INTERVALS[resolution] || '1h';
 
-      /* Only stream crypto via Binance WebSocket */
-      if (symbolInfo.type !== 'crypto' && !isCrypto(symbol.toUpperCase())) return;
+      /* Only stream crypto via Binance WebSocket — skip forex silently */
+      if (symbolInfo.type === 'forex' || symbolInfo.exchange === 'FX' || !isCrypto(symbol.toUpperCase())) return;
 
       var wsUrl = 'wss://stream.binance.com:9443/ws/' + symbol + '@kline_' + interval;
       var ws = new WebSocket(wsUrl);
