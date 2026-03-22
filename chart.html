@@ -67,10 +67,16 @@ function initTV() {
       'mainSeriesProperties.candleStyle.wickDownColor':   '#ef5350'
     },
     studies_overrides: {},
-    disabled_features: ['use_localstorage_for_settings'],
-    enabled_features:  ['study_templates'],
-    client_id: 'fractal_ai_agent',
-    user_id:   'public_user'
+    disabled_features: [
+      'use_localstorage_for_settings',
+      'study_templates',           /* prevents 404 to /study_templates endpoint */
+      'save_load_all_charts_button',
+      'show_manage_no_charts_page',
+      'charts_storage_api_version'
+    ],
+    enabled_features: [],
+    client_id: '0',
+    user_id:   '0'
   });
 
   tvWidget.onChartReady(function() {

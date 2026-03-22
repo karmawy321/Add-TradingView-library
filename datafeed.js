@@ -242,7 +242,7 @@ var FractalDatafeed = (function() {
 
     resolveSymbol: function(symbolName, onResolve, onError) {
       var clean = symbolName.replace(/^(BINANCE:|FX:|FOREX:|NASDAQ:|NYSE:|MARKET:)/i,'').toUpperCase();
-      if (symbolCache[clean]) { onResolve(symbolCache[clean]); return; }
+      if (symbolCache[clean]) { var _c=symbolCache[clean]; setTimeout(function(){ onResolve(_c); },0); return; }
 
       function makeInfo(name, desc, type, exchange, pricescale, session) {
         return {
@@ -277,7 +277,8 @@ var FractalDatafeed = (function() {
       if (isFxPair(clean)) {
         var info = makeInfo(clean, clean.slice(0,3)+' / '+clean.slice(3,6), 'forex','FOREX',100000,'0000-2400:1234567');
         info.ticker = 'FOREX:' + clean;
-        symbolCache[clean]=info; onResolve(info);
+        symbolCache[clean]=info;
+        setTimeout(function(){ onResolve(info); }, 0);
         return;
       }
 
@@ -292,7 +293,8 @@ var FractalDatafeed = (function() {
       var exchange = symbolName.includes(':') ? symbolName.split(':')[0] : 'NASDAQ';
       var info3 = makeInfo(clean, clean+' Stock','stock', exchange, 100,'0930-1600');
       info3.ticker = exchange + ':' + clean;
-      symbolCache[clean]=info3; onResolve(info3);
+      symbolCache[clean]=info3;
+      setTimeout(function(){ onResolve(info3); }, 0);
     },
 
     getBars: function(symbolInfo, resolution, periodParams, onResult, onError) {
