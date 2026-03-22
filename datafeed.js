@@ -135,7 +135,7 @@ var FractalDatafeed = (function() {
           supports_marks: false, supports_timescale_marks: false, supports_time: true,
           exchanges: [
             { value:'BINANCE', name:'Binance', desc:'Crypto' },
-            { value:'FOREX',   name:'Forex',   desc:'Forex & Commodities' },
+            { value:'FOREX', name:'Forex',   desc:'Forex & Commodities' },
             { value:'',        name:'All',     desc:'' }
           ],
           symbols_types: [
@@ -150,7 +150,23 @@ var FractalDatafeed = (function() {
 
     searchSymbols: function(userInput, exchange, symbolType, onResult) {
       var q = userInput.toUpperCase().replace('/','').replace('-','').trim();
-      if (!q) { onResult([]); return; }
+      if (!q) {
+        onResult([
+          { symbol:'BTCUSDT',  full_name:'BINANCE:BTCUSDT',  description:'Bitcoin / USDT',    exchange:'BINANCE', type:'crypto' },
+          { symbol:'ETHUSDT',  full_name:'BINANCE:ETHUSDT',  description:'Ethereum / USDT',   exchange:'BINANCE', type:'crypto' },
+          { symbol:'SOLUSDT',  full_name:'BINANCE:SOLUSDT',  description:'Solana / USDT',     exchange:'BINANCE', type:'crypto' },
+          { symbol:'BNBUSDT',  full_name:'BINANCE:BNBUSDT',  description:'BNB / USDT',        exchange:'BINANCE', type:'crypto' },
+          { symbol:'EURUSD',   full_name:'FOREX:EURUSD',     description:'Euro / US Dollar',  exchange:'FOREX',   type:'forex'  },
+          { symbol:'GBPUSD',   full_name:'FOREX:GBPUSD',     description:'GBP / US Dollar',   exchange:'FOREX',   type:'forex'  },
+          { symbol:'USDJPY',   full_name:'FOREX:USDJPY',     description:'USD / Japanese Yen',exchange:'FOREX',   type:'forex'  },
+          { symbol:'XAUUSD',   full_name:'FOREX:XAUUSD',     description:'Gold / US Dollar',  exchange:'FOREX',   type:'forex'  },
+          { symbol:'AAPL',     full_name:'NASDAQ:AAPL',      description:'Apple Inc.',        exchange:'NASDAQ',  type:'stock'  },
+          { symbol:'TSLA',     full_name:'NASDAQ:TSLA',      description:'Tesla Inc.',        exchange:'NASDAQ',  type:'stock'  },
+          { symbol:'NVDA',     full_name:'NASDAQ:NVDA',      description:'NVIDIA Corp.',      exchange:'NASDAQ',  type:'stock'  },
+          { symbol:'MSFT',     full_name:'NASDAQ:MSFT',      description:'Microsoft Corp.',   exchange:'NASDAQ',  type:'stock'  }
+        ]);
+        return;
+      }
 
       var results = [];
 
@@ -173,16 +189,16 @@ var FractalDatafeed = (function() {
             if (base === quote) return;
             var sym = base+quote;
             if (sym.indexOf(q)===0) fxPairs.push({
-              symbol:sym, full_name:'FX:'+sym,
-              description:base+' / '+quote, exchange:'FX', type:'forex'
+              symbol:sym, full_name:'FOREX:'+sym,
+              description:base+' / '+quote, exchange:'FOREX', type:'forex'
             });
           });
         });
         /* Add commodities */
         Object.keys(COMMODITIES).forEach(function(sym){
           if (sym.indexOf(q)===0) fxPairs.push({
-            symbol:sym, full_name:'FX:'+sym,
-            description:COMMODITIES[sym].name, exchange:'FX', type:'forex'
+            symbol:sym, full_name:'FOREX:'+sym,
+            description:COMMODITIES[sym].name, exchange:'FOREX', type:'forex'
           });
         });
         results = results.concat(fxPairs.slice(0,10));
@@ -202,7 +218,7 @@ var FractalDatafeed = (function() {
     },
 
     resolveSymbol: function(symbolName, onResolve, onError) {
-      var clean = symbolName.replace(/^(BINANCE:|FX:|FOREX:|NASDAQ:|NYSE:)/i,'').toUpperCase();
+      var clean = symbolName.replace(/^(BINANCE:|FX:|FOREX:|NASDAQ:|NYSE:|MARKET:)/i,'').toUpperCase();
       if (symbolCache[clean]) { onResolve(symbolCache[clean]); return; }
 
       function makeInfo(name, desc, type, exchange, pricescale, session) {
@@ -236,14 +252,14 @@ var FractalDatafeed = (function() {
 
       /* Forex pair */
       if (isFxPair(clean)) {
-        var info = makeInfo(clean, clean.slice(0,3)+' / '+clean.slice(3,6), 'forex','FX',100000,'0000-2400:1234567');
+        var info = makeInfo(clean, clean.slice(0,3)+' / '+clean.slice(3,6), 'forex','FOREX',100000,'0000-2400:1234567');
         symbolCache[clean]=info; onResolve(info);
         return;
       }
 
       /* Commodity */
       if (COMMODITIES[clean]) {
-        var info2 = makeInfo(clean, COMMODITIES[clean].name, 'forex','FX',100,'24x7');
+        var info2 = makeInfo(clean, COMMODITIES[clean].name, 'forex','FOREX',100,'24x7');
         symbolCache[clean]=info2; onResolve(info2);
         return;
       }
