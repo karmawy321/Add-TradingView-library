@@ -20,8 +20,9 @@ var FractalDatafeed = (function() {
   };
 
   var CRYPTO_QUOTES = ['USDT','BUSD','USDC','BTC','ETH','BNB','TRY','EUR','BRL'];
-  var symbolCache = {};
+  var symbolCache       = {};
   var allBinanceSymbols = [];
+  var pendingRequests   = {};
 
   /* Frankfurter currency codes */
   var FX_CURRENCIES = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','NZD',
@@ -270,10 +271,10 @@ var FractalDatafeed = (function() {
           .then(function(d){
             var s = d.symbols && d.symbols[0];
             var info = makeInfo(clean, s?s.baseAsset+' / '+s.quoteAsset:clean, 'crypto','BINANCE',100,'24x7');
-            symbolCache[clean]=info; onResolve(info);
+            symbolCache[clean]=info; setTimeout(function(){ onResolve(info); }, 0);
           }).catch(function(){
             var info = makeInfo(clean,clean,'crypto','BINANCE',100,'24x7');
-            symbolCache[clean]=info; onResolve(info);
+            symbolCache[clean]=info; setTimeout(function(){ onResolve(info); }, 0);
           });
         return;
       }
@@ -290,7 +291,7 @@ var FractalDatafeed = (function() {
       /* Commodity */
       if (COMMODITIES[clean]) {
         var info2 = makeInfo(clean, COMMODITIES[clean].name, 'forex','FOREX',100,'24x7');
-        symbolCache[clean]=info2; onResolve(info2);
+        symbolCache[clean]=info2; setTimeout(function(){ onResolve(info2); }, 0);
         return;
       }
 
