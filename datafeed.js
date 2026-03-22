@@ -1,11 +1,23 @@
 /* ═══════════════════════════════════════════════════════════════
-   FRACTAL AI AGENT — Universal Datafeed v3
+   FRACTAL AI AGENT — Universal Datafeed v4 (FIXED)
    Crypto: Binance (live WebSocket, real OHLCV)
    Forex:  Frankfurter API (free, no key, real rates)
    Stocks: Simulated from live price (until paid API added)
    ═══════════════════════════════════════════════════════════════ */
 
 var FractalDatafeed = (function() {
+
+  /* ── Set this to true if your TradingView library expects SECONDS ── */
+  var USE_SECONDS = false;  
+  /* Most Advanced Charts / widget = milliseconds (false)
+     Standalone Charting Library     = seconds (true)
+     
+     If Binance charts work fine → keep false
+     If Binance charts show year 52000+ → set to true */
+
+  function normalizeTime(ms) {
+    return USE_SECONDS ? Math.floor(ms / 1000) : ms;
+  }
 
   var BINANCE_INTERVALS = {
     '1':'1m','3':'3m','5':'5m','15':'15m','30':'30m',
@@ -23,7 +35,6 @@ var FractalDatafeed = (function() {
   var symbolCache = {};
   var allBinanceSymbols = [];
 
-  /* Frankfurter currency codes */
   var FX_CURRENCIES = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','NZD',
     'CNY','HKD','SGD','MXN','NOK','SEK','DKK','PLN','CZK','HUF','RON',
     'TRY','ZAR','INR','BRL','IDR','PHP','THB','KRW'];
@@ -46,7 +57,6 @@ var FractalDatafeed = (function() {
     return s.length === 6 && FX_CURRENCIES.indexOf(b) !== -1 && FX_CURRENCIES.indexOf(q) !== -1;
   }
 
-  /* ── Load Binance symbols ── */
   function loadBinanceSymbols(cb) {
     if (allBinanceSymbols.length) { cb(allBinanceSymbols); return; }
     fetch('https://api.binance.com/api/v3/exchangeInfo')
@@ -57,53 +67,68 @@ var FractalDatafeed = (function() {
       }).catch(function(){ cb([]); });
   }
 
-  /* ── Frankfurter: get historical daily rates ── */
   function getFxHistory(base, quote, days, cb) {
-    var endDate  = new Date();
-    var startDate= new Date(endDate - days*86400e3);
+    var endDate   = new Date();
+    var startDate = new Date(endDate - days * 86400e3);
     var fmt = function(d){ return d.toISOString().slice(0,10); };
-    fetch('https://api.frankfurter.app/' + fmt(startDate) + '..' + fmt(endDate) + '?from=' + base + '&to=' + quote)
+    var url = 'https://api.frankfurter.app/' + fmt(startDate) + '..' + fmt(endDate) + '?from=' + base + '&to=' + quote;
+    
+    console.log('[Datafeed] Frankfurter request:', url);
+    
+    fetch(url)
       .then(function(r){ return r.json(); })
       .then(function(d){
-        if (!d.rates) { cb(null); return; }
+        if (!d.rates) { console.warn('[Datafeed] No rates in response:', d); cb(null); return; }
         var entries = Object.keys(d.rates).sort().map(function(date){
           return { date: date, rate: d.rates[date][quote] || null };
         }).filter(function(e){ return e.rate; });
+        console.log('[Datafeed] Got', entries.length, 'daily entries for', base+quote);
         cb(entries);
-      }).catch(function(){ cb(null); });
+      }).catch(function(err){ console.error('[Datafeed] Frankfurter error:', err); cb(null); });
   }
 
   /* ── Generate intraday bars from daily rate anchor ── */
   function generateIntradayFromDaily(dailyEntries, resolution, limit) {
-    var stepMs   = STEP_MS[resolution] || 3600e3;
-    var bars     = [];
-    var now      = Date.now();
+    var stepMs = STEP_MS[resolution] || 3600e3;
+
+    /* For daily/weekly — return one bar per entry */
+    if (resolution === '1D' || resolution === '1W' || resolution === '1M') {
+      return dailyEntries.map(function(e){
+        var p = parseFloat(e.rate);
+        var v = p * 0.005;
+        return {
+          time: normalizeTime(new Date(e.date + 'T00:00:00Z').getTime()),
+          open: p,
+          high: p + Math.random() * v,
+          low:  p - Math.random() * v,
+          close: p + (Math.random() - 0.5) * v * 0.5,
+          volume: 0
+        };
+      }).slice(-limit);
+    }
+
+    var bars = [];
+    var now  = Date.now();
 
     dailyEntries.forEach(function(entry) {
-      var dayStart = new Date(entry.date).getTime();
+      var dayStart = new Date(entry.date + 'T00:00:00Z').getTime();
       var price    = parseFloat(entry.rate);
       var vol      = price * 0.0008;
       var barsPerDay = Math.floor(86400e3 / stepMs);
       for (var i = 0; i < barsPerDay; i++) {
         var t = dayStart + i * stepMs;
         if (t > now) break;
-        var drift = (Math.random()-0.499)*vol;
+        var drift = (Math.random() - 0.499) * vol;
         price = Math.max(0.00001, price + drift);
-        var h = price + Math.random()*vol*0.5;
-        var l = price - Math.random()*vol*0.5;
-        var cl = l + Math.random()*(h-l);
-          bars.push({ time:t, open:price, high:h, low:l, close:cl, volume:0 });
+        var h  = price + Math.random() * vol * 0.5;
+        var l  = price - Math.random() * vol * 0.5;
+        var cl = l + Math.random() * (h - l);
+        bars.push({
+          time: normalizeTime(t),
+          open: price, high: h, low: l, close: cl, volume: 0
+        });
       }
     });
-
-    /* For daily/weekly — return one bar per entry */
-    if (resolution === '1D' || resolution === '1W') {
-      return dailyEntries.map(function(e){
-        var p = parseFloat(e.rate);
-        var v = p*0.005;
-        return { time:new Date(e.date).getTime(), open:p, high:p+Math.random()*v, low:p-Math.random()*v, close:p+(Math.random()-0.5)*v*0.5, volume:0 };
-      }).slice(-limit);
-    }
 
     return bars.slice(-limit);
   }
@@ -116,12 +141,16 @@ var FractalDatafeed = (function() {
     var vol    = p * 0.0004;
     var now    = Date.now();
     for (var i = limit; i >= 0; i--) {
-      p = Math.max(0.00001, p + (Math.random()-0.499)*vol);
-      var h=p+Math.random()*vol, l=p-Math.random()*vol, cl=l+Math.random()*(h-l);
-      /* TV needs time in SECONDS (not ms) for non-Binance data */
-      bars.push({ time:(now - i * stepMs), open:p, high:h, low:l, close:cl, volume:0 });
+      p = Math.max(0.00001, p + (Math.random() - 0.499) * vol);
+      var h  = p + Math.random() * vol;
+      var l  = p - Math.random() * vol;
+      var cl = l + Math.random() * (h - l);
+      bars.push({
+        time: normalizeTime(now - i * stepMs),
+        open: p, high: h, low: l, close: cl, volume: 0
+      });
     }
-    bars[bars.length-1].close = price;
+    bars[bars.length - 1].close = price;
     return bars;
   }
 
@@ -134,7 +163,7 @@ var FractalDatafeed = (function() {
           supports_marks: false, supports_timescale_marks: false, supports_time: true,
           exchanges: [
             { value:'BINANCE', name:'Binance', desc:'Crypto' },
-            { value:'FOREX', name:'Forex',   desc:'Forex & Commodities' },
+            { value:'FOREX',   name:'Forex',   desc:'Forex & Commodities' },
             { value:'',        name:'All',     desc:'' }
           ],
           symbols_types: [
@@ -169,166 +198,195 @@ var FractalDatafeed = (function() {
 
       var results = [];
 
-      /* Always search Binance crypto */
       loadBinanceSymbols(function(symbols) {
         var crypto = symbols
-          .filter(function(s){ return s.symbol.indexOf(q)===0; })
-          .slice(0,10)
+          .filter(function(s){ return s.symbol.indexOf(q) === 0; })
+          .slice(0, 10)
           .map(function(s){ return {
             symbol: s.symbol, full_name:'BINANCE:'+s.symbol,
-            description: s.baseAsset+' / '+s.quoteAsset,
+            description: s.baseAsset + ' / ' + s.quoteAsset,
             exchange:'BINANCE', type:'crypto'
           };});
         results = results.concat(crypto);
 
-        /* Add matching forex pairs */
         var fxPairs = [];
         FX_CURRENCIES.forEach(function(base){
           FX_CURRENCIES.forEach(function(quote){
             if (base === quote) return;
-            var sym = base+quote;
-            if (sym.indexOf(q)===0) fxPairs.push({
-              symbol:sym, full_name:'FOREX:'+sym,
-              description:base+' / '+quote, exchange:'FOREX', type:'forex'
+            var sym = base + quote;
+            if (sym.indexOf(q) === 0) fxPairs.push({
+              symbol: sym, full_name: 'FOREX:' + sym,
+              description: base + ' / ' + quote, exchange:'FOREX', type:'forex'
             });
           });
         });
-        /* Add commodities */
         Object.keys(COMMODITIES).forEach(function(sym){
-          if (sym.indexOf(q)===0) fxPairs.push({
-            symbol:sym, full_name:'FOREX:'+sym,
-            description:COMMODITIES[sym].name, exchange:'FOREX', type:'forex'
+          if (sym.indexOf(q) === 0) fxPairs.push({
+            symbol: sym, full_name: 'FOREX:' + sym,
+            description: COMMODITIES[sym].name, exchange:'FOREX', type:'forex'
           });
         });
-        results = results.concat(fxPairs.slice(0,10));
+        results = results.concat(fxPairs.slice(0, 10));
 
-        /* Popular stocks if query looks like stock ticker */
         var stocks = ['AAPL','TSLA','MSFT','GOOGL','AMZN','NVDA','META','NFLX',
                       'AMD','INTC','BABA','UBER','COIN','PLTR','SOFI','SPY','QQQ'];
         stocks.forEach(function(s){
-          if (s.indexOf(q)===0) results.push({
-            symbol:s, full_name:'NASDAQ:'+s,
-            description:s+' Stock', exchange:'NASDAQ', type:'stock'
+          if (s.indexOf(q) === 0) results.push({
+            symbol: s, full_name: 'NASDAQ:' + s,
+            description: s + ' Stock', exchange:'NASDAQ', type:'stock'
           });
         });
 
-        onResult(results.slice(0,20));
+        onResult(results.slice(0, 20));
       });
     },
 
     resolveSymbol: function(symbolName, onResolve, onError) {
       var clean = symbolName.replace(/^(BINANCE:|FX:|FOREX:|NASDAQ:|NYSE:|MARKET:)/i,'').toUpperCase();
-      if (symbolCache[clean]) { onResolve(symbolCache[clean]); return; }
+      
+      console.log('[Datafeed] resolveSymbol called with:', symbolName, '→ clean:', clean);
+      
+      if (symbolCache[clean]) { 
+        console.log('[Datafeed] Cache hit:', clean);
+        onResolve(symbolCache[clean]); 
+        return; 
+      }
 
       function makeInfo(name, desc, type, exchange, pricescale, session) {
-        return {
-          name:name, full_name:exchange+':'+name, description:desc,
-          type:type, session:session||'24x7', timezone:'Etc/UTC',
-          exchange:exchange, listed_exchange:exchange,
-          minmov:1, pricescale:pricescale||100,
-          has_intraday:true, has_daily:true, has_weekly_and_monthly:true,
-          supported_resolutions:['1','5','15','30','60','120','240','1D','1W','1M'],
-          volume_precision:type==='forex'?0:2,
-          data_status:type==='crypto'?'streaming':'delayed_streaming',
-          format:'price'
+        var info = {
+          name: name,
+          ticker: exchange + ':' + name,
+          full_name: exchange + ':' + name,
+          description: desc,
+          type: type,
+          session: session || '24x7',
+          timezone: 'Etc/UTC',
+          exchange: exchange,
+          listed_exchange: exchange,
+          minmov: 1,
+          pricescale: pricescale || 100,
+          has_intraday: true,
+          has_daily: true,
+          has_weekly_and_monthly: true,
+          supported_resolutions: ['1','5','15','30','60','120','240','1D','1W','1M'],
+          volume_precision: type === 'forex' ? 0 : 2,
+          data_status: type === 'crypto' ? 'streaming' : 'delayed_streaming',
+          format: 'price'
         };
+        console.log('[Datafeed] Resolved symbol:', JSON.stringify(info));
+        return info;
       }
 
       /* Binance crypto */
       if (isBinanceCrypto(clean)) {
-        fetch('https://api.binance.com/api/v3/exchangeInfo?symbol='+clean)
+        fetch('https://api.binance.com/api/v3/exchangeInfo?symbol=' + clean)
           .then(function(r){ return r.json(); })
           .then(function(d){
             var s = d.symbols && d.symbols[0];
-            var info = makeInfo(clean, s?s.baseAsset+' / '+s.quoteAsset:clean, 'crypto','BINANCE',100,'24x7');
-            symbolCache[clean]=info; onResolve(info);
+            var info = makeInfo(clean, s ? s.baseAsset + ' / ' + s.quoteAsset : clean, 'crypto','BINANCE', 100, '24x7');
+            symbolCache[clean] = info; onResolve(info);
           }).catch(function(){
-            var info = makeInfo(clean,clean,'crypto','BINANCE',100,'24x7');
-            symbolCache[clean]=info; onResolve(info);
+            var info = makeInfo(clean, clean, 'crypto','BINANCE', 100, '24x7');
+            symbolCache[clean] = info; onResolve(info);
           });
         return;
       }
 
       /* Forex pair */
       if (isFxPair(clean)) {
-        var info = makeInfo(clean, clean.slice(0,3)+' / '+clean.slice(3,6), 'forex','FOREX',100000,'0000-2400:1234567');
-        info.ticker = 'FOREX:' + clean;
-        symbolCache[clean]=info; onResolve(info);
+        var info = makeInfo(clean, clean.slice(0,3) + ' / ' + clean.slice(3,6), 'forex','FOREX', 100000, '0000-2400:1234567');
+        symbolCache[clean] = info; onResolve(info);
         return;
       }
 
       /* Commodity */
       if (COMMODITIES[clean]) {
-        var info2 = makeInfo(clean, COMMODITIES[clean].name, 'forex','FOREX',100,'24x7');
-        symbolCache[clean]=info2; onResolve(info2);
+        var info2 = makeInfo(clean, COMMODITIES[clean].name, 'forex','FOREX', 100, '24x7');
+        symbolCache[clean] = info2; onResolve(info2);
         return;
       }
 
-      /* Stock / unknown — resolve as NASDAQ by default */
-      var exchange = symbolName.includes(':') ? symbolName.split(':')[0] : 'NASDAQ';
-      var info3 = makeInfo(clean, clean+' Stock','stock', exchange, 100,'0930-1600');
-      info3.ticker = exchange + ':' + clean;
-      symbolCache[clean]=info3; onResolve(info3);
+      /* Stock / unknown */
+      var exchange = symbolName.includes(':') ? symbolName.split(':')[0].toUpperCase() : 'NASDAQ';
+      var info3 = makeInfo(clean, clean + ' Stock', 'stock', exchange, 100, '0930-1600');
+      symbolCache[clean] = info3; onResolve(info3);
     },
 
     getBars: function(symbolInfo, resolution, periodParams, onResult, onError) {
-      /* Determine source from full_name — most reliable routing */
       var full   = symbolInfo.full_name || symbolInfo.ticker || symbolInfo.name;
-      var symbol = full.split(':').pop();   /* e.g. GBPUSD, BTCUSDT, AAPL */
-      var source = full.split(':')[0];      /* e.g. FOREX, BINANCE, NASDAQ */
-      var limit  = Math.min(periodParams.countBack||300, 500);
-      var endMs  = periodParams.to   ? periodParams.to  *1000 : Date.now();
-      var startMs= periodParams.from ? periodParams.from*1000 : endMs - limit*(STEP_MS[resolution]||3600e3);
+      var symbol = full.split(':').pop();
+      var source = full.split(':')[0];
+      var limit  = Math.min(periodParams.countBack || 300, 500);
+      var endMs  = periodParams.to   ? periodParams.to * 1000 : Date.now();
+      var startMs= periodParams.from ? periodParams.from * 1000 : endMs - limit * (STEP_MS[resolution] || 3600e3);
+
+      console.log('[Datafeed] getBars:', full, 'source:', source, 'resolution:', resolution, 'limit:', limit);
 
       /* ── Binance crypto ── */
-      if (source === 'BINANCE' || (symbolInfo.type==='crypto' && symbolInfo.exchange==='BINANCE')) {
-        var iv = BINANCE_INTERVALS[resolution]||'1h';
-        fetch('https://api.binance.com/api/v3/klines?symbol='+symbol+'&interval='+iv+'&startTime='+startMs+'&endTime='+endMs+'&limit='+limit)
+      if (source === 'BINANCE' || (symbolInfo.type === 'crypto' && symbolInfo.exchange === 'BINANCE')) {
+        var iv = BINANCE_INTERVALS[resolution] || '1h';
+        fetch('https://api.binance.com/api/v3/klines?symbol=' + symbol + '&interval=' + iv + '&startTime=' + startMs + '&endTime=' + endMs + '&limit=' + limit)
           .then(function(r){ return r.json(); })
           .then(function(data){
-            if (!Array.isArray(data)||!data.length||data.code) { onResult([],{noData:true}); return; }
-            onResult(data.map(function(c){
-              return { time:c[0], open:parseFloat(c[1]), high:parseFloat(c[2]),
-                       low:parseFloat(c[3]), close:parseFloat(c[4]), volume:parseFloat(c[5]) };
-            }), {noData:false});
-          }).catch(function(e){ onError('Binance: '+e.message); });
+            if (!Array.isArray(data) || !data.length || data.code) { 
+              onResult([], {noData: true}); return; 
+            }
+            var bars = data.map(function(c){
+              return { 
+                time: normalizeTime(c[0]), 
+                open: parseFloat(c[1]), high: parseFloat(c[2]),
+                low: parseFloat(c[3]), close: parseFloat(c[4]), 
+                volume: parseFloat(c[5]) 
+              };
+            });
+            console.log('[Datafeed] Binance bars:', bars.length, 'first:', bars[0]);
+            onResult(bars, {noData: false});
+          }).catch(function(e){ onError('Binance: ' + e.message); });
         return;
       }
 
       /* ── Forex via Frankfurter ── */
-      if (source === 'FOREX' || (symbolInfo.type==='forex' && isFxPair(symbol))) {
-        var base  = symbol.slice(0,3);
-        var quote = symbol.slice(3,6);
-        var days  = Math.ceil((endMs-startMs)/86400e3)+2;
-        days = Math.min(days, 365*3); /* max 3 years */
+      if (source === 'FOREX' && isFxPair(symbol)) {
+        var base  = symbol.slice(0, 3);
+        var quote = symbol.slice(3, 6);
+        var days  = Math.ceil((endMs - startMs) / 86400e3) + 2;
+        days = Math.min(days, 365 * 3);
+
+        console.log('[Datafeed] Forex getBars:', base + '/' + quote, 'days:', days);
 
         getFxHistory(base, quote, days, function(entries){
           if (!entries || !entries.length) {
-            /* Fallback: get live rate and simulate */
-            fetch('https://api.frankfurter.app/latest?from='+base+'&to='+quote)
+            console.warn('[Datafeed] No history, falling back to latest rate');
+            fetch('https://api.frankfurter.app/latest?from=' + base + '&to=' + quote)
               .then(function(r){ return r.json(); })
               .then(function(d){
                 var price = d.rates && d.rates[quote] ? parseFloat(d.rates[quote]) : 1.0;
-                onResult(generateBarsFromPrice(price, resolution, limit), {noData:false});
-              }).catch(function(){ onResult(generateBarsFromPrice(1.0, resolution, limit), {noData:false}); });
+                var bars = generateBarsFromPrice(price, resolution, limit);
+                console.log('[Datafeed] Fallback bars:', bars.length);
+                onResult(bars, {noData: false});
+              }).catch(function(){ 
+                onResult(generateBarsFromPrice(1.0, resolution, limit), {noData: false}); 
+              });
             return;
           }
           var bars = generateIntradayFromDaily(entries, resolution, limit);
-          onResult(bars, {noData:false});
+          console.log('[Datafeed] Forex bars:', bars.length, 'first:', bars[0], 'last:', bars[bars.length-1]);
+          onResult(bars, {noData: false});
         });
         return;
       }
 
       /* ── Commodity ── */
-      if (COMMODITIES[symbol] || (source === 'FOREX' && COMMODITIES[symbol])) {
+      if (COMMODITIES[symbol]) {
         var fallback = COMMODITIES[symbol].fallback;
-        onResult(generateBarsFromPrice(fallback, resolution, limit), {noData:false});
+        console.log('[Datafeed] Commodity bars for:', symbol, 'fallback price:', fallback);
+        onResult(generateBarsFromPrice(fallback, resolution, limit), {noData: false});
         return;
       }
 
-      /* ── Stock (NASDAQ/NYSE) — simulated until paid API added ── */
-      /* source === 'NASDAQ' || source === 'NYSE' */
-      onResult(generateBarsFromPrice(150, resolution, limit), {noData:false});
+      /* ── Stock — simulated ── */
+      console.log('[Datafeed] Stock simulated bars for:', symbol);
+      onResult(generateBarsFromPrice(150, resolution, limit), {noData: false});
     },
 
     subscribeBars: function(symbolInfo, resolution, onTick, listenerGuid) {
@@ -337,40 +395,50 @@ var FractalDatafeed = (function() {
       var source = full.split(':')[0];
       FractalDatafeed._sockets = FractalDatafeed._sockets || {};
 
+      console.log('[Datafeed] subscribeBars:', full, 'source:', source);
+
       /* Binance crypto — WebSocket */
-      if (source === 'BINANCE' || (symbolInfo.type==='crypto' && symbolInfo.exchange==='BINANCE')) {
-        var iv = BINANCE_INTERVALS[resolution]||'1h';
-        var ws = new WebSocket('wss://stream.binance.com:9443/ws/'+symbol.toLowerCase()+'@kline_'+iv);
+      if (source === 'BINANCE' || (symbolInfo.type === 'crypto' && symbolInfo.exchange === 'BINANCE')) {
+        var iv = BINANCE_INTERVALS[resolution] || '1h';
+        var ws = new WebSocket('wss://stream.binance.com:9443/ws/' + symbol.toLowerCase() + '@kline_' + iv);
         ws.onmessage = function(evt){
           try {
-            var k=JSON.parse(evt.data).k; if(!k) return;
-            onTick({time:k.t,open:parseFloat(k.o),high:parseFloat(k.h),low:parseFloat(k.l),close:parseFloat(k.c),volume:parseFloat(k.v)});
+            var k = JSON.parse(evt.data).k; if (!k) return;
+            onTick({
+              time: normalizeTime(k.t),
+              open: parseFloat(k.o), high: parseFloat(k.h),
+              low: parseFloat(k.l), close: parseFloat(k.c),
+              volume: parseFloat(k.v)
+            });
           } catch(e){}
         };
-        ws.onerror = function(){ try{ws.close();}catch(e){} };
-        FractalDatafeed._sockets[listenerGuid] = { close:function(){ ws.close(); } };
+        ws.onerror = function(){ try { ws.close(); } catch(e){} };
+        FractalDatafeed._sockets[listenerGuid] = { close: function(){ ws.close(); } };
         return;
       }
 
       /* Forex — poll Frankfurter every 60s */
-      if (source === 'FOREX' || (symbolInfo.type==='forex' && isFxPair(symbol))) {
-        var base2=symbol.slice(0,3), quote2=symbol.slice(3,6);
+      if (source === 'FOREX' && isFxPair(symbol)) {
+        var base2 = symbol.slice(0, 3), quote2 = symbol.slice(3, 6);
         var poll = setInterval(function(){
-          fetch('https://api.frankfurter.app/latest?from='+base2+'&to='+quote2)
+          fetch('https://api.frankfurter.app/latest?from=' + base2 + '&to=' + quote2)
             .then(function(r){ return r.json(); })
             .then(function(d){
               if (d.rates && d.rates[quote2]) {
-                var p=parseFloat(d.rates[quote2]);
-                onTick({time:Date.now(),open:p,high:p,low:p,close:p,volume:0});
+                var p = parseFloat(d.rates[quote2]);
+                onTick({
+                  time: normalizeTime(Date.now()),
+                  open: p, high: p, low: p, close: p, volume: 0
+                });
               }
             }).catch(function(){});
         }, 60000);
-        FractalDatafeed._sockets[listenerGuid] = { close:function(){ clearInterval(poll); } };
+        FractalDatafeed._sockets[listenerGuid] = { close: function(){ clearInterval(poll); } };
         return;
       }
 
       /* Others — no live stream */
-      FractalDatafeed._sockets[listenerGuid] = { close:function(){} };
+      FractalDatafeed._sockets[listenerGuid] = { close: function(){} };
     },
 
     unsubscribeBars: function(listenerGuid) {
@@ -383,8 +451,8 @@ var FractalDatafeed = (function() {
     getServerTime: function(cb) {
       fetch('https://api.binance.com/api/v3/time')
         .then(function(r){ return r.json(); })
-        .then(function(d){ cb(Math.floor(d.serverTime/1000)); })
-        .catch(function(){ cb(Math.floor(Date.now()/1000)); });
+        .then(function(d){ cb(Math.floor(d.serverTime / 1000)); })
+        .catch(function(){ cb(Math.floor(Date.now() / 1000)); });
     }
   };
 })();
