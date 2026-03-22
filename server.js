@@ -231,6 +231,7 @@ function stopBinancePolling(symbol) {
 }
 
 
+function disconnectBinanceIfUnused(symbol) {
   const lower = symbol.toLowerCase();
   const key   = symbol.toUpperCase();
   if (!sseClients[key] || sseClients[key].size === 0) {
@@ -336,8 +337,17 @@ function rl(l) { return l==='ar'?'Arabic':l==='pt'?'Portuguese':'English'; }
    ═══════════════════════════════════════════════════ */
 const app  = express();
 const PORT = process.env.PORT || 3000;
-app.use(cors({ origin: '*' }));
+app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'] }));
 app.use(express.json({ limit: '20mb' }));
+
+/* Explicit CORS headers for all responses including SSE */
+app.use(function(req, res, next) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') { res.sendStatus(200); return; }
+  next();
+});
 
 app.get('/', (req, res) => res.json({
   status: 'ok', service: 'Fractal AI Agent', version: '3.0.0',
