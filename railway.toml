@@ -1,9 +1,3 @@
-[build]
-builder = "NIXPACKS"
-
-[build.nixpacksPlan.phases.setup]
-nixPkgs = []
-
 [deploy]
 startCommand = "node server.js"
 restartPolicyType = "ON_FAILURE"
