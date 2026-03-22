@@ -105,6 +105,7 @@ var FractalDatafeed = (function() {
 
     dailyEntries.forEach(function(entry) {
       var dayStart = new Date(entry.date).getTime();
+      if (dayStart > now) return; /* skip future dates */
       var price    = parseFloat(entry.rate);
       var vol      = price * 0.0008;
       var barsPerDay = Math.floor(86400e3 / stepMs);
@@ -133,19 +134,23 @@ var FractalDatafeed = (function() {
   }
 
   /* ── Generate bars from single live price ── */
-  function generateBarsFromPrice(price, resolution, limit) {
+  function generateBarsFromPrice(price, resolution, startMs, endMs, limit) {
     var stepMs = STEP_MS[resolution] || 3600e3;
     var bars   = [];
     var p      = price;
-    var vol    = p * 0.0004;
-    var now    = Date.now();
-    for (var i = limit; i >= 0; i--) {
+    var vol    = Math.max(p * 0.0004, 0.0001);
+    /* Generate bars strictly within the requested range */
+    var t = startMs;
+    var count = 0;
+    while (t <= endMs && count < limit) {
       p = Math.max(0.00001, p + (Math.random()-0.499)*vol);
-      var h=p+Math.random()*vol, l=p-Math.random()*vol, cl=l+Math.random()*(h-l);
-      /* TV needs time in SECONDS (not ms) for non-Binance data */
-      bars.push({ time:(now - i * stepMs), open:p, high:h, low:l, close:cl, volume:0 });
+      var h=p+Math.random()*vol*0.5, l=p-Math.random()*vol*0.5;
+      var cl=l+Math.random()*(h-l);
+      bars.push({ time:t, open:p, high:h, low:l, close:cl, volume:0 });
+      t += stepMs;
+      count++;
     }
-    bars[bars.length-1].close = price;
+    if (bars.length) bars[bars.length-1].close = price; /* anchor last to real price */
     return bars;
   }
 
@@ -300,11 +305,20 @@ var FractalDatafeed = (function() {
     getBars: function(symbolInfo, resolution, periodParams, onResult, onError) {
       /* Determine source from full_name — most reliable routing */
       var full   = symbolInfo.full_name || symbolInfo.ticker || symbolInfo.name;
-      var symbol = full.split(':').pop();   /* e.g. GBPUSD, BTCUSDT, AAPL */
-      var source = full.split(':')[0];      /* e.g. FOREX, BINANCE, NASDAQ */
+      var symbol = full.split(':').pop();
+      var source = full.split(':')[0];
       var limit  = Math.min(periodParams.countBack||300, 500);
       var endMs  = periodParams.to   ? periodParams.to  *1000 : Date.now();
       var startMs= periodParams.from ? periodParams.from*1000 : endMs - limit*(STEP_MS[resolution]||3600e3);
+
+      /* Dedup guard — TV sometimes calls getBars multiple times for same range */
+      var reqKey = symbol + '|' + resolution + '|' + startMs + '|' + endMs;
+      if (pendingRequests[reqKey]) { onResult([], {noData:true}); return; }
+      pendingRequests[reqKey] = true;
+      var clearPending = function(){ setTimeout(function(){ delete pendingRequests[reqKey]; }, 2000); };
+      var _onResult = function(bars, meta) { clearPending(); onResult(bars, meta); };
+      var _onError  = function(e) { clearPending(); onError(e); };
+      onResult = _onResult; onError = _onError;
 
       /* ── Binance crypto ── */
       if (source === 'BINANCE' || (symbolInfo.type==='crypto' && symbolInfo.exchange==='BINANCE')) {
@@ -333,7 +347,7 @@ var FractalDatafeed = (function() {
         };
         if (!isFrankfurterSupported(base, quote) || FALLBACK_PRICES[symbol]) {
           var fallbackPrice = FALLBACK_PRICES[symbol] || 1.0;
-          onResult(generateBarsFromPrice(fallbackPrice, resolution, limit), {noData:false});
+          onResult(generateBarsFromPrice(fallbackPrice, resolution, startMs, endMs, limit), {noData:false});
           return;
         }
 
@@ -342,7 +356,7 @@ var FractalDatafeed = (function() {
         getFxHistory(base, quote, days, function(entries){
           if (!entries || !entries.length) {
             /* Frankfurter returned nothing — simulate with price 1.0 */
-            onResult(generateBarsFromPrice(1.0, resolution, limit), {noData:false});
+            onResult(generateBarsFromPrice(1.0, resolution, startMs, endMs, limit), {noData:false});
             return;
           }
           var bars = generateIntradayFromDaily(entries, resolution, limit);
@@ -353,13 +367,13 @@ var FractalDatafeed = (function() {
 
       /* ── Commodity (XAU, XAG etc) — always use fallback price ── */
       if (COMMODITIES[symbol]) {
-        onResult(generateBarsFromPrice(COMMODITIES[symbol].fallback, resolution, limit), {noData:false});
+        onResult(generateBarsFromPrice(COMMODITIES[symbol].fallback, resolution, startMs, endMs, limit), {noData:false});
         return;
       }
 
       /* ── Stock (NASDAQ/NYSE) — simulated until paid API added ── */
       /* source === 'NASDAQ' || source === 'NYSE' */
-      onResult(generateBarsFromPrice(150, resolution, limit), {noData:false});
+      onResult(generateBarsFromPrice(150, resolution, startMs, endMs, limit), {noData:false});
     },
 
     subscribeBars: function(symbolInfo, resolution, onTick, listenerGuid) {
