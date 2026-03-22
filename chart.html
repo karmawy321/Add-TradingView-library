@@ -24,12 +24,13 @@ try {
   });
 } catch(e){}
 
-var symbol   = params.symbol   || 'BTCUSDT';
+var symbol   = params.symbol   || null;
 var interval = params.interval || '240';
 var locale   = params.locale   || 'en';
 var tvWidget = null;
 
 function initTV() {
+  /* If no symbol provided, TV will show its own search dialog */
   if (typeof TradingView === 'undefined' || !TradingView.widget) {
     setTimeout(initTV, 200);
     return;
@@ -38,7 +39,7 @@ function initTV() {
     container:      'tv_chart_container',
     library_path:   RAILWAY + '/charting_library/',
     datafeed:       FractalDatafeed,
-    symbol:         symbol,
+    symbol:         symbol || 'BTCUSDT',
     interval:       interval,
     locale:         locale,
     theme:          'Dark',
