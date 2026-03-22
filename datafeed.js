@@ -252,6 +252,7 @@ var FractalDatafeed = (function() {
       /* Forex pair */
       if (isFxPair(clean)) {
         var info = makeInfo(clean, clean.slice(0,3)+' / '+clean.slice(3,6), 'forex','FOREX',100000,'0000-2400:1234567');
+        info.ticker = 'FOREX:' + clean;
         symbolCache[clean]=info; onResolve(info);
         return;
       }
@@ -263,19 +264,24 @@ var FractalDatafeed = (function() {
         return;
       }
 
-      /* Stock / unknown — resolve generically */
-      var info3 = makeInfo(clean, clean+' Stock','stock','MARKET',100,'0930-1600');
+      /* Stock / unknown — resolve as NASDAQ by default */
+      var exchange = symbolName.includes(':') ? symbolName.split(':')[0] : 'NASDAQ';
+      var info3 = makeInfo(clean, clean+' Stock','stock', exchange, 100,'0930-1600');
+      info3.ticker = exchange + ':' + clean;
       symbolCache[clean]=info3; onResolve(info3);
     },
 
     getBars: function(symbolInfo, resolution, periodParams, onResult, onError) {
-      var symbol  = symbolInfo.name;
-      var limit   = Math.min(periodParams.countBack||300, 500);
-      var endMs   = periodParams.to   ? periodParams.to  *1000 : Date.now();
-      var startMs = periodParams.from ? periodParams.from*1000 : endMs - limit*(STEP_MS[resolution]||3600e3);
+      /* Determine source from full_name — most reliable routing */
+      var full   = symbolInfo.full_name || symbolInfo.ticker || symbolInfo.name;
+      var symbol = full.split(':').pop();   /* e.g. GBPUSD, BTCUSDT, AAPL */
+      var source = full.split(':')[0];      /* e.g. FOREX, BINANCE, NASDAQ */
+      var limit  = Math.min(periodParams.countBack||300, 500);
+      var endMs  = periodParams.to   ? periodParams.to  *1000 : Date.now();
+      var startMs= periodParams.from ? periodParams.from*1000 : endMs - limit*(STEP_MS[resolution]||3600e3);
 
       /* ── Binance crypto ── */
-      if (symbolInfo.type==='crypto' && symbolInfo.exchange==='BINANCE') {
+      if (source === 'BINANCE' || (symbolInfo.type==='crypto' && symbolInfo.exchange==='BINANCE')) {
         var iv = BINANCE_INTERVALS[resolution]||'1h';
         fetch('https://api.binance.com/api/v3/klines?symbol='+symbol+'&interval='+iv+'&startTime='+startMs+'&endTime='+endMs+'&limit='+limit)
           .then(function(r){ return r.json(); })
@@ -290,7 +296,7 @@ var FractalDatafeed = (function() {
       }
 
       /* ── Forex via Frankfurter ── */
-      if (symbolInfo.type==='forex' && isFxPair(symbol)) {
+      if (source === 'FOREX' || (symbolInfo.type==='forex' && isFxPair(symbol))) {
         var base  = symbol.slice(0,3);
         var quote = symbol.slice(3,6);
         var days  = Math.ceil((endMs-startMs)/86400e3)+2;
@@ -314,22 +320,25 @@ var FractalDatafeed = (function() {
       }
 
       /* ── Commodity ── */
-      if (COMMODITIES[symbol]) {
+      if (COMMODITIES[symbol] || (source === 'FOREX' && COMMODITIES[symbol])) {
         var fallback = COMMODITIES[symbol].fallback;
         onResult(generateBarsFromPrice(fallback, resolution, limit), {noData:false});
         return;
       }
 
-      /* ── Stock / unknown — generate from simulated price ── */
+      /* ── Stock (NASDAQ/NYSE) — simulated until paid API added ── */
+      /* source === 'NASDAQ' || source === 'NYSE' */
       onResult(generateBarsFromPrice(150, resolution, limit), {noData:false});
     },
 
     subscribeBars: function(symbolInfo, resolution, onTick, listenerGuid) {
-      var symbol = symbolInfo.name;
+      var full   = symbolInfo.full_name || symbolInfo.ticker || symbolInfo.name;
+      var symbol = full.split(':').pop();
+      var source = full.split(':')[0];
       FractalDatafeed._sockets = FractalDatafeed._sockets || {};
 
       /* Binance crypto — WebSocket */
-      if (symbolInfo.type==='crypto' && symbolInfo.exchange==='BINANCE') {
+      if (source === 'BINANCE' || (symbolInfo.type==='crypto' && symbolInfo.exchange==='BINANCE')) {
         var iv = BINANCE_INTERVALS[resolution]||'1h';
         var ws = new WebSocket('wss://stream.binance.com:9443/ws/'+symbol.toLowerCase()+'@kline_'+iv);
         ws.onmessage = function(evt){
@@ -344,7 +353,7 @@ var FractalDatafeed = (function() {
       }
 
       /* Forex — poll Frankfurter every 60s */
-      if (symbolInfo.type==='forex' && isFxPair(symbol)) {
+      if (source === 'FOREX' || (symbolInfo.type==='forex' && isFxPair(symbol))) {
         var base2=symbol.slice(0,3), quote2=symbol.slice(3,6);
         var poll = setInterval(function(){
           fetch('https://api.frankfurter.app/latest?from='+base2+'&to='+quote2)
