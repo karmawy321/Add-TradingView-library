@@ -1,6 +1,6 @@
 {
   "name": "fractal-ai-agent-backend",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -8,6 +8,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
+    "ws": "^8.16.0",
     "@supabase/supabase-js": "^2.45.0"
   },
   "engines": {
