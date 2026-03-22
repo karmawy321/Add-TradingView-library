@@ -162,24 +162,80 @@ function connectBinance(symbol) {
   const lower = symbol.toLowerCase();
   if (binanceWs[lower]) return;
   fetchBinanceHistory(symbol.toUpperCase());
-  const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${lower}@aggTrade`);
-  ws.on('open',    ()  => console.log(`[Binance] Connected: ${symbol}`));
-  ws.on('message', raw => {
-    try {
-      const m = JSON.parse(raw);
-      processTick(symbol.toUpperCase(), parseFloat(m.p), parseFloat(m.q), m.T || Date.now());
-    } catch(e) {}
-  });
-  ws.on('close',  ()  => { console.log(`[Binance] Closed: ${symbol}`); delete binanceWs[lower]; });
-  ws.on('error',  err => { console.error(`[Binance] Error ${symbol}:`, err.message); ws.terminate(); });
-  binanceWs[lower] = ws;
+
+  /* Try multiple Binance endpoints — some Railway regions are blocked on main stream */
+  const wsUrls = [
+    `wss://stream.binance.com:9443/ws/${lower}@aggTrade`,
+    `wss://stream.binance.com:443/ws/${lower}@aggTrade`,
+    `wss://stream1.binance.com:9443/ws/${lower}@aggTrade`
+  ];
+  let urlIdx = 0;
+
+  function tryConnect() {
+    if (urlIdx >= wsUrls.length) {
+      console.log(`[Binance] All endpoints blocked for ${symbol} — using REST polling only`);
+      startBinancePolling(symbol.toUpperCase());
+      return;
+    }
+    const ws = new WebSocket(wsUrls[urlIdx]);
+    ws.on('open',    ()  => console.log(`[Binance] Connected: ${symbol} via ${wsUrls[urlIdx]}`));
+    ws.on('message', raw => {
+      try {
+        const m = JSON.parse(raw);
+        processTick(symbol.toUpperCase(), parseFloat(m.p), parseFloat(m.q), m.T || Date.now());
+      } catch(e) {}
+    });
+    ws.on('close',  ()  => { console.log(`[Binance] Closed: ${symbol}`); delete binanceWs[lower]; });
+    ws.on('error',  err => {
+      console.error(`[Binance] Error ${symbol} (${wsUrls[urlIdx]}):`, err.message);
+      ws.terminate();
+      urlIdx++;
+      setTimeout(tryConnect, 1000);
+    });
+    binanceWs[lower] = ws;
+  }
+  tryConnect();
 }
 
-function disconnectBinanceIfUnused(symbol) {
+const binancePollers = {}; /* symbol → interval id */
+
+function startBinancePolling(symbol) {
+  if (binancePollers[symbol]) return;
+  console.log(`[Binance] Starting REST polling for ${symbol}`);
+  let lastPrice = 0;
+  binancePollers[symbol] = setInterval(() => {
+    const path = `/api/v3/ticker/price?symbol=${symbol}`;
+    const req  = https.request({ hostname: 'api.binance.com', path, method: 'GET' }, res => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        try {
+          const d = JSON.parse(data);
+          if (d.price && parseFloat(d.price) !== lastPrice) {
+            lastPrice = parseFloat(d.price);
+            processTick(symbol, lastPrice, 0, Date.now());
+          }
+        } catch(e) {}
+      });
+    });
+    req.on('error', () => {});
+    req.end();
+  }, 3000); /* poll every 3 seconds */
+}
+
+function stopBinancePolling(symbol) {
+  if (binancePollers[symbol]) {
+    clearInterval(binancePollers[symbol]);
+    delete binancePollers[symbol];
+  }
+}
+
+
   const lower = symbol.toLowerCase();
   const key   = symbol.toUpperCase();
   if (!sseClients[key] || sseClients[key].size === 0) {
     if (binanceWs[lower]) { binanceWs[lower].terminate(); delete binanceWs[lower]; }
+    stopBinancePolling(key);
   }
 }
 
