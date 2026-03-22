@@ -91,8 +91,9 @@ var FractalDatafeed = (function() {
         price = Math.max(0.00001, price + drift);
         var h = price + Math.random()*vol*0.5;
         var l = price - Math.random()*vol*0.5;
-        var c = l + Math.random()*(h-l);
-        bars.push({ time:t, open:price, high:h, low:l, close:c, volume:0 });
+        var cl = l + Math.random()*(h-l);
+        /* TV needs time in SECONDS */
+        bars.push({ time:Math.floor(t/1000), open:price, high:h, low:l, close:cl, volume:0 });
       }
     });
 
@@ -101,7 +102,7 @@ var FractalDatafeed = (function() {
       return dailyEntries.map(function(e){
         var p = parseFloat(e.rate);
         var v = p*0.005;
-        return { time:new Date(e.date).getTime(), open:p, high:p+Math.random()*v, low:p-Math.random()*v, close:p+(Math.random()-0.5)*v*0.5, volume:0 };
+        return { time:Math.floor(new Date(e.date).getTime()/1000), open:p, high:p+Math.random()*v, low:p-Math.random()*v, close:p+(Math.random()-0.5)*v*0.5, volume:0 };
       }).slice(-limit);
     }
 
@@ -117,10 +118,11 @@ var FractalDatafeed = (function() {
     var now    = Date.now();
     for (var i = limit; i >= 0; i--) {
       p = Math.max(0.00001, p + (Math.random()-0.499)*vol);
-      var h=p+Math.random()*vol, l=p-Math.random()*vol, c=l+Math.random()*(h-l);
-      bars.push({ time:now-i*stepMs, open:p, high:h, low:l, close:c, volume:0 });
+      var h=p+Math.random()*vol, l=p-Math.random()*vol, cl=l+Math.random()*(h-l);
+      /* TV needs time in SECONDS (not ms) for non-Binance data */
+      bars.push({ time:Math.floor((now-i*stepMs)/1000), open:p, high:h, low:l, close:cl, volume:0 });
     }
-    bars[bars.length-1].close = price; /* anchor last bar to real price */
+    bars[bars.length-1].close = price;
     return bars;
   }
 
@@ -335,7 +337,7 @@ var FractalDatafeed = (function() {
             .then(function(d){
               if (d.rates && d.rates[quote2]) {
                 var p=parseFloat(d.rates[quote2]);
-                onTick({time:Date.now(),open:p,high:p,low:p,close:p,volume:0});
+                onTick({time:Math.floor(Date.now()/1000),open:p,high:p,low:p,close:p,volume:0});
               }
             }).catch(function(){});
         }, 60000);
