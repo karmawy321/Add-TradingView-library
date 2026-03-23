@@ -131,7 +131,7 @@ function connectTwelveData() {
 
 function fetchTDHistory(sym) {
   if (!TWELVEDATA_KEY) return;
-  const path = `/v1/time_series?symbol=${encodeURIComponent(sym)}&interval=1min&outputsize=300&apikey=${TWELVEDATA_KEY}`;
+  const path = `/time_series?symbol=${encodeURIComponent(sym)}&interval=1min&outputsize=300&apikey=${TWELVEDATA_KEY}`;
   tdEnqueue(path, json => {
     if (!json.values) return;
     const key = sym.replace('/','');
@@ -216,7 +216,7 @@ function fetchTDAllTimeframes(sym) {
   const tdIntervals = { '1h':'1h', '4h':'4h', '1d':'1day', '15m':'15min', '5m':'5min', '1m':'1min' };
 
   Object.entries(tdIntervals).forEach(([tf, tdiv]) => {
-    const path = `/v1/time_series?symbol=${encodeURIComponent(fxSym)}&interval=${tdiv}&outputsize=300&apikey=${TWELVEDATA_KEY}`;
+    const path = `/time_series?symbol=${encodeURIComponent(fxSym)}&interval=${tdiv}&outputsize=300&apikey=${TWELVEDATA_KEY}`;
     tdEnqueue(path, json => {
       if (!json.values || !Array.isArray(json.values)) {
         if (json.message) console.warn(`[TD] ${sym} ${tf}:`, json.message);
@@ -333,7 +333,7 @@ function startMetalPolling(sym) {
   console.log('[Metals] Starting REST polling for', sym);
   metalPollers[sym] = setInterval(() => {
     if (!TWELVEDATA_KEY) return;
-    const path = `/v1/price?symbol=${encodeURIComponent(sym)}&apikey=${TWELVEDATA_KEY}`;
+    const path = `/price?symbol=${encodeURIComponent(sym)}&apikey=${TWELVEDATA_KEY}`;
     const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
       let data = '';
       res.on('data', c => { data += c; });
@@ -475,7 +475,7 @@ app.use(express.json({ limit: '20mb' }));
 /* ── /test-td — diagnose TwelveData connection ── */
 app.get('/test-td', (req, res) => {
   if (!TWELVEDATA_KEY) return res.json({ error: 'No TWELVEDATA_API_KEY set' });
-  const path = `/v1/price?symbol=EUR/USD&apikey=${TWELVEDATA_KEY}`;
+  const path = `/price?symbol=EUR%2FUSD&apikey=${TWELVEDATA_KEY}`;
   const req2 = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, apiRes => {
     let data = '';
     apiRes.on('data', c => { data += c; });
@@ -757,6 +757,7 @@ app.listen(PORT, () => {
   console.log('TwelveData key:', !!TWELVEDATA_KEY);
   console.log('Forex symbols:', FOREX_SYMBOLS.join(', '));
   tdServerReady = true; /* Allow queue to drain now */
+  tdQueue.length = 0;   /* Clear any stale queue from startup */
+  tdRunning = 0;
   connectTwelveData();
-  tdDrain(); /* Flush anything queued before server started */
 });
