@@ -472,6 +472,29 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'] }));
 app.use(express.json({ limit: '20mb' }));
 
+/* ── /test-td — diagnose TwelveData connection ── */
+app.get('/test-td', (req, res) => {
+  if (!TWELVEDATA_KEY) return res.json({ error: 'No TWELVEDATA_API_KEY set' });
+  const path = `/v1/price?symbol=EUR/USD&apikey=${TWELVEDATA_KEY}`;
+  const req2 = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, apiRes => {
+    let data = '';
+    apiRes.on('data', c => { data += c; });
+    apiRes.on('end', () => {
+      res.json({
+        status:   apiRes.statusCode,
+        headers:  apiRes.headers,
+        body:     data.slice(0, 500),
+        isJSON:   data.startsWith('{'),
+        keyLen:   TWELVEDATA_KEY.length,
+        tdQueue:  tdQueue.length,
+        tdRunning
+      });
+    });
+  });
+  req2.on('error', err => res.json({ error: err.message }));
+  req2.end();
+});
+
 /* Explicit CORS headers for all responses including SSE */
 app.use(function(req, res, next) {
   res.setHeader('Access-Control-Allow-Origin', '*');
