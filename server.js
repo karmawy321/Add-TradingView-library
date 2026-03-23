@@ -128,79 +128,111 @@ function connectTwelveData() {
 
 function fetchTDHistory(sym) {
   if (!TWELVEDATA_KEY) return;
-  const path = `/v1/time_series?symbol=${encodeURIComponent(sym)}&interval=1min&outputsize=500&apikey=${TWELVEDATA_KEY}`;
-  const req  = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
+  const path = `/v1/time_series?symbol=${encodeURIComponent(sym)}&interval=1min&outputsize=300&apikey=${TWELVEDATA_KEY}`;
+  tdEnqueue(path, json => {
+    if (!json.values) return;
+    const key = sym.replace('/','');
+    ensureSymbol(key);
+    json.values.slice().reverse().forEach(bar => {
+      const ts = new Date(bar.datetime).getTime();
+      TIMEFRAMES.forEach(tf => {
+        const bkt = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
+        const arr = candles[key][tf];
+        const lst = arr[arr.length - 1];
+        const [o,h,l,c,v] = [bar.open,bar.high,bar.low,bar.close,bar.volume||0].map(parseFloat);
+        if (!lst || lst.t !== bkt) {
+          arr.push({ t: bkt, o, h, l, c, v });
+          if (arr.length > 500) arr.shift();
+        } else {
+          lst.h = Math.max(lst.h, h); lst.l = Math.min(lst.l, l); lst.c = c; lst.v += v;
+        }
+      });
+    });
+    console.log(`[TD] History loaded: ${sym} (${json.values.length} bars)`);
+  });
+}
+
+/* ── TwelveData request queue — max 6 calls/min to stay under free limit ──
+   Free tier: 8 API credits/min. We use 6 to leave buffer. */
+const tdQueue   = [];
+let   tdRunning = 0;
+const TD_MAX_PER_MIN = 6;
+const TD_INTERVAL_MS = Math.ceil(60000 / TD_MAX_PER_MIN); /* ~10s between calls */
+
+function tdEnqueue(path, onData) {
+  tdQueue.push({ path, onData });
+  tdDrain();
+}
+
+function tdDrain() {
+  if (tdRunning >= TD_MAX_PER_MIN || tdQueue.length === 0) return;
+  const { path, onData } = tdQueue.shift();
+  tdRunning++;
+  const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
     let data = '';
     res.on('data', c => { data += c; });
     res.on('end', () => {
       try {
-        const json = JSON.parse(data);
-        if (!json.values) return;
-        const key  = sym.replace('/','');
-        ensureSymbol(key);
-        json.values.slice().reverse().forEach(bar => {
-          const ts = new Date(bar.datetime).getTime();
-          TIMEFRAMES.forEach(tf => {
-            const bkt = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
-            const arr = candles[key][tf];
-            const lst = arr[arr.length - 1];
-            const [o,h,l,c,v] = [bar.open,bar.high,bar.low,bar.close,bar.volume||0].map(parseFloat);
-            if (!lst || lst.t !== bkt) {
-              arr.push({ t: bkt, o, h, l, c, v });
-              if (arr.length > 500) arr.shift();
-            } else {
-              lst.h = Math.max(lst.h, h); lst.l = Math.min(lst.l, l); lst.c = c; lst.v += v;
-            }
-          });
-        });
-        console.log(`[TD] History loaded: ${sym} (${json.values.length} bars)`);
-      } catch(e) { console.warn('[TD] History error:', e.message); }
+        /* Check for plain-text rate limit response before parsing */
+        if (!data.startsWith('{') && !data.startsWith('[')) {
+          console.warn('[TD] Rate limit / non-JSON response:', data.slice(0, 80));
+        } else {
+          const json = JSON.parse(data);
+          if (json.code === 429 || json.code === 403) {
+            console.warn('[TD] Rate limited — requeuing in 60s:', path.split('?')[0]);
+            setTimeout(() => { tdQueue.push({ path, onData }); tdDrain(); }, 60000);
+          } else {
+            onData(json);
+          }
+        }
+      } catch(e) {
+        console.warn('[TD] Parse error:', e.message, '| response:', data.slice(0, 60));
+      }
+      /* Release slot after interval */
+      setTimeout(() => { tdRunning--; tdDrain(); }, TD_INTERVAL_MS);
     });
   });
-  req.on('error', e => {});
+  req.on('error', () => { tdRunning--; tdDrain(); });
   req.end();
 }
 
-/* Fetch all timeframes directly from TwelveData for a symbol */
+/* Fetch all timeframes directly from TwelveData for a symbol — queued */
 function fetchTDAllTimeframes(sym) {
   if (!TWELVEDATA_KEY) return;
   const fxSym = sym.length === 6 ? sym.slice(0,3) + '/' + sym.slice(3) : sym;
-  const tdIntervals = { '1m':'1min','5m':'5min','15m':'15min','1h':'1h','4h':'4h','1d':'1day' };
+
+  /* Only fetch the timeframes most useful for chart display */
+  /* 1m: live chart, 1h + 4h: standard analysis, 1d: long-term */
+  const tdIntervals = { '1h':'1h', '4h':'4h', '1d':'1day', '15m':'15min', '5m':'5min', '1m':'1min' };
 
   Object.entries(tdIntervals).forEach(([tf, tdiv]) => {
-    const path = `/v1/time_series?symbol=${encodeURIComponent(fxSym)}&interval=${tdiv}&outputsize=500&apikey=${TWELVEDATA_KEY}`;
-    const req  = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (!json.values || !Array.isArray(json.values)) return;
-          ensureSymbol(sym);
-          candles[sym][tf] = []; /* reset */
-          json.values.slice().reverse().forEach(bar => {
-            const ts  = new Date(bar.datetime).getTime();
-            const bkt = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
-            const arr = candles[sym][tf];
-            const lst = arr[arr.length - 1];
-            const [o,h,l,c,v] = [bar.open,bar.high,bar.low,bar.close,bar.volume||0].map(parseFloat);
-            if (!lst || lst.t !== bkt) {
-              arr.push({ t: bkt, o, h, l, c, v });
-              if (arr.length > 500) arr.shift();
-            } else {
-              lst.h = Math.max(lst.h,h); lst.l = Math.min(lst.l,l); lst.c = c; lst.v += v;
-            }
-          });
-          console.log(`[TD] ${sym} ${tf}: ${candles[sym][tf].length} candles`);
-          /* Push to any waiting SSE clients */
-          if (candles[sym]['1m'].length > 0 || candles[sym]['4h'].length > 0) pushSSE(sym);
-        } catch(e) { console.warn(`[TD] ${sym} ${tf} error:`, e.message); }
+    const path = `/v1/time_series?symbol=${encodeURIComponent(fxSym)}&interval=${tdiv}&outputsize=300&apikey=${TWELVEDATA_KEY}`;
+    tdEnqueue(path, json => {
+      if (!json.values || !Array.isArray(json.values)) {
+        if (json.message) console.warn(`[TD] ${sym} ${tf}:`, json.message);
+        return;
+      }
+      ensureSymbol(sym);
+      candles[sym][tf] = [];
+      json.values.slice().reverse().forEach(bar => {
+        const ts  = new Date(bar.datetime).getTime();
+        const bkt = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
+        const arr = candles[sym][tf];
+        const lst = arr[arr.length - 1];
+        const [o,h,l,c,v] = [bar.open,bar.high,bar.low,bar.close,bar.volume||0].map(parseFloat);
+        if (!lst || lst.t !== bkt) {
+          arr.push({ t: bkt, o, h, l, c, v });
+          if (arr.length > 500) arr.shift();
+        } else {
+          lst.h = Math.max(lst.h,h); lst.l = Math.min(lst.l,l); lst.c = c; lst.v += v;
+        }
       });
+      console.log(`[TD] ${sym} ${tf}: ${candles[sym][tf].length} candles`);
+      if (candles[sym]['4h'] && candles[sym]['4h'].length > 0) pushSSE(sym);
     });
-    req.on('error', () => {});
-    req.end();
   });
 }
+
 
 
 const binanceWs = {};  /* lowercase symbol → WebSocket */
@@ -349,10 +381,15 @@ function fetchBinanceHistory(symbol) {
 /* ═══════════════════════════════════════════════════
    SYMBOL CLASSIFIER
    ═══════════════════════════════════════════════════ */
-const CRYPTO_SUFFIXES = ['USDT','USDC','BUSD','BTC','ETH','BNB'];
+const CRYPTO_SUFFIXES = ['USDT','USDC','BUSD','BTC','ETH','BNB','XRP','SOL','ADA','DOGE'];
+const METAL_KEYS     = METAL_SYMBOLS.map(s => s.replace('/',''));
+const ALL_FOREX_KEYS = [...FOREX_KEYS, ...METAL_KEYS];
+
 function classifySymbol(sym) {
   const s = sym.toUpperCase().replace('/','').replace('-','');
-  if (FOREX_KEYS.includes(s)) return 'forex';
+  /* Explicit forex/metals list first */
+  if (ALL_FOREX_KEYS.includes(s)) return 'forex';
+  /* Crypto: ends with known quote currency */
   if (CRYPTO_SUFFIXES.some(q => s.endsWith(q))) return 'crypto';
   return 'unknown';
 }
@@ -452,12 +489,10 @@ app.get('/candles/:symbol', (req, res) => {
   /* No data yet — trigger fetch and wait up to 4s */
   ensureSymbol(sym);
   const type = classifySymbol(sym);
-  if (type === 'forex') {
-    const fxSym = sym.slice(0,3) + '/' + sym.slice(3);
-    fetchTDHistory(fxSym);
-    fetchTDAllTimeframes(sym);
-  } else if (type === 'crypto') {
-    fetchBinanceHistory(sym);
+  if (type === 'crypto') {
+    fetchBinanceHistory(sym);     /* Binance only */
+  } else if (type === 'forex') {
+    fetchTDAllTimeframes(sym);    /* TwelveData only, queued */
   }
 
   const maxAttempts = type === 'forex' ? 20 : 10; /* forex needs more time */
@@ -496,33 +531,37 @@ app.get('/subscribe/:symbol', (req, res) => {
   ensureSymbol(sym);
   sseClients[sym].add(res);
 
-  /* Connect data source if needed */
+  /* Connect data source — strict separation: crypto=Binance, forex=TwelveData */
   if (type === 'crypto') {
-    connectBinance(sym);
+    connectBinance(sym);          /* Binance only — never touches TwelveData */
   } else if (type === 'forex') {
-    /* Trigger on-demand history fetch if not loaded yet */
-    if (candles[sym]['1m'].length === 0) {
-      const fxSym = sym.slice(0,3) + '/' + sym.slice(3); /* EURUSD → EUR/USD */
-      fetchTDHistory(fxSym);
-      /* Also fetch each timeframe directly for faster response */
-      fetchTDAllTimeframes(sym);
+    if (!hasAnyCandles(sym)) {
+      fetchTDAllTimeframes(sym);  /* Queued — respects rate limit */
     }
+  } else {
+    /* Unknown symbol — try Binance first, it's free */
+    connectBinance(sym);
+  }
+
+  /* helper: any timeframe has data */
+  function hasAnyCandlesLocal() {
+    return candles[sym] && TIMEFRAMES.some(tf => candles[sym][tf] && candles[sym][tf].length > 0);
   }
 
   /* Send current snapshot immediately if available */
-  if (candles[sym]['1m'].length > 0) {
+  if (hasAnyCandlesLocal()) {
     res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
   } else {
     /* Send a waiting event so client knows we're working on it */
     res.write(`data: ${JSON.stringify({ symbol: sym, status: 'loading' })}\n\n`);
-    /* Push data once it arrives — poll for up to 10s */
+    /* Push data once it arrives — poll up to 20s (forex needs time in queue) */
     let attempts = 0;
     const waitTimer = setInterval(() => {
       attempts++;
-      if (candles[sym] && candles[sym]['1m'].length > 0) {
+      if (hasAnyCandlesLocal()) {
         clearInterval(waitTimer);
         try { res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`); } catch(e){}
-      } else if (attempts >= 10) {
+      } else if (attempts >= 20) {
         clearInterval(waitTimer);
       }
     }, 1000);
