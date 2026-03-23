@@ -74,7 +74,8 @@ function pushSSE(sym) {
    Free tier: 8 symbols, 1 persistent connection
    ═══════════════════════════════════════════════════ */
 const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || '';
-const FOREX_SYMBOLS  = ['EUR/USD','GBP/USD','USD/JPY','GBP/JPY','AUD/USD','USD/CAD','XAU/USD','XAG/USD'];
+const FOREX_SYMBOLS  = ['EUR/USD','GBP/USD','USD/JPY','GBP/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD'];
+const METAL_SYMBOLS  = ['XAU/USD','XAG/USD']; /* fetched via REST only — not on free WS tier */
 const FOREX_KEYS     = FOREX_SYMBOLS.map(s => s.replace('/',''));
 
 let tdWs        = null;
@@ -92,7 +93,14 @@ function connectTwelveData() {
     tdConnected = true;
     console.log('[TD] Connected — subscribing to', FOREX_SYMBOLS.join(', '));
     tdWs.send(JSON.stringify({ action: 'subscribe', params: { symbols: FOREX_SYMBOLS.join(',') } }));
-    FOREX_SYMBOLS.forEach(fetchTDHistory);
+    /* Pre-fetch all timeframes for all forex + metals on startup */
+    FOREX_SYMBOLS.forEach(sym => {
+      fetchTDAllTimeframes(sym.replace('/',''));
+    });
+    METAL_SYMBOLS.forEach(sym => {
+      fetchTDAllTimeframes(sym.replace('/',''));
+      startMetalPolling(sym);
+    });
   });
 
   tdWs.on('message', raw => {
@@ -270,6 +278,32 @@ function stopBinancePolling(symbol) {
 }
 
 
+/* ── Metal polling (XAU/USD, XAG/USD) via REST every 60s ── */
+const metalPollers = {};
+function startMetalPolling(sym) {
+  if (metalPollers[sym]) return;
+  const key = sym.replace('/','');
+  console.log('[Metals] Starting REST polling for', sym);
+  metalPollers[sym] = setInterval(() => {
+    if (!TWELVEDATA_KEY) return;
+    const path = `/v1/price?symbol=${encodeURIComponent(sym)}&apikey=${TWELVEDATA_KEY}`;
+    const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        try {
+          const d = JSON.parse(data);
+          if (d.price) processTick(key, parseFloat(d.price), 0, Date.now());
+        } catch(e) {}
+      });
+    });
+    req.on('error', () => {});
+    req.end();
+  }, 60000); /* 60s — respectful of free tier rate limit */
+  /* Fetch history immediately */
+  fetchTDAllTimeframes(key);
+}
+
 function disconnectBinanceIfUnused(symbol) {
   const lower = symbol.toLowerCase();
   const key   = symbol.toUpperCase();
@@ -426,6 +460,7 @@ app.get('/candles/:symbol', (req, res) => {
     fetchBinanceHistory(sym);
   }
 
+  const maxAttempts = type === 'forex' ? 20 : 10; /* forex needs more time */
   let attempts = 0;
   const wait = setInterval(() => {
     attempts++;
@@ -433,9 +468,16 @@ app.get('/candles/:symbol', (req, res) => {
       clearInterval(wait);
       return res.json({ symbol: sym, tf, candles: candles[sym][tf] });
     }
-    if (attempts >= 8) {
+    if (attempts >= maxAttempts) {
       clearInterval(wait);
-      return res.status(404).json({ error: `No candles yet for ${sym} ${tf} — data still loading, try again in a moment.` });
+      /* Return best available timeframe if requested one isn't ready */
+      const tfs = ['1h','4h','1d','15m','5m','1m'];
+      for (const t of tfs) {
+        if (candles[sym] && candles[sym][t] && candles[sym][t].length > 0) {
+          return res.json({ symbol: sym, tf: t, candles: candles[sym][t], note: 'fallback_tf' });
+        }
+      }
+      return res.status(404).json({ error: `No candles yet for ${sym} ${tf} — still loading` });
     }
   }, 500);
 });
@@ -501,8 +543,21 @@ app.get('/subscribe/:symbol', (req, res) => {
 /* ── /price/:symbol — latest tick ── */
 app.get('/price/:symbol', (req, res) => {
   const sym = req.params.symbol.toUpperCase().replace('/','').replace('-','');
-  const arr = candles[sym] && candles[sym]['1m'];
-  if (!arr || arr.length === 0) return res.status(404).json({ error: 'No data for ' + sym });
+  /* Try timeframes in order: 1m → 5m → 15m → 1h → 4h → 1d */
+  const tfs = ['1m','5m','15m','1h','4h','1d'];
+  let arr = null;
+  for (const tf of tfs) {
+    if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) {
+      arr = candles[sym][tf]; break;
+    }
+  }
+  if (!arr) {
+    /* Trigger fetch and return 202 so client retries */
+    const type = classifySymbol(sym);
+    if (type === 'forex') fetchTDAllTimeframes(sym);
+    else if (type === 'crypto') fetchBinanceHistory(sym);
+    return res.status(202).json({ error: 'Loading data for ' + sym + ' — retry in 3s' });
+  }
   const last = arr[arr.length - 1];
   const prev = arr.length > 1 ? arr[arr.length - 2].c : last.o;
   res.json({ symbol: sym, price: last.c, open: last.o, high: last.h, low: last.l,
