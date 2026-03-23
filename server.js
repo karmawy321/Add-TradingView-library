@@ -78,9 +78,11 @@ const FOREX_SYMBOLS  = ['EUR/USD','GBP/USD','USD/JPY','GBP/JPY','AUD/USD','USD/C
 const METAL_SYMBOLS  = ['XAU/USD','XAG/USD']; /* fetched via REST only — not on free WS tier */
 const FOREX_KEYS     = FOREX_SYMBOLS.map(s => s.replace('/',''));
 
-let tdWs        = null;
-let tdConnected = false;
-let tdReconnect = null;
+let tdWs             = null;
+let tdConnected      = false;
+let tdReconnect      = null;
+let tdHistoryFetched = false; /* only fetch history once per server instance */
+let tdNonJsonLogged  = false; /* suppress repeated non-JSON warnings */
 
 function connectTwelveData() {
   if (!TWELVEDATA_KEY) { console.log('[TD] No API key — forex/metals disabled'); return; }
@@ -94,8 +96,8 @@ function connectTwelveData() {
     console.log('[TD] Connected — subscribing to', FOREX_SYMBOLS.join(', '));
     tdWs.send(JSON.stringify({ action: 'subscribe', params: { symbols: FOREX_SYMBOLS.join(',') } }));
     /* Only pre-fetch history on FIRST connection */
-    if (!tdWs._historyFetched) {
-      tdWs._historyFetched = true;
+    if (!tdHistoryFetched) {
+      tdHistoryFetched = true;
       FOREX_SYMBOLS.forEach(sym => fetchTDAllTimeframes(sym.replace('/','')));
       METAL_SYMBOLS.forEach(sym => {
         fetchTDAllTimeframes(sym.replace('/',''));
@@ -172,15 +174,18 @@ function tdDrain() {
   if (tdRunning >= TD_MAX_PER_MIN || tdQueue.length === 0) return;
   const { path, onData } = tdQueue.shift();
   tdRunning++;
-  const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
+  const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, apiRes => {
     let data = '';
-    res.on('data', c => { data += c; });
-    res.on('end', () => {
+    apiRes.on('data', c => { data += c; });
+    apiRes.on('end', () => {
       try {
-        /* Check for plain-text rate limit response before parsing */
+        /* Check for plain-text error before parsing */
         if (!data.startsWith('{') && !data.startsWith('[')) {
-          /* Could be 404, rate limit text, etc — log once and skip */
-          if (!tdWs._404logged) { console.warn('[TD] Non-JSON from API:', data.slice(0, 80)); tdWs._404logged = true; }
+          if (!tdNonJsonLogged) {
+            console.warn(`[TD] Non-JSON response HTTP ${apiRes.statusCode}:`, data.slice(0, 120));
+            console.warn('[TD] Path was:', path.split('?')[0]);
+            tdNonJsonLogged = true;
+          }
         } else {
           const json = JSON.parse(data);
           if (json.code === 429 || json.code === 403) {
@@ -251,7 +256,8 @@ function connectBinance(symbol) {
   const wsUrls = [
     `wss://stream.binance.com:9443/ws/${lower}@aggTrade`,
     `wss://stream.binance.com:443/ws/${lower}@aggTrade`,
-    `wss://stream1.binance.com:9443/ws/${lower}@aggTrade`
+    `wss://stream1.binance.com:9443/ws/${lower}@aggTrade`,
+    `wss://stream.binance.us:9443/ws/${lower}@aggTrade`  /* Binance.US fallback */
   ];
   let urlIdx = 0;
 
@@ -285,26 +291,30 @@ const binancePollers = {}; /* symbol → interval id */
 
 function startBinancePolling(symbol) {
   if (binancePollers[symbol]) return;
-  console.log(`[Binance] Starting REST polling for ${symbol}`);
+  console.log(`[Binance] Starting REST polling for ${symbol} (WS geo-blocked)`);
   let lastPrice = 0;
   binancePollers[symbol] = setInterval(() => {
-    const path = `/api/v3/ticker/price?symbol=${symbol}`;
+    /* Use 24hr ticker for price + change data */
+    const path = `/api/v3/ticker/24hr?symbol=${symbol}`;
     const req  = https.request({ hostname: 'api.binance.com', path, method: 'GET' }, res => {
       let data = '';
       res.on('data', c => { data += c; });
       res.on('end', () => {
         try {
           const d = JSON.parse(data);
-          if (d.price && parseFloat(d.price) !== lastPrice) {
-            lastPrice = parseFloat(d.price);
-            processTick(symbol, lastPrice, 0, Date.now());
+          if (d.lastPrice) {
+            const price = parseFloat(d.lastPrice);
+            if (price !== lastPrice) {
+              lastPrice = price;
+              processTick(symbol, price, parseFloat(d.lastQty||0), Date.now());
+            }
           }
         } catch(e) {}
       });
     });
     req.on('error', () => {});
     req.end();
-  }, 3000); /* poll every 3 seconds */
+  }, 3000);
 }
 
 function stopBinancePolling(symbol) {
