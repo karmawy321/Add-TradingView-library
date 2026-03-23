@@ -93,14 +93,15 @@ function connectTwelveData() {
     tdConnected = true;
     console.log('[TD] Connected — subscribing to', FOREX_SYMBOLS.join(', '));
     tdWs.send(JSON.stringify({ action: 'subscribe', params: { symbols: FOREX_SYMBOLS.join(',') } }));
-    /* Pre-fetch all timeframes for all forex + metals on startup */
-    FOREX_SYMBOLS.forEach(sym => {
-      fetchTDAllTimeframes(sym.replace('/',''));
-    });
-    METAL_SYMBOLS.forEach(sym => {
-      fetchTDAllTimeframes(sym.replace('/',''));
-      startMetalPolling(sym);
-    });
+    /* Only pre-fetch history on FIRST connection */
+    if (!tdWs._historyFetched) {
+      tdWs._historyFetched = true;
+      FOREX_SYMBOLS.forEach(sym => fetchTDAllTimeframes(sym.replace('/','')));
+      METAL_SYMBOLS.forEach(sym => {
+        fetchTDAllTimeframes(sym.replace('/',''));
+        startMetalPolling(sym);
+      });
+    }
   });
 
   tdWs.on('message', raw => {
@@ -161,8 +162,11 @@ const TD_INTERVAL_MS = Math.ceil(60000 / TD_MAX_PER_MIN); /* ~10s between calls 
 
 function tdEnqueue(path, onData) {
   tdQueue.push({ path, onData });
-  tdDrain();
+  /* Only drain if server is fully started */
+  if (tdServerReady) tdDrain();
 }
+
+let tdServerReady = false;
 
 function tdDrain() {
   if (tdRunning >= TD_MAX_PER_MIN || tdQueue.length === 0) return;
@@ -175,7 +179,8 @@ function tdDrain() {
       try {
         /* Check for plain-text rate limit response before parsing */
         if (!data.startsWith('{') && !data.startsWith('[')) {
-          console.warn('[TD] Rate limit / non-JSON response:', data.slice(0, 80));
+          /* Could be 404, rate limit text, etc — log once and skip */
+          if (!tdWs._404logged) { console.warn('[TD] Non-JSON from API:', data.slice(0, 80)); tdWs._404logged = true; }
         } else {
           const json = JSON.parse(data);
           if (json.code === 429 || json.code === 403) {
@@ -324,8 +329,10 @@ function startMetalPolling(sym) {
       res.on('data', c => { data += c; });
       res.on('end', () => {
         try {
+          if (!data.startsWith('{')) { return; } /* ignore non-JSON */
           const d = JSON.parse(data);
           if (d.price) processTick(key, parseFloat(d.price), 0, Date.now());
+          else if (d.message) console.warn('[Metals]', sym, d.message);
         } catch(e) {}
       });
     });
@@ -392,6 +399,11 @@ function classifySymbol(sym) {
   /* Crypto: ends with known quote currency */
   if (CRYPTO_SUFFIXES.some(q => s.endsWith(q))) return 'crypto';
   return 'unknown';
+}
+
+/* ── hasAnyCandles — check if any timeframe has data ── */
+function hasAnyCandles(sym) {
+  return candles[sym] && TIMEFRAMES.some(tf => candles[sym][tf] && candles[sym][tf].length > 0);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -543,13 +555,10 @@ app.get('/subscribe/:symbol', (req, res) => {
     connectBinance(sym);
   }
 
-  /* helper: any timeframe has data */
-  function hasAnyCandlesLocal() {
-    return candles[sym] && TIMEFRAMES.some(tf => candles[sym][tf] && candles[sym][tf].length > 0);
-  }
+  /* hasAnyCandles is defined at top level */
 
   /* Send current snapshot immediately if available */
-  if (hasAnyCandlesLocal()) {
+  if (hasAnyCandles(sym)) {
     res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
   } else {
     /* Send a waiting event so client knows we're working on it */
@@ -558,7 +567,7 @@ app.get('/subscribe/:symbol', (req, res) => {
     let attempts = 0;
     const waitTimer = setInterval(() => {
       attempts++;
-      if (hasAnyCandlesLocal()) {
+      if (hasAnyCandles(sym)) {
         clearInterval(waitTimer);
         try { res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`); } catch(e){}
       } else if (attempts >= 20) {
@@ -714,5 +723,7 @@ app.listen(PORT, () => {
   console.log('Anthropic key:', !!process.env.ANTHROPIC_API_KEY);
   console.log('TwelveData key:', !!TWELVEDATA_KEY);
   console.log('Forex symbols:', FOREX_SYMBOLS.join(', '));
+  tdServerReady = true; /* Allow queue to drain now */
   connectTwelveData();
+  tdDrain(); /* Flush anything queued before server started */
 });
