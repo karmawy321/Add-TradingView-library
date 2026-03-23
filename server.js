@@ -155,54 +155,50 @@ function fetchTDHistory(sym) {
   });
 }
 
-/* ── TwelveData request queue — max 6 calls/min to stay under free limit ──
-   Free tier: 8 API credits/min. We use 6 to leave buffer. */
-const tdQueue   = [];
-let   tdRunning = 0;
-const TD_MAX_PER_MIN = 6;
-const TD_INTERVAL_MS = Math.ceil(60000 / TD_MAX_PER_MIN); /* ~10s between calls */
+/* ── TwelveData request queue — strictly 1 call per 8s = 7.5/min ──
+   Free tier: 8 API credits/min. We use 7.5 to stay safely under. */
+const tdQueue    = [];
+let   tdRunning  = false;   /* only 1 concurrent call ever */
+const TD_GAP_MS  = 8000;    /* 8 seconds between calls */
 
 function tdEnqueue(path, onData) {
   tdQueue.push({ path, onData });
-  /* Only drain if server is fully started */
   if (tdServerReady) tdDrain();
 }
 
 let tdServerReady = false;
 
 function tdDrain() {
-  if (tdRunning >= TD_MAX_PER_MIN || tdQueue.length === 0) return;
+  if (tdRunning || tdQueue.length === 0) return;
   const { path, onData } = tdQueue.shift();
-  tdRunning++;
+  tdRunning = true;
   const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, apiRes => {
     let data = '';
     apiRes.on('data', c => { data += c; });
     apiRes.on('end', () => {
       try {
-        /* Check for plain-text error before parsing */
         if (!data.startsWith('{') && !data.startsWith('[')) {
           if (!tdNonJsonLogged) {
-            console.warn(`[TD] Non-JSON response HTTP ${apiRes.statusCode}:`, data.slice(0, 120));
-            console.warn('[TD] Path was:', path.split('?')[0]);
+            console.warn(`[TD] Non-JSON HTTP ${apiRes.statusCode}:`, data.slice(0, 120));
             tdNonJsonLogged = true;
           }
         } else {
           const json = JSON.parse(data);
-          if (json.code === 429 || json.code === 403) {
-            console.warn('[TD] Rate limited — requeuing in 60s:', path.split('?')[0]);
-            setTimeout(() => { tdQueue.push({ path, onData }); tdDrain(); }, 60000);
-          } else {
-            onData(json);
+          if (json.code === 429) {
+            console.warn('[TD] Rate limited — requeuing in 60s');
+            setTimeout(() => { tdQueue.unshift({ path, onData }); tdRunning = false; tdDrain(); }, 60000);
+            return;
           }
+          onData(json);
         }
       } catch(e) {
-        console.warn('[TD] Parse error:', e.message, '| response:', data.slice(0, 60));
+        console.warn('[TD] Parse error:', e.message);
       }
-      /* Release slot after interval */
-      setTimeout(() => { tdRunning--; tdDrain(); }, TD_INTERVAL_MS);
+      /* Wait 8s before next call */
+      setTimeout(() => { tdRunning = false; tdDrain(); }, TD_GAP_MS);
     });
   });
-  req.on('error', () => { tdRunning--; tdDrain(); });
+  req.on('error', () => { setTimeout(() => { tdRunning = false; tdDrain(); }, TD_GAP_MS); });
   req.end();
 }
 
@@ -211,9 +207,10 @@ function fetchTDAllTimeframes(sym) {
   if (!TWELVEDATA_KEY) return;
   const fxSym = sym.length === 6 ? sym.slice(0,3) + '/' + sym.slice(3) : sym;
 
-  /* Only fetch the timeframes most useful for chart display */
-  /* 1m: live chart, 1h + 4h: standard analysis, 1d: long-term */
-  const tdIntervals = { '1h':'1h', '4h':'4h', '1d':'1day', '15m':'15min', '5m':'5min', '1m':'1min' };
+  /* Priority order — fetch most useful timeframes first */
+  /* 4h and 1d load fast and cover most analysis use cases */
+  /* 1h for detail, 1m/5m/15m only if user explicitly requests them */
+  const tdIntervals = { '4h':'4h', '1d':'1day', '1h':'1h', '15m':'15min' };
 
   Object.entries(tdIntervals).forEach(([tf, tdiv]) => {
     const path = `/time_series?symbol=${encodeURIComponent(fxSym)}&interval=${tdiv}&outputsize=300&apikey=${TWELVEDATA_KEY}`;
@@ -756,8 +753,8 @@ app.listen(PORT, () => {
   console.log('Anthropic key:', !!process.env.ANTHROPIC_API_KEY);
   console.log('TwelveData key:', !!TWELVEDATA_KEY);
   console.log('Forex symbols:', FOREX_SYMBOLS.join(', '));
-  tdServerReady = true; /* Allow queue to drain now */
+  tdServerReady = true;
   tdQueue.length = 0;   /* Clear any stale queue from startup */
-  tdRunning = 0;
+  tdRunning = false;
   connectTwelveData();
 });
