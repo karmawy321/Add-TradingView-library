@@ -153,9 +153,48 @@ function fetchTDHistory(sym) {
   req.end();
 }
 
-/* ═══════════════════════════════════════════════════
-   BINANCE WEBSOCKET — Crypto (on-demand per symbol)
-   ═══════════════════════════════════════════════════ */
+/* Fetch all timeframes directly from TwelveData for a symbol */
+function fetchTDAllTimeframes(sym) {
+  if (!TWELVEDATA_KEY) return;
+  const fxSym = sym.length === 6 ? sym.slice(0,3) + '/' + sym.slice(3) : sym;
+  const tdIntervals = { '1m':'1min','5m':'5min','15m':'15min','1h':'1h','4h':'4h','1d':'1day' };
+
+  Object.entries(tdIntervals).forEach(([tf, tdiv]) => {
+    const path = `/v1/time_series?symbol=${encodeURIComponent(fxSym)}&interval=${tdiv}&outputsize=500&apikey=${TWELVEDATA_KEY}`;
+    const req  = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (!json.values || !Array.isArray(json.values)) return;
+          ensureSymbol(sym);
+          candles[sym][tf] = []; /* reset */
+          json.values.slice().reverse().forEach(bar => {
+            const ts  = new Date(bar.datetime).getTime();
+            const bkt = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
+            const arr = candles[sym][tf];
+            const lst = arr[arr.length - 1];
+            const [o,h,l,c,v] = [bar.open,bar.high,bar.low,bar.close,bar.volume||0].map(parseFloat);
+            if (!lst || lst.t !== bkt) {
+              arr.push({ t: bkt, o, h, l, c, v });
+              if (arr.length > 500) arr.shift();
+            } else {
+              lst.h = Math.max(lst.h,h); lst.l = Math.min(lst.l,l); lst.c = c; lst.v += v;
+            }
+          });
+          console.log(`[TD] ${sym} ${tf}: ${candles[sym][tf].length} candles`);
+          /* Push to any waiting SSE clients */
+          if (candles[sym]['1m'].length > 0 || candles[sym]['4h'].length > 0) pushSSE(sym);
+        } catch(e) { console.warn(`[TD] ${sym} ${tf} error:`, e.message); }
+      });
+    });
+    req.on('error', () => {});
+    req.end();
+  });
+}
+
+
 const binanceWs = {};  /* lowercase symbol → WebSocket */
 
 function connectBinance(symbol) {
@@ -370,9 +409,35 @@ app.get('/symbols', (req, res) => {
 app.get('/candles/:symbol', (req, res) => {
   const sym = req.params.symbol.toUpperCase().replace('/','').replace('-','');
   const tf  = req.query.tf || '1h';
-  if (!candles[sym] || !candles[sym][tf] || candles[sym][tf].length === 0)
-    return res.status(404).json({ error: `No candles for ${sym} ${tf}` });
-  res.json({ symbol: sym, tf, candles: candles[sym][tf] });
+
+  /* If we have data, return immediately */
+  if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) {
+    return res.json({ symbol: sym, tf, candles: candles[sym][tf] });
+  }
+
+  /* No data yet — trigger fetch and wait up to 4s */
+  ensureSymbol(sym);
+  const type = classifySymbol(sym);
+  if (type === 'forex') {
+    const fxSym = sym.slice(0,3) + '/' + sym.slice(3);
+    fetchTDHistory(fxSym);
+    fetchTDAllTimeframes(sym);
+  } else if (type === 'crypto') {
+    fetchBinanceHistory(sym);
+  }
+
+  let attempts = 0;
+  const wait = setInterval(() => {
+    attempts++;
+    if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) {
+      clearInterval(wait);
+      return res.json({ symbol: sym, tf, candles: candles[sym][tf] });
+    }
+    if (attempts >= 8) {
+      clearInterval(wait);
+      return res.status(404).json({ error: `No candles yet for ${sym} ${tf} — data still loading, try again in a moment.` });
+    }
+  }, 500);
 });
 
 /* ── /subscribe/:symbol — SSE live candle stream ── */
@@ -389,13 +454,37 @@ app.get('/subscribe/:symbol', (req, res) => {
   ensureSymbol(sym);
   sseClients[sym].add(res);
 
-  /* Send current snapshot immediately */
-  if (candles[sym]['1m'].length > 0) {
-    res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
+  /* Connect data source if needed */
+  if (type === 'crypto') {
+    connectBinance(sym);
+  } else if (type === 'forex') {
+    /* Trigger on-demand history fetch if not loaded yet */
+    if (candles[sym]['1m'].length === 0) {
+      const fxSym = sym.slice(0,3) + '/' + sym.slice(3); /* EURUSD → EUR/USD */
+      fetchTDHistory(fxSym);
+      /* Also fetch each timeframe directly for faster response */
+      fetchTDAllTimeframes(sym);
+    }
   }
 
-  /* Connect data source if needed */
-  if (type === 'crypto') connectBinance(sym);
+  /* Send current snapshot immediately if available */
+  if (candles[sym]['1m'].length > 0) {
+    res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
+  } else {
+    /* Send a waiting event so client knows we're working on it */
+    res.write(`data: ${JSON.stringify({ symbol: sym, status: 'loading' })}\n\n`);
+    /* Push data once it arrives — poll for up to 10s */
+    let attempts = 0;
+    const waitTimer = setInterval(() => {
+      attempts++;
+      if (candles[sym] && candles[sym]['1m'].length > 0) {
+        clearInterval(waitTimer);
+        try { res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`); } catch(e){}
+      } else if (attempts >= 10) {
+        clearInterval(waitTimer);
+      }
+    }, 1000);
+  }
 
   /* Heartbeat */
   const hb = setInterval(() => {
