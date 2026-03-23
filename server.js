@@ -69,286 +69,11 @@ function pushSSE(sym) {
   });
 }
 
-/* ═══════════════════════════════════════════════════
-   TWELVEDATA WEBSOCKET — Forex + Metals
-   Free tier: 8 symbols, 1 persistent connection
-   ═══════════════════════════════════════════════════ */
-const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || '';
-const FOREX_SYMBOLS  = ['EUR/USD','GBP/USD','USD/JPY','GBP/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD'];
-const METAL_SYMBOLS  = ['XAU/USD','XAG/USD']; /* fetched via REST only — not on free WS tier */
-const FOREX_KEYS     = FOREX_SYMBOLS.map(s => s.replace('/',''));
+const TWELVEDATA_KEY = ''; /* disabled */
+const FOREX_SYMBOLS  = [];
+const METAL_SYMBOLS  = [];
+const FOREX_KEYS     = [];
 
-let tdWs             = null;
-let tdConnected      = false;
-let tdReconnect      = null;
-let tdHistoryFetched = false; /* only fetch history once per server instance */
-let tdNonJsonLogged  = false; /* suppress repeated non-JSON warnings */
-
-function connectTwelveData() {
-  if (!TWELVEDATA_KEY) { console.log('[TD] No API key — forex/metals disabled'); return; }
-  if (tdWs) { try { tdWs.terminate(); } catch(e) {} }
-  clearTimeout(tdReconnect);
-
-  tdWs = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${TWELVEDATA_KEY}`);
-
-  tdWs.on('open', () => {
-    tdConnected = true;
-    console.log('[TD] Connected — subscribing to', FOREX_SYMBOLS.join(', '));
-    tdWs.send(JSON.stringify({ action: 'subscribe', params: { symbols: FOREX_SYMBOLS.join(',') } }));
-    /* Only pre-fetch history on FIRST connection */
-    if (!tdHistoryFetched) {
-      tdHistoryFetched = true;
-      FOREX_SYMBOLS.forEach(sym => fetchTDAllTimeframes(sym.replace('/','')));
-      METAL_SYMBOLS.forEach(sym => {
-        fetchTDAllTimeframes(sym.replace('/',''));
-        startMetalPolling(sym);
-      });
-    }
-  });
-
-  tdWs.on('message', raw => {
-    try {
-      const msg = JSON.parse(raw);
-      if (msg.event === 'price' && msg.symbol && msg.price) {
-        processTick(
-          msg.symbol.replace('/',''),
-          parseFloat(msg.price),
-          0,
-          msg.timestamp ? msg.timestamp * 1000 : Date.now()
-        );
-      }
-    } catch(e) {}
-  });
-
-  tdWs.on('close', () => {
-    tdConnected = false;
-    console.log('[TD] Disconnected — reconnecting in 5s');
-    tdReconnect = setTimeout(connectTwelveData, 5000);
-  });
-
-  tdWs.on('error', err => { console.error('[TD] Error:', err.message); tdWs.terminate(); });
-}
-
-function fetchTDHistory(sym) {
-  if (!TWELVEDATA_KEY) return;
-  const path = `/time_series?symbol=${encodeURIComponent(sym)}&interval=1min&outputsize=300&apikey=${TWELVEDATA_KEY}`;
-  tdEnqueue(path, json => {
-    if (!json.values) return;
-    const key = sym.replace('/','');
-    ensureSymbol(key);
-    json.values.slice().reverse().forEach(bar => {
-      const ts = new Date(bar.datetime).getTime();
-      TIMEFRAMES.forEach(tf => {
-        const bkt = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
-        const arr = candles[key][tf];
-        const lst = arr[arr.length - 1];
-        const [o,h,l,c,v] = [bar.open,bar.high,bar.low,bar.close,bar.volume||0].map(parseFloat);
-        if (!lst || lst.t !== bkt) {
-          arr.push({ t: bkt, o, h, l, c, v });
-          if (arr.length > 500) arr.shift();
-        } else {
-          lst.h = Math.max(lst.h, h); lst.l = Math.min(lst.l, l); lst.c = c; lst.v += v;
-        }
-      });
-    });
-    console.log(`[TD] History loaded: ${sym} (${json.values.length} bars)`);
-  });
-}
-
-/* ── TwelveData request queue — strictly 1 call per 8s = 7.5/min ──
-   Free tier: 8 API credits/min. We use 7.5 to stay safely under. */
-const tdQueue    = [];
-let   tdRunning  = false;   /* only 1 concurrent call ever */
-const TD_GAP_MS  = 8000;    /* 8 seconds between calls */
-
-function tdEnqueue(path, onData) {
-  tdQueue.push({ path, onData });
-  if (tdServerReady) tdDrain();
-}
-
-let tdServerReady = false;
-
-function tdDrain() {
-  if (tdRunning || tdQueue.length === 0) return;
-  const { path, onData } = tdQueue.shift();
-  tdRunning = true;
-  const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, apiRes => {
-    let data = '';
-    apiRes.on('data', c => { data += c; });
-    apiRes.on('end', () => {
-      try {
-        if (!data.startsWith('{') && !data.startsWith('[')) {
-          if (!tdNonJsonLogged) {
-            console.warn(`[TD] Non-JSON HTTP ${apiRes.statusCode}:`, data.slice(0, 120));
-            tdNonJsonLogged = true;
-          }
-        } else {
-          const json = JSON.parse(data);
-          if (json.code === 429) {
-            console.warn('[TD] Rate limited — requeuing in 60s');
-            setTimeout(() => { tdQueue.unshift({ path, onData }); tdRunning = false; tdDrain(); }, 60000);
-            return;
-          }
-          onData(json);
-        }
-      } catch(e) {
-        console.warn('[TD] Parse error:', e.message);
-      }
-      /* Wait 8s before next call */
-      setTimeout(() => { tdRunning = false; tdDrain(); }, TD_GAP_MS);
-    });
-  });
-  req.on('error', () => { setTimeout(() => { tdRunning = false; tdDrain(); }, TD_GAP_MS); });
-  req.end();
-}
-
-/* Fetch all timeframes directly from TwelveData for a symbol — queued */
-function fetchTDAllTimeframes(sym) {
-  if (!TWELVEDATA_KEY) return;
-  const fxSym = sym.length === 6 ? sym.slice(0,3) + '/' + sym.slice(3) : sym;
-
-  /* Priority order — fetch most useful timeframes first */
-  /* 4h and 1d load fast and cover most analysis use cases */
-  /* 1h for detail, 1m/5m/15m only if user explicitly requests them */
-  const tdIntervals = { '4h':'4h', '1d':'1day', '1h':'1h', '15m':'15min' };
-
-  Object.entries(tdIntervals).forEach(([tf, tdiv]) => {
-    const path = `/time_series?symbol=${encodeURIComponent(fxSym)}&interval=${tdiv}&outputsize=300&apikey=${TWELVEDATA_KEY}`;
-    tdEnqueue(path, json => {
-      if (!json.values || !Array.isArray(json.values)) {
-        if (json.message) console.warn(`[TD] ${sym} ${tf}:`, json.message);
-        return;
-      }
-      ensureSymbol(sym);
-      candles[sym][tf] = [];
-      json.values.slice().reverse().forEach(bar => {
-        const ts  = new Date(bar.datetime).getTime();
-        const bkt = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
-        const arr = candles[sym][tf];
-        const lst = arr[arr.length - 1];
-        const [o,h,l,c,v] = [bar.open,bar.high,bar.low,bar.close,bar.volume||0].map(parseFloat);
-        if (!lst || lst.t !== bkt) {
-          arr.push({ t: bkt, o, h, l, c, v });
-          if (arr.length > 500) arr.shift();
-        } else {
-          lst.h = Math.max(lst.h,h); lst.l = Math.min(lst.l,l); lst.c = c; lst.v += v;
-        }
-      });
-      console.log(`[TD] ${sym} ${tf}: ${candles[sym][tf].length} candles`);
-      if (candles[sym]['4h'] && candles[sym]['4h'].length > 0) pushSSE(sym);
-    });
-  });
-}
-
-
-
-const binanceWs = {};  /* lowercase symbol → WebSocket */
-
-function connectBinance(symbol) {
-  const lower = symbol.toLowerCase();
-  if (binanceWs[lower]) return;
-  fetchBinanceHistory(symbol.toUpperCase());
-
-  /* Try multiple Binance endpoints — some Railway regions are blocked on main stream */
-  const wsUrls = [
-    `wss://stream.binance.com:9443/ws/${lower}@aggTrade`,
-    `wss://stream.binance.com:443/ws/${lower}@aggTrade`,
-    `wss://stream1.binance.com:9443/ws/${lower}@aggTrade`,
-    `wss://stream.binance.us:9443/ws/${lower}@aggTrade`  /* Binance.US fallback */
-  ];
-  let urlIdx = 0;
-
-  function tryConnect() {
-    if (urlIdx >= wsUrls.length) {
-      console.log(`[Binance] All endpoints blocked for ${symbol} — using REST polling only`);
-      startBinancePolling(symbol.toUpperCase());
-      return;
-    }
-    const ws = new WebSocket(wsUrls[urlIdx]);
-    ws.on('open',    ()  => console.log(`[Binance] Connected: ${symbol} via ${wsUrls[urlIdx]}`));
-    ws.on('message', raw => {
-      try {
-        const m = JSON.parse(raw);
-        processTick(symbol.toUpperCase(), parseFloat(m.p), parseFloat(m.q), m.T || Date.now());
-      } catch(e) {}
-    });
-    ws.on('close',  ()  => { console.log(`[Binance] Closed: ${symbol}`); delete binanceWs[lower]; });
-    ws.on('error',  err => {
-      console.error(`[Binance] Error ${symbol} (${wsUrls[urlIdx]}):`, err.message);
-      ws.terminate();
-      urlIdx++;
-      setTimeout(tryConnect, 1000);
-    });
-    binanceWs[lower] = ws;
-  }
-  tryConnect();
-}
-
-const binancePollers = {}; /* symbol → interval id */
-
-function startBinancePolling(symbol) {
-  if (binancePollers[symbol]) return;
-  console.log(`[Binance] Starting REST polling for ${symbol} (WS geo-blocked)`);
-  let lastPrice = 0;
-  binancePollers[symbol] = setInterval(() => {
-    /* Use 24hr ticker for price + change data */
-    const path = `/api/v3/ticker/24hr?symbol=${symbol}`;
-    const req  = https.request({ hostname: 'api.binance.com', path, method: 'GET' }, res => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => {
-        try {
-          const d = JSON.parse(data);
-          if (d.lastPrice) {
-            const price = parseFloat(d.lastPrice);
-            if (price !== lastPrice) {
-              lastPrice = price;
-              processTick(symbol, price, parseFloat(d.lastQty||0), Date.now());
-            }
-          }
-        } catch(e) {}
-      });
-    });
-    req.on('error', () => {});
-    req.end();
-  }, 3000);
-}
-
-function stopBinancePolling(symbol) {
-  if (binancePollers[symbol]) {
-    clearInterval(binancePollers[symbol]);
-    delete binancePollers[symbol];
-  }
-}
-
-
-/* ── Metal polling (XAU/USD, XAG/USD) via REST every 60s ── */
-const metalPollers = {};
-function startMetalPolling(sym) {
-  if (metalPollers[sym]) return;
-  const key = sym.replace('/','');
-  console.log('[Metals] Starting REST polling for', sym);
-  metalPollers[sym] = setInterval(() => {
-    if (!TWELVEDATA_KEY) return;
-    const path = `/price?symbol=${encodeURIComponent(sym)}&apikey=${TWELVEDATA_KEY}`;
-    const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => {
-        try {
-          if (!data.startsWith('{')) { return; } /* ignore non-JSON */
-          const d = JSON.parse(data);
-          if (d.price) processTick(key, parseFloat(d.price), 0, Date.now());
-          else if (d.message) console.warn('[Metals]', sym, d.message);
-        } catch(e) {}
-      });
-    });
-    req.on('error', () => {});
-    req.end();
-  }, 60000); /* 60s — respectful of free tier rate limit */
-  /* Fetch history immediately */
-  fetchTDAllTimeframes(key);
-}
 
 function disconnectBinanceIfUnused(symbol) {
   const lower = symbol.toLowerCase();
@@ -396,14 +121,9 @@ function fetchBinanceHistory(symbol) {
    SYMBOL CLASSIFIER
    ═══════════════════════════════════════════════════ */
 const CRYPTO_SUFFIXES = ['USDT','USDC','BUSD','BTC','ETH','BNB','XRP','SOL','ADA','DOGE'];
-const METAL_KEYS     = METAL_SYMBOLS.map(s => s.replace('/',''));
-const ALL_FOREX_KEYS = [...FOREX_KEYS, ...METAL_KEYS];
 
 function classifySymbol(sym) {
   const s = sym.toUpperCase().replace('/','').replace('-','');
-  /* Explicit forex/metals list first */
-  if (ALL_FOREX_KEYS.includes(s)) return 'forex';
-  /* Crypto: ends with known quote currency */
   if (CRYPTO_SUFFIXES.some(q => s.endsWith(q))) return 'crypto';
   return 'unknown';
 }
@@ -469,29 +189,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'] }));
 app.use(express.json({ limit: '20mb' }));
 
-/* ── /test-td — diagnose TwelveData connection ── */
-app.get('/test-td', (req, res) => {
-  if (!TWELVEDATA_KEY) return res.json({ error: 'No TWELVEDATA_API_KEY set' });
-  const path = `/price?symbol=EUR%2FUSD&apikey=${TWELVEDATA_KEY}`;
-  const req2 = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, apiRes => {
-    let data = '';
-    apiRes.on('data', c => { data += c; });
-    apiRes.on('end', () => {
-      res.json({
-        status:   apiRes.statusCode,
-        headers:  apiRes.headers,
-        body:     data.slice(0, 500),
-        isJSON:   data.startsWith('{'),
-        keyLen:   TWELVEDATA_KEY.length,
-        tdQueue:  tdQueue.length,
-        tdRunning
-      });
-    });
-  });
-  req2.on('error', err => res.json({ error: err.message }));
-  req2.end();
-});
-
 /* Explicit CORS headers for all responses including SSE */
 app.use(function(req, res, next) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -504,17 +201,16 @@ app.use(function(req, res, next) {
 app.get('/', (req, res) => res.json({
   status: 'ok', service: 'Fractal AI Agent', version: '3.0.0',
   hasKey: !!process.env.ANTHROPIC_API_KEY,
-  tdConnected,
-  forexSymbols: FOREX_KEYS,
-  cryptoActive: Object.keys(binanceWs)
+  cryptoActive: Object.keys(binanceWs),
+  polling: Object.keys(binancePollers)
 }));
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 /* ── /symbols — available symbols ── */
 app.get('/symbols', (req, res) => {
   res.json({
-    forex:  FOREX_KEYS.map(s => ({ symbol: s, type: 'forex',  live: tdConnected, hasData: !!(candles[s] && candles[s]['1m'].length > 0) })),
-    crypto: Object.keys(binanceWs).map(s => ({ symbol: s.toUpperCase(), type: 'crypto', live: true }))
+    crypto: Object.keys(binanceWs).map(s => ({ symbol: s.toUpperCase(), type: 'crypto', live: true })),
+    polling: Object.keys(binancePollers)
   });
 });
 
@@ -531,11 +227,7 @@ app.get('/candles/:symbol', (req, res) => {
   /* No data yet — trigger fetch and wait up to 4s */
   ensureSymbol(sym);
   const type = classifySymbol(sym);
-  if (type === 'crypto') {
-    fetchBinanceHistory(sym);     /* Binance only */
-  } else if (type === 'forex') {
-    fetchTDAllTimeframes(sym);    /* TwelveData only, queued */
-  }
+  fetchBinanceHistory(sym); /* Binance only */
 
   const maxAttempts = type === 'forex' ? 20 : 10; /* forex needs more time */
   let attempts = 0;
@@ -573,15 +265,8 @@ app.get('/subscribe/:symbol', (req, res) => {
   ensureSymbol(sym);
   sseClients[sym].add(res);
 
-  /* Connect data source — strict separation: crypto=Binance, forex=TwelveData */
-  if (type === 'crypto') {
-    connectBinance(sym);          /* Binance only — never touches TwelveData */
-  } else if (type === 'forex') {
-    if (!hasAnyCandles(sym)) {
-      fetchTDAllTimeframes(sym);  /* Queued — respects rate limit */
-    }
-  } else {
-    /* Unknown symbol — try Binance first, it's free */
+  /* Binance only */
+  if (type === 'crypto' || type === 'unknown') {
     connectBinance(sym);
   }
 
@@ -631,9 +316,7 @@ app.get('/price/:symbol', (req, res) => {
   }
   if (!arr) {
     /* Trigger fetch and return 202 so client retries */
-    const type = classifySymbol(sym);
-    if (type === 'forex') fetchTDAllTimeframes(sym);
-    else if (type === 'crypto') fetchBinanceHistory(sym);
+    fetchBinanceHistory(sym);
     return res.status(202).json({ error: 'Loading data for ' + sym + ' — retry in 3s' });
   }
   const last = arr[arr.length - 1];
@@ -751,10 +434,5 @@ app.post('/projection', (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n=== Fractal AI Agent v3.0 — port ${PORT} ===`);
   console.log('Anthropic key:', !!process.env.ANTHROPIC_API_KEY);
-  console.log('TwelveData key:', !!TWELVEDATA_KEY);
-  console.log('Forex symbols:', FOREX_SYMBOLS.join(', '));
-  tdServerReady = true;
-  tdQueue.length = 0;   /* Clear any stale queue from startup */
-  tdRunning = false;
-  connectTwelveData();
+
 });
