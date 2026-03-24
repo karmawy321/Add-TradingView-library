@@ -68,7 +68,8 @@ var FractalDatafeed = (function () {
 
     /* ── 3. resolveSymbol — get symbol metadata ── */
     resolveSymbol: function(symbolName, onResolve, onError) {
-      var clean = symbolName.replace('BINANCE:', '');
+      if(!symbolName){ onError('No symbol'); return; }
+      var clean = symbolName.replace('BINANCE:', '').replace('binance:', '');
       /* Try cache first */
       if (symbolCache[clean]) { onResolve(symbolCache[clean]); return; }
 

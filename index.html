@@ -3631,21 +3631,21 @@ function toggleSMA(period){
     sma50On=!sma50On;
     var b=document.getElementById('sma50Btn');if(b)b.style.opacity=sma50On?'1':'0.35';
     if(chart){
-      if(sma50On && !tvStudyIds.sma50) tvStudyIds.sma50 = chart.createStudy('Moving Average',false,false,[50],{'plot.color.0':'#c9a84c'});
+      if(sma50On && !tvStudyIds.sma50) tvStudyIds.sma50 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:50},{'Plot.color':'#c9a84c'});
       else if(!sma50On && tvStudyIds.sma50){ chart.removeEntity(tvStudyIds.sma50); tvStudyIds.sma50=null; }
     }
   } else if(period===200){
     sma200On=!sma200On;
     var b=document.getElementById('sma200Btn');if(b)b.style.opacity=sma200On?'1':'0.35';
     if(chart){
-      if(sma200On && !tvStudyIds.sma200) tvStudyIds.sma200 = chart.createStudy('Moving Average',false,false,[200],{'plot.color.0':'#3498db'});
+      if(sma200On && !tvStudyIds.sma200) tvStudyIds.sma200 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:200},{'Plot.color':'#3498db'});
       else if(!sma200On && tvStudyIds.sma200){ chart.removeEntity(tvStudyIds.sma200); tvStudyIds.sma200=null; }
     }
   } else if(period===400){
     sma400On=!sma400On;
     var b=document.getElementById('sma400Btn');if(b)b.style.opacity=sma400On?'1':'0.35';
     if(chart){
-      if(sma400On && !tvStudyIds.sma400) tvStudyIds.sma400 = chart.createStudy('Moving Average',false,false,[400],{'plot.color.0':'#9b8fe8'});
+      if(sma400On && !tvStudyIds.sma400) tvStudyIds.sma400 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:400},{'Plot.color':'#9b8fe8'});
       else if(!sma400On && tvStudyIds.sma400){ chart.removeEntity(tvStudyIds.sma400); tvStudyIds.sma400=null; }
     }
   }
