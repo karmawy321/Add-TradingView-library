@@ -350,6 +350,27 @@ app.get('/profile', (req, res) => sendPage('profile.html', res));
 app.get('/terms',   (req, res) => sendPage('terms.html',   res));
 app.get('/privacy', (req, res) => sendPage('privacy.html', res));
 app.get('/health',  (req, res) => res.json({ status: 'ok', version: 'has-logo-route' }));
+
+/* ── /init-profile — called after signup to create profile with credits ── */
+app.post('/init-profile', async (req, res) => {
+  const { token, username } = req.body;
+  if (!token) return res.status(400).json({ error: 'No token' });
+  try {
+    const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: 'Invalid token' });
+    const { data: existing } = await sbAdmin.from('profiles').select('id').eq('id', user.id).single();
+    if (!existing) {
+      await sbAdmin.from('profiles').insert({
+        id: user.id,
+        credits: 50,
+        username: username || user.email.split('@')[0]
+      });
+    }
+    res.json({ ok: true, credits: 50 });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 app.get('/debug-files', (req, res) => {
   const files = fs.readdirSync(__dirname).filter(f => !f.startsWith('.'));
   res.json({ cwd: __dirname, files, hasSvg: files.filter(f => f.endsWith('.svg')) });

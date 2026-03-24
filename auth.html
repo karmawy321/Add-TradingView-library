@@ -191,6 +191,16 @@ async function signIn(){
     }
     localStorage.setItem('fractal_token', res.data.session.access_token);
     localStorage.setItem('fractal_user', JSON.stringify({ id: res.data.user.id, email: res.data.user.email }));
+    /* Ensure profile exists (handles users created before the fix) */
+    try {
+      var pendingUsername = localStorage.getItem('fractal_pending_username') || '';
+      await fetch('/init-profile', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ token: res.data.session.access_token, username: pendingUsername })
+      });
+      if(pendingUsername) localStorage.removeItem('fractal_pending_username');
+    } catch(e){}
     showMsg('in', 'Signed in! Redirecting…', 'ok');
     setTimeout(function(){ window.location.href = '/'; }, 700);
   } catch(e){
@@ -224,12 +234,22 @@ async function signUp(){
 
     var userId = res.data.user && res.data.user.id;
 
-    /* Create profile row manually — no trigger needed */
+    /* Create profile via server (uses service key, bypasses RLS) */
     if(userId){
       try {
-        await sb.from('profiles').upsert({ id: userId, credits: 50, username: username }, { onConflict: 'id' });
+        var token = res.data.session ? res.data.session.access_token : null;
+        if(token){
+          await fetch('/init-profile', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ token: token, username: username })
+          });
+        } else {
+          /* No session yet (email confirmation required) — store for later */
+          localStorage.setItem('fractal_pending_username', username);
+        }
         if(username) localStorage.setItem('fractal_username', username);
-      } catch(pe){ console.warn('Profile create:', pe); }
+      } catch(pe){ console.warn('Profile init:', pe); }
     }
 
     /* No session = email confirmation required */

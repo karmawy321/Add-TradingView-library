@@ -903,14 +903,10 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <button id="snapBtn" style="width:100%;font-family:'DM Mono',monospace;font-size:10px;padding:8px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#8a95a8;cursor:pointer;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:8px" onclick="takeSnapshot()">
               <span>📷</span><span id="snapTxt">Capture Chart</span>
             </button>
-            <!-- Run All 3 Tools button -->
-            <button class="az-btn" id="azBtn" disabled style="width:100%">
-              <div class="az-spin" id="azSpin"></div>
-              <span id="azTxt">Run All 3 Tools</span>
-              <span class="cost-badge" id="main-cost-badge">3 cr</span>
-            </button>
           </div>
 
+          <!-- Hidden azBtn for JS compatibility -->
+          <button id="azBtn" style="display:none"><div class="az-spin" id="azSpin" style="display:none"></div><span id="azTxt"></span></button>
           <!-- 10 individual tools -->
           <div style="padding:10px;flex:1;overflow-y:auto">
             <div style="font-family:'DM Mono',monospace;font-size:8px;color:rgba(201,168,76,.4);letter-spacing:.12em;margin-bottom:8px">ALL TOOLS</div>
@@ -2940,7 +2936,7 @@ function buildToolGrid() {
 
 /* ══ USER STATE ══ */
 var currentUser   = null;
-var creditBalance = 0;
+var creditBalance = null; /* null = not loaded yet, avoids false "out of credits" */
 
 /* Load from localStorage (fast, sync) — refreshed from Supabase async */
 function loadLocalSession(){
@@ -3035,7 +3031,10 @@ function checkCredits(toolKey){
 /* Deduct credits locally (optimistic) + call server to deduct in DB */
 function spendCredits(toolKey){
   var cost = TOOL_COSTS[toolKey] || 3;
-  updateCreditDisplay(Math.max(0, creditBalance - cost));
+  if(creditBalance !== null && creditBalance !== undefined){
+    creditBalance = Math.max(0, creditBalance - cost);
+    updateCreditDisplay(creditBalance);
+  }
   logUsage(toolKey, cost);
 }
 
