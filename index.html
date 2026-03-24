@@ -3627,15 +3627,13 @@ if(chartCanvas){
     renderChart();
   },{passive:false});
 
-  /* Pan by dragging — grab cursor */
+  /* Pan — middle mouse button (button=1) only, left click stays for tools */
   var _panStart=null, _panOffset=0;
   chartCanvas.addEventListener('mousedown',function(e){
-    if(typeof activeItem!=='undefined'&&activeItem&&
-       activeItem.id!=='cursor'&&activeItem.id!=='arrow_cur') return;
-    if(typeof isBrushing!=='undefined'&&isBrushing) return;
+    if(e.button!==1) return; /* middle button only */
+    e.preventDefault();
     _panStart=e.clientX; _panOffset=chartView.offset;
     chartCanvas.style.cursor='grabbing';
-    e.preventDefault();
   });
   document.addEventListener('mousemove',function(e){
     if(_panStart===null) return;
@@ -3644,24 +3642,20 @@ if(chartCanvas){
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
     var barW=(W-8-72)/Math.max(vis,1);
     var dx=e.clientX-_panStart;
-    var bars=Math.round(-dx/barW);
+    /* Invert: drag right = go back in history (increase offset) */
+    var bars=Math.round(dx/barW);
     chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-20)||0,_panOffset+bars));
     renderChart();
   });
-  document.addEventListener('mouseup',function(){
-    if(_panStart!==null){
+  document.addEventListener('mouseup',function(e){
+    if(_panStart!==null&&e.button===1){
       _panStart=null;
-      /* Restore cursor based on active tool */
-      if(typeof activeItem!=='undefined'&&activeItem)
-        chartCanvas.style.cursor=activeItem.cur||'crosshair';
-      else chartCanvas.style.cursor='default';
+      chartCanvas.style.cursor='crosshair';
     }
   });
-  /* Show grab cursor on hover when cursor tool active */
-  chartCanvas.addEventListener('mouseover',function(){
-    if(typeof activeItem!=='undefined'&&activeItem&&
-       (activeItem.id==='cursor'||activeItem.id==='arrow_cur'))
-      chartCanvas.style.cursor='grab';
+  /* Show grab cursor only while middle button is held */
+  chartCanvas.addEventListener('mouseleave',function(){
+    if(_panStart===null) chartCanvas.style.cursor='crosshair';
   });
 }
 
