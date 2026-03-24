@@ -4229,7 +4229,8 @@ function getCoords(e) {
   var dpr=window.devicePixelRatio||1;
   var scX=(cv.width/dpr)/r.width, scY=(cv.height/dpr)/r.height;
   var mx=(e.clientX-r.left)*scX, my=(e.clientY-r.top)*scY;
-  var W=cv.width, H=cv.height;
+  /* CSS pixel dims — canvas.width is DPR-scaled, context works in CSS pixels */
+  var W=cv.width/dpr, H=cv.height/dpr;
   var CW=W-PAD.l-PAD.r, CH=H-PAD.t-PAD.b-PAD.vol;
   var vis=Math.max(20,Math.floor(chartCandles.length/chartView.zoom));
   var si=Math.max(0,chartCandles.length-vis-chartView.offset);
@@ -4266,11 +4267,11 @@ function initDrawEvents(){
       isBrushing=true; brushPath=[{x:co.x,y:co.y}]; return;
     }
 
-    /* Measure tool */
+    /* Measure tool — 2 clicks = show, 3rd click resets */
     if(activeTool==='measure'){
+      if(measurePts.length>=2) measurePts=[];
       measurePts.push({x:co.x,y:co.y,price:co.price,bi:co.bi});
-      if(measurePts.length>=2){renderChart();}
-      else renderChart();
+      renderChart();
       return;
     }
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') return;
@@ -4302,15 +4303,22 @@ function initDrawEvents(){
       isBrushing=false;
       if(brushPath.length>1){
         if(activeItem&&activeItem.erbrush){
-          /* Eraser brush — remove drawings near path */
-          drawings=drawings.filter(function(d){
-            return !brushPath.some(function(pt){
-              var dx=pt.x-(d.p1?cpX(d.p1.bi,{PAD:PAD,si:0,barW:1}):0);
-              return false; /* simplified — just use clear approach */
-            });
-          });
+          /* Eraser brush — remove last drawing */
+          if(drawings.length>0) drawings.pop();
         } else {
-          drawings.push({type:'brush',path:brushPath.slice()});
+          /* Smooth the path with simple averaging, then auto-close */
+          var smoothed=brushPath.slice();
+          for(var si2=1;si2<smoothed.length-1;si2++){
+            smoothed[si2]={
+              x:(brushPath[si2-1].x+brushPath[si2].x+brushPath[si2+1].x)/3,
+              y:(brushPath[si2-1].y+brushPath[si2].y+brushPath[si2+1].y)/3
+            };
+          }
+          /* Auto-close if endpoints are close — makes a shape */
+          var first=smoothed[0], last=smoothed[smoothed.length-1];
+          var dist=Math.sqrt((last.x-first.x)*(last.x-first.x)+(last.y-first.y)*(last.y-first.y));
+          if(dist<80) smoothed.push({x:first.x,y:first.y}); /* close shape */
+          drawings.push({type:'brush',path:smoothed,closed:dist<80});
         }
       }
       brushPath=[]; renderChart(); return;
@@ -4351,13 +4359,19 @@ function drawAnnotations(ctx,co){
     drawOne(ctx,makeDrawing(drawStart,hoverPoint),co,true);
   }
 
-  /* Live brush stroke */
+  /* Live brush stroke — smooth bezier preview */
   if(isBrushing&&brushPath.length>1){
     ctx.save();
-    ctx.strokeStyle='rgba(201,168,76,.75)'; ctx.lineWidth=2;
+    ctx.strokeStyle='rgba(201,168,76,.7)'; ctx.lineWidth=2.5;
     ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
     ctx.beginPath();
-    brushPath.forEach(function(pt,i){ i===0?ctx.moveTo(pt.x,pt.y):ctx.lineTo(pt.x,pt.y); });
+    ctx.moveTo(brushPath[0].x,brushPath[0].y);
+    for(var bpi=1;bpi<brushPath.length-1;bpi++){
+      var cpx2=(brushPath[bpi].x+brushPath[bpi+1].x)/2;
+      var cpy2=(brushPath[bpi].y+brushPath[bpi+1].y)/2;
+      ctx.quadraticCurveTo(brushPath[bpi].x,brushPath[bpi].y,cpx2,cpy2);
+    }
+    ctx.lineTo(brushPath[brushPath.length-1].x,brushPath[brushPath.length-1].y);
     ctx.stroke(); ctx.restore();
   }
   /* Measure overlay */
@@ -4458,7 +4472,7 @@ function drawMeasure(ctx,co){
     ctx.fillStyle=pDiff>=0?'#27ae60':'#ef5350'; ctx.font='bold 10px DM Mono'; ctx.textAlign='center';
     ctx.fillText(label,lx,ly);
     /* Reset after showing */
-    measurePts=[];
+    /* Keep measurePts so it stays visible — cleared on next measure click */
   }
   ctx.restore();
 }
@@ -4672,10 +4686,21 @@ function drawOne(ctx,d,co,prev){
   /* Brush stroke */
   if(d.type==='brush'&&d.path&&d.path.length>1){
     ctx.save();
-    ctx.strokeStyle='rgba(201,168,76,.75)'; ctx.lineWidth=2;
+    ctx.strokeStyle='rgba(201,168,76,.8)'; ctx.lineWidth=2.5;
     ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
     ctx.beginPath();
-    d.path.forEach(function(pt,i){ i===0?ctx.moveTo(pt.x,pt.y):ctx.lineTo(pt.x,pt.y); });
+    /* Smooth curve through points using quadratic bezier */
+    ctx.moveTo(d.path[0].x,d.path[0].y);
+    for(var bi2=1;bi2<d.path.length-1;bi2++){
+      var cpx=(d.path[bi2].x+d.path[bi2+1].x)/2;
+      var cpy=(d.path[bi2].y+d.path[bi2+1].y)/2;
+      ctx.quadraticCurveTo(d.path[bi2].x,d.path[bi2].y,cpx,cpy);
+    }
+    ctx.lineTo(d.path[d.path.length-1].x,d.path[d.path.length-1].y);
+    if(d.closed){
+      ctx.closePath();
+      ctx.fillStyle='rgba(201,168,76,.07)'; ctx.fill();
+    }
     ctx.stroke(); ctx.restore(); return;
   }
   /* Standard line (trendline / ray / extended) */
@@ -4700,7 +4725,9 @@ function patchRenderChart(){
     var cv=document.getElementById('chartCanvas');
     if(!cv||!chartCandles||chartCandles.length<2)return;
     var ctx=cv.getContext('2d');
-    var W=cv.width,H=cv.height;
+    /* Use CSS pixel dimensions (divide DPR) so coords match getCoords output */
+    var dpr2=window.devicePixelRatio||1;
+    var W=cv.width/dpr2, H=cv.height/dpr2;
     var vis=Math.max(20,Math.floor(chartCandles.length/chartView.zoom));
     var si=Math.max(0,chartCandles.length-vis-chartView.offset);
     var visible=chartCandles.slice(si,Math.min(chartCandles.length,si+vis));
