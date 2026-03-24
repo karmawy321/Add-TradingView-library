@@ -707,8 +707,8 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
         <!-- LEFT: Lightweight Charts -->
         <div style="position:relative;border-right:1px solid var(--border2)">
-          <!-- Chart toolbar -->
-          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap">
+          <!-- Chart toolbar — always visible -->
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
             <input type="text" id="pairIn" placeholder="BTC/USDT…" oninput="onPairInput(this.value)"
               style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:110px;outline:none;letter-spacing:.04em">
             <select id="tfIn" onchange="onTfChange()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
@@ -718,10 +718,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               <option value="1h">H1</option><option value="1d">D1</option>
               <option value="1w">W1</option>
             </select>
-            <!-- SMA toggles -->
-            <button id="sma200Btn" onclick="toggleSMA(200)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(52,152,219,.15);border:1px solid rgba(52,152,219,.4);color:#3498db;cursor:pointer;letter-spacing:.06em">SMA 200</button>
-            <button id="sma50Btn"  onclick="toggleSMA(50)"  style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.4);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SMA 50</button>
-            <button id="sma400Btn" onclick="toggleSMA(400)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(155,143,232,.15);border:1px solid rgba(155,143,232,.4);color:#9b8fe8;cursor:pointer;letter-spacing:.06em">SMA 400</button>
+            <!-- SMA indicators loaded silently in background -->
             <!-- Upload fallback -->
             <label style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
               ↑ UPLOAD
@@ -738,7 +735,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
           </div>
 
           <!-- SMA crossover alert bar -->
-          <div id="smaAlertBar" style="display:none;padding:6px 14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;border-bottom:1px solid rgba(201,168,76,.2)"></div>
+          <div id="smaAlertBar" style="display:none;padding:6px 14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;border-bottom:1px solid rgba(201,168,76,.2);position:relative;z-index:20"></div>
 
           <!-- TradingView Chart -->
           <div style="position:relative;flex:1;min-height:500px">
@@ -3935,12 +3932,13 @@ function initTVChart(symbol, tf) {
       'save_load_all_charts_button',
       'study_templates',
       'header_screenshot',
-      'header_fullscreen_button',
+      /* fullscreen enabled */  /* 'header_fullscreen_button', */
       'display_market_status',
       'go_to_date',
       'timeframes_toolbar',
       'show_chart_property_page',
       'popup_hints',
+      'show_object_tree',
     ],
     enabled_features: ['side_toolbar_in_fullscreen_mode'],
     overrides: {
@@ -3956,6 +3954,8 @@ function initTVChart(symbol, tf) {
       'paneProperties.horzGridProperties.color':          'rgba(255,255,255,0.04)',
       'scalesProperties.textColor':                       '#8a95a8',
       'scalesProperties.backgroundColor':                 '#06080d',
+      'watermark.visible':                                false,
+      'watermark.color':                                  'rgba(0,0,0,0)',
     },
   });
 
