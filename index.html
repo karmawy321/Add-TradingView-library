@@ -3629,21 +3629,30 @@ function onTfChange(){
 }
 
 function toggleSMA(period){
-  var studies = tvWidget && tvReady ? tvWidget.activeChart() : null;
+  var chart = tvWidget && tvReady ? tvWidget.activeChart() : null;
   if(period===50){
     sma50On=!sma50On;
     var b=document.getElementById('sma50Btn');if(b)b.style.opacity=sma50On?'1':'0.35';
-    if(studies) studies.createStudy('Moving Average',false,false,[50],{'Plot.color':'#c9a84c','Plot.linewidth':1});
+    if(chart){
+      if(sma50On && !tvStudyIds.sma50) tvStudyIds.sma50 = chart.createStudy('MASimple@tv-basicstudies',false,false,{length:50},{'Plot.color':'#c9a84c'});
+      else if(!sma50On && tvStudyIds.sma50){ chart.removeEntity(tvStudyIds.sma50); tvStudyIds.sma50=null; }
+    }
   } else if(period===200){
     sma200On=!sma200On;
     var b=document.getElementById('sma200Btn');if(b)b.style.opacity=sma200On?'1':'0.35';
-    if(studies) studies.createStudy('Moving Average',false,false,[200],{'Plot.color':'#3498db','Plot.linewidth':1});
+    if(chart){
+      if(sma200On && !tvStudyIds.sma200) tvStudyIds.sma200 = chart.createStudy('MASimple@tv-basicstudies',false,false,{length:200},{'Plot.color':'#3498db'});
+      else if(!sma200On && tvStudyIds.sma200){ chart.removeEntity(tvStudyIds.sma200); tvStudyIds.sma200=null; }
+    }
   } else if(period===400){
     sma400On=!sma400On;
     var b=document.getElementById('sma400Btn');if(b)b.style.opacity=sma400On?'1':'0.35';
-    if(studies) studies.createStudy('Moving Average',false,false,[400],{'Plot.color':'#9b8fe8','Plot.linewidth':1});
+    if(chart){
+      if(sma400On && !tvStudyIds.sma400) tvStudyIds.sma400 = chart.createStudy('MASimple@tv-basicstudies',false,false,{length:400},{'Plot.color':'#9b8fe8'});
+      else if(!sma400On && tvStudyIds.sma400){ chart.removeEntity(tvStudyIds.sma400); tvStudyIds.sma400=null; }
+    }
   }
-  if(!studies) renderChart();
+  if(!chart) renderChart();
 }
 
 function yToPrice(y){
@@ -3874,6 +3883,28 @@ var tvWidget  = null;
 var tvReady   = false;
 var tvStudyIds = { sma50: null, sma200: null, sma400: null };
 
+/* ── Live price polling — direct Binance, no Railway dependency ── */
+var _pricePollerTimer = null;
+function stopPricePolling() {
+  if(_pricePollerTimer){ clearInterval(_pricePollerTimer); _pricePollerTimer = null; }
+}
+function startPricePolling(sym) {
+  stopPricePolling();
+  function pollBinancePrice() {
+    if(sym !== currentSymbol){ stopPricePolling(); return; }
+    fetch('https://api.binance.com/api/v3/ticker/24hr?symbol='+sym)
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.lastPrice && sym===currentSymbol){
+          showLivePrice({symbol:sym, price:parseFloat(d.lastPrice),
+            change_24h: parseFloat(d.priceChangePercent||0).toFixed(3)});
+        }
+      }).catch(function(){});
+  }
+  pollBinancePrice();
+  _pricePollerTimer = setInterval(pollBinancePrice, 5000);
+}
+
 function initTVChart(symbol, tf) {
   symbol = (symbol || 'BTCUSDT').toUpperCase().replace('/','');
   var tvRes = TF_TO_TV[tf || '4h'] || '240';
@@ -3934,9 +3965,9 @@ function initTVChart(symbol, tf) {
     var btn = document.getElementById('azBtn'); if(btn) btn.disabled = false;
     var chart = tvWidget.activeChart();
     /* Add active SMAs */
-    if(sma50On)  tvStudyIds.sma50  = chart.createStudy('Moving Average',false,false,[50], {'Plot.color':'#c9a84c','Plot.linewidth':1});
-    if(sma200On) tvStudyIds.sma200 = chart.createStudy('Moving Average',false,false,[200],{'Plot.color':'#3498db','Plot.linewidth':1});
-    if(sma400On) tvStudyIds.sma400 = chart.createStudy('Moving Average',false,false,[400],{'Plot.color':'#9b8fe8','Plot.linewidth':1});
+    if(sma50On)  tvStudyIds.sma50  = chart.createStudy('MASimple@tv-basicstudies',false,false,{length:50},{'Plot.color':'#c9a84c'});
+    if(sma200On) tvStudyIds.sma200 = chart.createStudy('MASimple@tv-basicstudies',false,false,{length:200},{'Plot.color':'#3498db'});
+    if(sma400On) tvStudyIds.sma400 = chart.createStudy('MASimple@tv-basicstudies',false,false,{length:400},{'Plot.color':'#9b8fe8'});
   });
 }
 
@@ -3996,15 +4027,20 @@ loadChart = function(symbol, interval) {
   if(_lb) _lb.classList.add('show');
   /* Start price polling */
   startPricePolling(sym);
-  /* TV: set symbol or init */
-  if(tvWidget && tvReady){
-    tvWidget.setSymbol(sym, TF_TO_TV[tf] || '240', function(){});
-  } else {
-    initTVChart(sym, tf);
-  }
-  /* Also trigger SSE for price data + crossover detection */
+  /* TV: always re-init for symbol change (most reliable) */
+  initTVChart(sym, tf);
+  /* SSE for price polling + crossover detection */
   if(chartSSE){ try{ chartSSE.close(); }catch(e){} chartSSE = null; }
   openSSE(sym);
+  /* Also fetch price directly from Binance for immediate badge update */
+  fetch('https://api.binance.com/api/v3/ticker/24hr?symbol='+sym)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.lastPrice && sym===currentSymbol){
+        showLivePrice({symbol:sym, price:parseFloat(d.lastPrice),
+          change_24h: parseFloat(d.priceChangePercent||0).toFixed(3)});
+      }
+    }).catch(function(){});
 };
 
 /* ── Wire tfIn change to TV ── */
