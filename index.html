@@ -529,6 +529,11 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   min-width:170px;z-index:999;
   box-shadow:-6px 6px 24px rgba(0,0,0,.7);
 }
+/* Invisible bridge fills the gap so mouse can reach flyout */
+.tb-flyout::after{
+  content:'';position:absolute;left:100%;top:0;
+  width:12px;height:100%;
+}
 .tb-group:hover .tb-flyout{display:flex}
 .tb-item{width:100%;height:30px;background:transparent;border:none;color:rgba(240,244,250,.75);cursor:pointer;border-radius:3px;display:flex;align-items:center;gap:9px;padding:0 10px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.04em;transition:background .1s,color .1s;white-space:nowrap}
 .tb-item svg{flex-shrink:0;stroke-width:1.8;width:14px;height:14px;opacity:.8}
@@ -785,6 +790,14 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               <option value="1w">W1</option>
             </select>
             <!-- SMA indicators loaded silently in background -->
+            <!-- Chart type selector -->
+            <select id="chartTypeIn" onchange="chartType=this.value;renderChart()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
+              <option value="candles">Candles</option>
+              <option value="hollow">Hollow</option>
+              <option value="bars">Bars</option>
+              <option value="area">Area</option>
+              <option value="line">Line</option>
+            </select>
             <!-- Upload fallback -->
             <label style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
               ↑ UPLOAD
@@ -3351,13 +3364,15 @@ function formatTime(ts, tf) {
   return d.getHours().toString().padStart(2,'0')+':'+ d.getMinutes().toString().padStart(2,'0');
 }
 
+var chartType = 'candles'; /* candles | bars | hollow | area | line */
+
 function renderChart() {
   if (!chartCtx || !chartCanvas.width) return;
   var W = chartCanvas.width, H = chartCanvas.height;
   chartCtx.fillStyle = C.bg; chartCtx.fillRect(0,0,W,H);
   var candles = chartCandles;
   if (!candles || candles.length < 2) {
-    chartCtx.fillStyle='rgba(201,168,76,.25)'; chartCtx.font='11px DM Mono';
+    chartCtx.fillStyle='rgba(201,168,76,.4)'; chartCtx.font='bold 12px DM Mono';
     chartCtx.textAlign='center'; chartCtx.fillText('Connecting…', W/2, H/2); return;
   }
   var visibleBars = Math.max(20, Math.floor(candles.length / chartView.zoom));
@@ -3365,34 +3380,39 @@ function renderChart() {
   var endIdx   = Math.min(candles.length, startIdx + visibleBars);
   var visible  = candles.slice(startIdx, endIdx);
   if (!visible.length) return;
-  var PAD = { l:8, r:64, t:12, b:40, vol:45 };
+  var PAD = { l:8, r:72, t:16, b:44, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
   var mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
   var mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
   var range = mx-mn||mn*0.001||0.0001;
-  mn -= range*0.04; mx += range*0.04; range = mx-mn;
+  mn -= range*0.05; mx += range*0.05; range = mx-mn;
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
-  var n = visible.length, barW = CW/n, candleW = Math.max(1, barW*0.7);
+  var n = visible.length, barW = CW/n, candleW = Math.max(1.5, barW*0.72);
   function px(i)  { return PAD.l+(i+0.5)*barW; }
   function py(v)  { return PAD.t+CH-((v-mn)/range)*CH; }
-  /* Grid */
-  for (var gi=0;gi<=5;gi++) {
-    var gy=PAD.t+(gi/5)*CH;
-    chartCtx.strokeStyle=C.grid; chartCtx.lineWidth=0.5;
+
+  /* Grid — more visible lines */
+  for (var gi=0;gi<=6;gi++) {
+    var gy=PAD.t+(gi/6)*CH;
+    var price = mx-(gi/6)*range;
+    chartCtx.strokeStyle='rgba(255,255,255,0.06)'; chartCtx.lineWidth=0.5;
     chartCtx.beginPath(); chartCtx.moveTo(PAD.l,gy); chartCtx.lineTo(W-PAD.r,gy); chartCtx.stroke();
-    chartCtx.fillStyle='rgba(201,168,76,0.5)'; chartCtx.font='9px DM Mono'; chartCtx.textAlign='left';
-    chartCtx.fillText(formatPrice(mx-(gi/5)*range), W-PAD.r+3, gy+3);
+    /* Price labels — bright, bold, bigger */
+    chartCtx.fillStyle='rgba(220,230,255,0.92)'; chartCtx.font='bold 11px DM Mono'; chartCtx.textAlign='left';
+    chartCtx.fillText(formatPrice(price), W-PAD.r+5, gy+4);
   }
-  /* Volume */
+
+  /* Volume bars */
   visible.forEach(function(c,i){
-    chartCtx.fillStyle=c.c>=c.o?'rgba(38,166,154,0.2)':'rgba(239,83,80,0.2)';
+    chartCtx.fillStyle=c.c>=c.o?'rgba(38,166,154,0.18)':'rgba(239,83,80,0.18)';
     var vh=(c.v/maxVol)*PAD.vol;
     chartCtx.fillRect(px(i)-candleW/2, H-PAD.b-vh, candleW, vh);
   });
+
   /* SMAs */
   function drawSMA(period,color){
     if(startIdx+period>candles.length) return;
-    chartCtx.strokeStyle=color; chartCtx.lineWidth=1.2; chartCtx.setLineDash([]); chartCtx.beginPath();
+    chartCtx.strokeStyle=color; chartCtx.lineWidth=1.4; chartCtx.setLineDash([]); chartCtx.beginPath();
     var drew=false;
     visible.forEach(function(c,i){
       var gi=startIdx+i; if(gi<period-1) return;
@@ -3404,20 +3424,79 @@ function renderChart() {
   }
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
-  /* Candles */
-  visible.forEach(function(c,i){
-    var col=c.c>=c.o?C.up:C.dn, x=px(i);
-    chartCtx.strokeStyle=col; chartCtx.lineWidth=1;
-    chartCtx.beginPath(); chartCtx.moveTo(x,py(c.h)); chartCtx.lineTo(x,py(c.l)); chartCtx.stroke();
-    var top=py(Math.max(c.o,c.c)), bh=Math.max(1,py(Math.min(c.o,c.c))-top);
-    chartCtx.fillStyle=col; chartCtx.fillRect(x-candleW/2,top,candleW,bh);
-  });
-  /* Time axis */
-  chartCtx.fillStyle='rgba(201,168,76,0.4)'; chartCtx.font='8px DM Mono'; chartCtx.textAlign='center';
+
+  /* Chart type rendering */
+  if (chartType === 'area' || chartType === 'line') {
+    /* Area / Line */
+    chartCtx.beginPath();
+    visible.forEach(function(c,i){ if(i===0) chartCtx.moveTo(px(i),py(c.c)); else chartCtx.lineTo(px(i),py(c.c)); });
+    if (chartType === 'area') {
+      chartCtx.lineTo(px(n-1), H-PAD.b); chartCtx.lineTo(px(0), H-PAD.b); chartCtx.closePath();
+      chartCtx.fillStyle='rgba(201,168,76,.1)'; chartCtx.fill();
+      chartCtx.beginPath();
+      visible.forEach(function(c,i){ if(i===0) chartCtx.moveTo(px(i),py(c.c)); else chartCtx.lineTo(px(i),py(c.c)); });
+    }
+    chartCtx.strokeStyle='#c9a84c'; chartCtx.lineWidth=1.5; chartCtx.setLineDash([]); chartCtx.stroke();
+  } else if (chartType === 'bars') {
+    /* OHLC bars */
+    visible.forEach(function(c,i){
+      var col=c.c>=c.o?C.up:C.dn, x=px(i);
+      chartCtx.strokeStyle=col; chartCtx.lineWidth=1.5;
+      chartCtx.beginPath(); chartCtx.moveTo(x,py(c.h)); chartCtx.lineTo(x,py(c.l)); chartCtx.stroke();
+      chartCtx.beginPath(); chartCtx.moveTo(x-barW*0.3,py(c.o)); chartCtx.lineTo(x,py(c.o)); chartCtx.stroke();
+      chartCtx.beginPath(); chartCtx.moveTo(x,py(c.c)); chartCtx.lineTo(x+barW*0.3,py(c.c)); chartCtx.stroke();
+    });
+  } else if (chartType === 'hollow') {
+    /* Hollow candles */
+    visible.forEach(function(c,i){
+      var col=c.c>=c.o?C.up:C.dn, x=px(i);
+      chartCtx.strokeStyle=col; chartCtx.lineWidth=1.2;
+      chartCtx.beginPath(); chartCtx.moveTo(x,py(c.h)); chartCtx.lineTo(x,py(c.l)); chartCtx.stroke();
+      var top=py(Math.max(c.o,c.c)), bh=Math.max(1.5,py(Math.min(c.o,c.c))-top);
+      if (c.c >= c.o) {
+        chartCtx.strokeRect(x-candleW/2, top, candleW, bh); /* hollow up */
+      } else {
+        chartCtx.fillStyle=col; chartCtx.fillRect(x-candleW/2, top, candleW, bh); /* solid down */
+      }
+    });
+  } else {
+    /* Default: filled candles */
+    visible.forEach(function(c,i){
+      var col=c.c>=c.o?C.up:C.dn, x=px(i);
+      chartCtx.strokeStyle=col; chartCtx.lineWidth=1;
+      chartCtx.beginPath(); chartCtx.moveTo(x,py(c.h)); chartCtx.lineTo(x,py(c.l)); chartCtx.stroke();
+      var top=py(Math.max(c.o,c.c)), bh=Math.max(1.5,py(Math.min(c.o,c.c))-top);
+      chartCtx.fillStyle=col; chartCtx.fillRect(x-candleW/2,top,candleW,bh);
+    });
+  }
+
+  /* Time axis — brighter, bigger */
+  chartCtx.fillStyle='rgba(180,195,220,0.8)'; chartCtx.font='bold 10px DM Mono'; chartCtx.textAlign='center';
   var step=Math.max(1,Math.floor(n/8));
-  visible.forEach(function(c,i){ if(i%step===0) chartCtx.fillText(formatTime(c.t,currentInterval),px(i),H-PAD.b+13); });
+  visible.forEach(function(c,i){ if(i%step===0) chartCtx.fillText(formatTime(c.t,currentInterval),px(i),H-PAD.b+16); });
+
+  /* Current price line */
+  if (visible.length > 0) {
+    var lastC = visible[visible.length-1];
+    var lastY = py(lastC.c);
+    var isUp  = lastC.c >= lastC.o;
+    chartCtx.save();
+    chartCtx.strokeStyle = isUp ? 'rgba(38,166,154,0.6)' : 'rgba(239,83,80,0.6)';
+    chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
+    chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
+    chartCtx.setLineDash([]);
+    /* Price badge */
+    var priceStr = formatPrice(lastC.c);
+    var bw = priceStr.length * 7 + 10;
+    chartCtx.fillStyle = isUp ? '#26a69a' : '#ef5350';
+    chartCtx.fillRect(W-PAD.r, lastY-9, bw, 18);
+    chartCtx.fillStyle='#fff'; chartCtx.font='bold 11px DM Mono'; chartCtx.textAlign='left';
+    chartCtx.fillText(priceStr, W-PAD.r+5, lastY+4);
+    chartCtx.restore();
+  }
+
   /* Watermark */
-  chartCtx.save(); chartCtx.font='bold 11px DM Mono'; chartCtx.fillStyle='rgba(201,168,76,0.05)';
+  chartCtx.save(); chartCtx.font='bold 11px DM Mono'; chartCtx.fillStyle='rgba(201,168,76,0.04)';
   chartCtx.textAlign='center'; chartCtx.fillText('FRACTAL AI AGENT',W/2,H/2+6); chartCtx.restore();
 }
 
@@ -3477,9 +3556,34 @@ if(chartCanvas){
   },{passive:false});
 }
 
-/* captureChart overridden by TV block below */
-/* captureAndStore defined in TV block */
-/* captureForTool overridden by TV block */
+function captureChart(){
+  if(typeof dataUrl!=='undefined'&&dataUrl){if(typeof runPendingTool==='function')runPendingTool();return;}
+  var cv=document.getElementById('chartCanvas');
+  if(cv&&chartCandles&&chartCandles.length>0){
+    dataUrl=cv.toDataURL('image/png');
+    if(typeof runPendingTool==='function')runPendingTool();return;
+  }
+  if(typeof showCapturePrompt==='function')showCapturePrompt();
+}
+function captureForTool(){
+  var cv=document.getElementById('chartCanvas');
+  if(cv&&chartCandles&&chartCandles.length>0)return cv.toDataURL('image/png');
+  return null;
+}
+function captureAndStore(){
+  var cv=document.getElementById('chartCanvas');
+  if(cv&&chartCandles&&chartCandles.length>0)dataUrl=cv.toDataURL('image/png');
+}
+function takeSnapshot(){
+  var btn=document.getElementById('snapBtn'),txt=document.getElementById('snapTxt');
+  var azBtn=document.getElementById('azBtn');
+  var cv=document.getElementById('chartCanvas');
+  if(!cv||!chartCandles||chartCandles.length<2){if(txt)txt.textContent='Load a chart first';return;}
+  dataUrl=cv.toDataURL('image/png');
+  if(txt)txt.textContent='✓ Chart captured';
+  if(btn){btn.style.borderColor='rgba(39,174,96,.4)';btn.style.color='#27ae60';}
+  if(azBtn)azBtn.disabled=false;
+}
 
 function loadChart(symbol,interval){
   if(!symbol) return;
@@ -3503,6 +3607,7 @@ function loadChart(symbol,interval){
   /* Update badge immediately for new symbol */
   var _lm=document.getElementById('livePriceMeta'),_lv=document.getElementById('livePriceVal'),_lb=document.getElementById('livePriceBar');
   if(_lm)_lm.textContent='LIVE · '+sym; if(_lv)_lv.textContent='—'; if(_lb)_lb.classList.add('show');
+  startPricePolling(sym);
 
   fetch(BACKEND_URL+'/candles/'+sym+'?tf='+currentInterval)
     .then(function(r){return r.json();})
@@ -3793,6 +3898,24 @@ function showLivePrice(d){
   if(meta)meta.textContent='LIVE · '+d.symbol;
 }
 function hideLivePrice(){var b=document.getElementById('livePriceBar');if(b)b.classList.remove('show');}
+
+/* ── Live price polling — direct Binance every 5s ── */
+var _pricePollerTimer = null;
+function stopPricePolling(){if(_pricePollerTimer){clearInterval(_pricePollerTimer);_pricePollerTimer=null;}}
+function startPricePolling(sym){
+  stopPricePolling();
+  function poll(){
+    if(sym!==currentSymbol){stopPricePolling();return;}
+    fetch('https://api.binance.com/api/v3/ticker/24hr?symbol='+sym)
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d.lastPrice&&sym===currentSymbol)
+          showLivePrice({symbol:sym,price:parseFloat(d.lastPrice),change_24h:parseFloat(d.priceChangePercent||0).toFixed(3)});
+      }).catch(function(){});
+  }
+  poll();
+  _pricePollerTimer=setInterval(poll,5000);
+}
 
 function showCapturePrompt(){
   var overlay=document.getElementById('capturePrompt');
