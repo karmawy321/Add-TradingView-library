@@ -315,6 +315,13 @@ app.get('/logo.svg',    (req, res) => {
     res.send(data);
   });
 });
+app.get('/logo-animated.svg', (req, res) => {
+  fs.readFile(path.resolve(__dirname, 'logo-animated.svg'), (err, data) => {
+    if (err) return res.status(404).end();
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.send(data);
+  });
+});
 app.get('/favicon.svg', (req, res) => {
   fs.readFile(path.resolve(__dirname, 'favicon.svg'), (err, data) => {
     if (err) return res.status(404).end();
