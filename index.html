@@ -849,69 +849,32 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               <img id="prevImg" src="" alt="" style="width:100%;height:100%;object-fit:contain">
               <button class="rm-x" id="rmX">✕</button>
             </div>
-          </div>
-
-          <!-- Welcome overlay — shown before any chart loads -->
-          <div id="chartEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#06080d;z-index:10">
-            <div style="text-align:center;max-width:420px;padding:40px">
-              <!-- Logo mark -->
-              <svg width="64" height="64" viewBox="0 0 208 208" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto 24px;display:block;opacity:.9">
-                <defs>
-                  <linearGradient id="wcg" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#9a7a2e"/><stop offset="50%" stop-color="#c9a84c"/><stop offset="100%" stop-color="#f0d878"/></linearGradient>
-                  <linearGradient id="wcf" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#c9a84c" stop-opacity="0.22"/><stop offset="100%" stop-color="#c9a84c" stop-opacity="0.0"/></linearGradient>
-                </defs>
-                <rect width="208" height="208" rx="32" fill="#0d1018"/>
-                <rect x="38" y="38" width="132" height="132" rx="6" fill="rgba(201,168,76,.04)" stroke="rgba(201,168,76,.2)" stroke-width="3"/>
-                <polygon points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86 166,166 44,166" fill="url(#wcf)"/>
-                <polyline points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86" fill="none" stroke="url(#wcg)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-                <line x1="38" y1="38" x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
-                <line x1="170" y1="38" x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
-                <line x1="38" y1="170" x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
-                <line x1="170" y1="170" x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
-                <circle cx="38" cy="38"   r="18" fill="#0d1018" stroke="#c9a84c" stroke-width="4.5"/>
-                <circle cx="170" cy="38"  r="18" fill="#0d1018" stroke="#c9a84c" stroke-width="4.5"/>
-                <circle cx="38" cy="170"  r="18" fill="#0d1018" stroke="#c9a84c" stroke-width="4.5"/>
-                <circle cx="170" cy="170" r="18" fill="#0d1018" stroke="#c9a84c" stroke-width="4.5"/>
-                <circle cx="38" cy="38"   r="7" fill="#c9a84c"/>
-                <circle cx="170" cy="38"  r="7" fill="#c9a84c"/>
-                <circle cx="38" cy="170"  r="7" fill="#c9a84c"/>
-                <circle cx="170" cy="170" r="7" fill="#c9a84c"/>
-                <circle cx="104" cy="104" r="11" fill="#0d1018" stroke="#c9a84c" stroke-width="3.5"/>
-                <circle cx="104" cy="104" r="4" fill="#e8c97a"/>
-                <line x1="94" y1="104" x2="114" y2="104" stroke="#c9a84c" stroke-width="2.5" stroke-linecap="round"/>
-                <line x1="104" y1="94" x2="104" y2="114" stroke="#c9a84c" stroke-width="2.5" stroke-linecap="round"/>
-              </svg>
-
-              <!-- Headline -->
-              <div style="font-family:'Cinzel',serif;font-size:18px;font-weight:600;color:#f0f4fa;letter-spacing:.08em;margin-bottom:8px">Begin Your Analysis</div>
-              <div style="font-family:'DM Mono',monospace;font-size:10px;color:rgba(201,168,76,.6);letter-spacing:.12em;margin-bottom:28px">FRACTAL INTELLIGENCE FOR TRADERS</div>
-
-              <!-- Instructions -->
-              <div style="display:flex;flex-direction:column;gap:12px;text-align:left;margin-bottom:28px">
-                <div style="display:flex;align-items:center;gap:12px">
-                  <div style="width:28px;height:28px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:600">1</div>
-                  <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:#8a95a8">Type a symbol above — <span style="color:#c9a84c">BTCUSDT</span>, <span style="color:#c9a84c">EURUSD</span>, <span style="color:#c9a84c">AAPL</span> — or search inside the chart</div>
+            <!-- Welcome overlay — inside chart wrapper so it only covers the chart area -->
+            <div id="chartEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#06080d;z-index:10;overflow-y:auto">
+              <div style="text-align:center;max-width:380px;padding:24px">
+                <div style="font-family:'Cinzel',serif;font-size:16px;font-weight:600;color:#f0f4fa;letter-spacing:.08em;margin-bottom:8px">Begin Your Analysis</div>
+                <div style="font-family:'DM Mono',monospace;font-size:9px;color:rgba(201,168,76,.6);letter-spacing:.12em;margin-bottom:20px">FRACTAL INTELLIGENCE FOR TRADERS</div>
+                <div style="display:flex;flex-direction:column;gap:10px;text-align:left;margin-bottom:20px">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <div style="width:24px;height:24px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:10px;color:#c9a84c;font-weight:600">1</div>
+                    <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:#8a95a8">Type a symbol — <span style="color:#c9a84c">BTCUSDT</span>, <span style="color:#c9a84c">ETHUSDT</span></div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <div style="width:24px;height:24px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:10px;color:#c9a84c;font-weight:600">2</div>
+                    <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:#8a95a8">Capture chart → run <span style="color:#c9a84c">AI tools</span></div>
+                  </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:12px">
-                  <div style="width:28px;height:28px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:600">2</div>
-                  <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:#8a95a8">Select your timeframe and run any of the <span style="color:#c9a84c">10 AI tools</span> on the right</div>
+                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                  <button onclick="quickLoad('BTCUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BTC/USDT</button>
+                  <button onclick="quickLoad('ETHUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">ETH/USDT</button>
+                  <button onclick="quickLoad('SOLUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SOL/USDT</button>
+                  <button onclick="quickLoad('BNBUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BNB/USDT</button>
+                  <button onclick="quickLoad('XRPUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">XRP/USDT</button>
                 </div>
-                <div style="display:flex;align-items:center;gap:12px">
-                  <div style="width:28px;height:28px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:600">3</div>
-                  <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:#8a95a8">Or <span style="color:#c9a84c">upload any chart screenshot</span> from TradingView, MT4, Binance</div>
-                </div>
-              </div>
-
-              <!-- Quick launch buttons -->
-              <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-                <button onclick="quickLoad('BTCUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BTC/USDT</button>
-                <button onclick="quickLoad('ETHUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">ETH/USDT</button>
-                <button onclick="quickLoad('BNBUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BNB/USDT</button>
-                <button onclick="quickLoad('XRPUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">XRP/USDT</button>
-                <button onclick="quickLoad('SOLUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SOL/USDT</button>
               </div>
             </div>
           </div>
+
         </div>
 
         <!-- RIGHT: Controls panel -->
