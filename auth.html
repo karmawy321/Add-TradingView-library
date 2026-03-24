@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fractal AI Agent — Sign In</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--gold:#c9a84c;--gold2:#e8c97a;--dark:#06080d;--dark2:#0d1018;--dark3:#131720;--dark4:#1a2030;--muted:#8a95a8;--light:#dde4ee;--white:#f0f4fa;--border:rgba(201,168,76,0.15);--border2:rgba(255,255,255,0.08);--green:#27ae60;--red:#e74c3c}
+html,body{height:100%}
+body{background:var(--dark);color:var(--light);font-family:'DM Sans',sans-serif;font-weight:300;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(201,168,76,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(201,168,76,.03) 1px,transparent 1px);background-size:48px 48px;pointer-events:none}
+.logo{font-family:'Cinzel',serif;font-size:13px;letter-spacing:.14em;color:var(--gold);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:8px;margin-bottom:40px}
+.logo-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.card{width:100%;max-width:420px;background:var(--dark2);border:1px solid var(--border);padding:40px 36px}
+.tab-row{display:flex;border-bottom:1px solid var(--border2);margin-bottom:28px}
+.tab{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.1em;padding:10px 0;margin-right:28px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;background:none;border-left:none;border-right:none;border-top:none}
+.tab.on{color:var(--gold);border-bottom-color:var(--gold)}
+.field{margin-bottom:16px}
+.field label{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:6px;text-transform:uppercase}
+.field input{width:100%;background:var(--dark4);border:1px solid rgba(201,168,76,.2);color:var(--light);padding:11px 14px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;border-radius:1px;transition:border .2s}
+.field input:focus{border-color:var(--gold)}
+.field input:disabled{opacity:.5}
+.btn{width:100%;font-family:'Cinzel',serif;font-size:11px;letter-spacing:.12em;background:var(--gold);color:var(--dark);padding:13px;border:none;cursor:pointer;transition:all .2s;font-weight:600;border-radius:1px;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:10px;min-height:46px}
+.btn:hover:not(:disabled){background:var(--gold2)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-spin{width:14px;height:14px;border:2px solid rgba(6,8,13,.3);border-top-color:var(--dark);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+.msg{font-size:12px;padding:10px 14px;border-radius:1px;margin-top:14px;line-height:1.6}
+.msg.err{background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.2);color:#e74c3c}
+.msg.ok{background:rgba(39,174,96,.08);border:1px solid rgba(39,174,96,.2);color:#27ae60}
+.credits-preview{background:var(--dark3);border:1px solid var(--border);padding:14px 16px;margin-top:20px;display:flex;align-items:center;gap:12px}
+.credits-text{font-size:11px;color:var(--muted);line-height:1.7}
+.credits-text strong{color:var(--gold);font-weight:500}
+.back{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);text-align:center;margin-top:20px;display:block;text-decoration:none;letter-spacing:.04em}
+.back:hover{color:var(--gold)}
+.warn-box{background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);color:#e74c3c;padding:12px 16px;font-size:11px;line-height:1.7;margin-bottom:20px;font-family:'DM Mono',monospace}
+</style>
+</head>
+<body>
+
+<a href="/" class="logo">
+    <svg width="28" height="28" viewBox="0 0 208 208" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;display:block">
+      <defs>
+        <linearGradient id="pcg" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#9a7a2e"/><stop offset="45%" stop-color="#c9a84c"/><stop offset="100%" stop-color="#f0d878"/></linearGradient>
+        <linearGradient id="pcf" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#c9a84c" stop-opacity="0.22"/><stop offset="100%" stop-color="#c9a84c" stop-opacity="0.0"/></linearGradient>
+        <linearGradient id="pbg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#141820"/><stop offset="100%" stop-color="#0a0c12"/></linearGradient>
+        <linearGradient id="png" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1e2330"/><stop offset="100%" stop-color="#0d1018"/></linearGradient>
+      </defs>
+      <rect width="208" height="208" rx="32" fill="url(#pbg)"/>
+      <rect width="208" height="208" rx="32" fill="none" stroke="rgba(201,168,76,.2)" stroke-width="3"/>
+      <rect x="38" y="38" width="132" height="132" rx="6" fill="rgba(201,168,76,.035)" stroke="rgba(201,168,76,.18)" stroke-width="3"/>
+      <polygon points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86 166,166 44,166" fill="url(#pcf)"/>
+      <polyline points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86" fill="none" stroke="url(#pcg)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="38" y1="38"   x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
+      <line x1="170" y1="38"  x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
+      <line x1="38" y1="170"  x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
+      <line x1="170" y1="170" x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="38" cy="38"   r="22" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.15)" stroke-width="2.5"/>
+      <circle cx="170" cy="38"  r="22" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.15)" stroke-width="2.5"/>
+      <circle cx="38" cy="170"  r="22" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.15)" stroke-width="2.5"/>
+      <circle cx="170" cy="170" r="22" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.15)" stroke-width="2.5"/>
+      <circle cx="38" cy="38"   r="16" fill="url(#png)" stroke="#c9a84c" stroke-width="5"/>
+      <circle cx="170" cy="38"  r="16" fill="url(#png)" stroke="#c9a84c" stroke-width="5"/>
+      <circle cx="38" cy="170"  r="16" fill="url(#png)" stroke="#c9a84c" stroke-width="5"/>
+      <circle cx="170" cy="170" r="16" fill="url(#png)" stroke="#c9a84c" stroke-width="5"/>
+      <circle cx="38" cy="38"   r="7" fill="#c9a84c"/>
+      <circle cx="170" cy="38"  r="7" fill="#c9a84c"/>
+      <circle cx="38" cy="170"  r="7" fill="#c9a84c"/>
+      <circle cx="170" cy="170" r="7" fill="#c9a84c"/>
+      <circle cx="104" cy="104" r="17" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.2)" stroke-width="2.5"/>
+      <circle cx="104" cy="104" r="11" fill="url(#png)" stroke="#c9a84c" stroke-width="4.5"/>
+      <line x1="94"  y1="104" x2="114" y2="104" stroke="#c9a84c" stroke-width="3" stroke-linecap="round"/>
+      <line x1="104" y1="94"  x2="104" y2="114" stroke="#c9a84c" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="104" cy="104" r="4" fill="#e8c97a"/>
+    </svg>
+    FRACTAL AI AGENT
+  </a>
+</a>
+
+<div class="card">
+  <div class="warn-box" id="warnBox" style="display:none">
+    Supabase keys not set. Open auth.html and paste your SUPABASE_URL and SUPABASE_ANON_KEY.
+  </div>
+
+  <div class="tab-row">
+    <button class="tab on" id="tab-in" onclick="showTab('in')">SIGN IN</button>
+    <button class="tab" id="tab-up" onclick="showTab('up')">CREATE ACCOUNT</button>
+  </div>
+
+  <div id="form-in">
+    <div class="field"><label>Email</label><input type="email" id="in-email" placeholder="you@example.com"></div>
+    <div class="field"><label>Password</label><input type="password" id="in-pass" placeholder="••••••••"></div>
+    <button class="btn" id="in-btn" onclick="signIn()"><span id="in-txt">Sign In</span></button>
+    <div class="msg" id="in-msg" style="display:none"></div>
+  </div>
+
+  <div id="form-up" style="display:none">
+    <div class="field"><label>Username</label><input type="text" id="up-username" placeholder="yourname" autocomplete="username"><div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);margin-top:5px">Letters, numbers and underscores only. Shown in the nav bar.</div></div>
+    <div class="field"><label>Email</label><input type="email" id="up-email" placeholder="you@example.com"></div>
+    <div class="field"><label>Password</label><input type="password" id="up-pass" placeholder="At least 6 characters"></div>
+    <button class="btn" id="up-btn" onclick="signUp()"><span id="up-txt">Create Account</span></button>
+    <div class="msg" id="up-msg" style="display:none"></div>
+    <div class="credits-preview">
+      <div style="font-size:18px;flex-shrink:0">◈</div>
+      <div class="credits-text">New accounts start with <strong>50 free credits</strong> — enough for 10+ analyses.</div>
+    </div>
+  </div>
+</div>
+
+<a href="/" class="back">← Back to site</a>
+
+<script>
+var SUPABASE_URL      = 'https://pvkweqyrwbmcsczpjvhj.supabase.co';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2a3dlcXlyd2JtY3NjenBqdmhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMjk5MTIsImV4cCI6MjA4OTYwNTkxMn0.RmyJM3wv63V57wnyGoFJ6q65UFoKccG91UdB683N284';
+
+var sb = null;
+
+/* Load Supabase SDK dynamically */
+function boot(){
+  if(!SUPABASE_URL || SUPABASE_URL === 'YOUR_SUPABASE_URL'){
+    document.getElementById('warnBox').style.display = 'block';
+    return;
+  }
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+  s.onload = function(){
+    try {
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      checkSession();
+    } catch(e){
+      showMsg('in', 'Supabase init error: ' + e.message, 'err');
+    }
+  };
+  s.onerror = function(){
+    showMsg('in', 'Could not load auth library. Check internet connection.', 'err');
+  };
+  document.head.appendChild(s);
+}
+
+function showTab(t){
+  document.getElementById('tab-in').classList.toggle('on', t==='in');
+  document.getElementById('tab-up').classList.toggle('on', t==='up');
+  document.getElementById('form-in').style.display = t==='in'?'block':'none';
+  document.getElementById('form-up').style.display = t==='up'?'block':'none';
+}
+
+function setLoading(prefix, on, label){
+  var btn = document.getElementById(prefix+'-btn');
+  var txt = document.getElementById(prefix+'-txt');
+  btn.disabled = on;
+  if(on){
+    btn.innerHTML = '<div class="btn-spin"></div><span>' + (label||'Please wait…') + '</span>';
+  } else {
+    btn.innerHTML = '<span id="'+prefix+'-txt">' + (label||'Done') + '</span>';
+  }
+}
+
+function showMsg(prefix, text, type){
+  var el = document.getElementById(prefix+'-msg');
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = 'block';
+}
+
+function hideMsg(prefix){
+  document.getElementById(prefix+'-msg').style.display = 'none';
+}
+
+async function signIn(){
+  hideMsg('in');
+  if(!sb){ showMsg('in','Auth not ready. Check your Supabase keys.','err'); return; }
+  var email = document.getElementById('in-email').value.trim();
+  var pass  = document.getElementById('in-pass').value;
+  if(!email || !pass){ showMsg('in','Please fill in both fields.','err'); return; }
+
+  setLoading('in', true, 'Signing in…');
+  try {
+    var res = await sb.auth.signInWithPassword({ email: email, password: pass });
+    if(res.error){
+      setLoading('in', false, 'Sign In');
+      document.getElementById('in-btn').innerHTML = '<span id="in-txt">Sign In</span>';
+      var m = res.error.message || 'Sign in failed';
+      if(m.toLowerCase().includes('invalid')) m = 'Wrong email or password.';
+      if(m.toLowerCase().includes('confirm')) m = 'Please confirm your email first — check your inbox.';
+      showMsg('in', m, 'err');
+      return;
+    }
+    localStorage.setItem('fractal_token', res.data.session.access_token);
+    localStorage.setItem('fractal_user', JSON.stringify({ id: res.data.user.id, email: res.data.user.email }));
+    showMsg('in', 'Signed in! Redirecting…', 'ok');
+    setTimeout(function(){ window.location.href = '/'; }, 700);
+  } catch(e){
+    document.getElementById('in-btn').innerHTML = '<span id="in-txt">Sign In</span>';
+    document.getElementById('in-btn').disabled = false;
+    showMsg('in', 'Error: ' + (e.message || String(e)), 'err');
+  }
+}
+
+async function signUp(){
+  hideMsg('up');
+  if(!sb){ showMsg('up','Auth not ready. Check your Supabase keys.','err'); return; }
+  var username = document.getElementById('up-username').value.trim().replace(/[^a-zA-Z0-9_]/g,'');
+  var email = document.getElementById('up-email').value.trim();
+  var pass  = document.getElementById('up-pass').value;
+  if(!email || !pass){ showMsg('up','Please fill in both fields.','err'); return; }
+  if(pass.length < 6){ showMsg('up','Password must be at least 6 characters.','err'); return; }
+
+  setLoading('up', true, 'Creating account…');
+  try {
+    var res = await sb.auth.signUp({ email: email, password: pass });
+    document.getElementById('up-btn').innerHTML = '<span id="up-txt">Create Account</span>';
+    document.getElementById('up-btn').disabled = false;
+
+    if(res.error){
+      var m = res.error.message || 'Sign up failed';
+      if(m.toLowerCase().includes('already')) m = 'Email already registered — try signing in.';
+      showMsg('up', m, 'err');
+      return;
+    }
+
+    var userId = res.data.user && res.data.user.id;
+
+    /* Create profile row manually — no trigger needed */
+    if(userId){
+      try {
+        await sb.from('profiles').upsert({ id: userId, credits: 50, username: username }, { onConflict: 'id' });
+        if(username) localStorage.setItem('fractal_username', username);
+      } catch(pe){ console.warn('Profile create:', pe); }
+    }
+
+    /* No session = email confirmation required */
+    if(!res.data.session){
+      showMsg('up', 'Account created! Check your email and click the confirmation link, then sign in here.', 'ok');
+      return;
+    }
+
+    /* Session exists = email confirmation disabled, auto login */
+    localStorage.setItem('fractal_token', res.data.session.access_token);
+    localStorage.setItem('fractal_user', JSON.stringify({ id: res.data.user.id, email: res.data.user.email }));
+    showMsg('up', 'Account created! Signing you in…', 'ok');
+    setTimeout(function(){ window.location.href = '/'; }, 800);
+  } catch(e){
+    document.getElementById('up-btn').innerHTML = '<span id="up-txt">Create Account</span>';
+    document.getElementById('up-btn').disabled = false;
+    showMsg('up', 'Error: ' + (e.message || String(e)), 'err');
+  }
+}
+
+async function checkSession(){
+  try {
+    var res = await sb.auth.getSession();
+    if(res.data && res.data.session){
+      localStorage.setItem('fractal_token', res.data.session.access_token);
+      localStorage.setItem('fractal_user', JSON.stringify({
+        id: res.data.session.user.id,
+        email: res.data.session.user.email
+      }));
+      window.location.href = '/';
+    }
+  } catch(e){}
+}
+
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Enter') return;
+  if(document.getElementById('form-up').style.display === 'none') signIn();
+  else signUp();
+});
+
+boot();
+</script>
+</body>
+</html>

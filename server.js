@@ -2,6 +2,8 @@ const express   = require('express');
 const cors      = require('cors');
 const https     = require('https');
 const WebSocket = require('ws');
+const path      = require('path');
+const fs        = require('fs');
 
 const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL     = process.env.SUPABASE_URL      || '';
@@ -198,13 +200,30 @@ app.use(function(req, res, next) {
   next();
 });
 
-app.get('/', (req, res) => res.json({
+/* ── Serve static assets ── */
+app.use('/charting_library', express.static(path.join(__dirname, 'charting_library'), {
+  maxAge: '1d',
+  setHeaders: (res) => res.setHeader('Access-Control-Allow-Origin', '*')
+}));
+app.use('/assets', express.static(path.join(__dirname, 'assets'), { maxAge: '1d' }));
+
+/* ── Serve HTML pages ── */
+function sendPage(file, res) {
+  const p = path.join(__dirname, file);
+  if (fs.existsSync(p)) res.sendFile(p);
+  else res.status(404).send('Page not found: ' + file);
+}
+
+app.get('/',        (req, res) => sendPage('index.html',   res));
+app.get('/auth',    (req, res) => sendPage('auth.html',    res));
+app.get('/profile', (req, res) => sendPage('profile.html', res));
+app.get('/health',  (req, res) => res.json({ status: 'ok' }));
+app.get('/status',  (req, res) => res.json({
   status: 'ok', service: 'Fractal AI Agent', version: '3.0.0',
   hasKey: !!process.env.ANTHROPIC_API_KEY,
   cryptoActive: Object.keys(binanceWs),
   polling: Object.keys(binancePollers)
 }));
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 /* ── /symbols — available symbols ── */
 app.get('/symbols', (req, res) => {
