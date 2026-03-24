@@ -280,15 +280,18 @@ app.use('/charting_library', express.static(path.join(__dirname, 'charting_libra
 }));
 
 /* ── Serve SVG and image files explicitly ── */
-app.use(express.static(__dirname, {
-  index: false,
-  dotfiles: 'ignore'
-}));
-
-/* Explicit fallback routes for known static files */
-app.get('/logo.svg',    (req, res) => res.sendFile(path.join(__dirname, 'logo.svg')));
-app.get('/favicon.svg', (req, res) => res.sendFile(path.join(__dirname, 'favicon.svg')));
-app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'favicon.svg')));
+app.get('/logo.svg',    (req, res) => {
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.sendFile(path.resolve(__dirname, 'logo.svg'));
+});
+app.get('/favicon.svg', (req, res) => {
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.sendFile(path.resolve(__dirname, 'favicon.svg'));
+});
+app.get('/favicon.ico', (req, res) => {
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.sendFile(path.resolve(__dirname, 'favicon.svg'));
+});
 
 /* ── Serve HTML pages ── */
 function sendPage(file, res) {
