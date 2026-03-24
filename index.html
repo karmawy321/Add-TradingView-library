@@ -431,41 +431,54 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
     grid-template-columns: 1fr !important;
     grid-template-rows: auto auto;
   }
-  /* Chart takes full width, reasonable height on mobile */
+  /* Chart full width, fixed height for phone */
   #tv_chart_container{
-    height: 320px !important;
-    min-height: 320px !important;
+    height: calc(100vw * 0.65) !important;
+    min-height: 260px !important;
+    max-height: 380px !important;
   }
-  /* Right panel (tools) goes below chart */
-  .nd-right, .nd-side, [style*="320px"]{
+  /* Wrapper also needs height */
+  #tv_chart_container + canvas,
+  #tv_chart_container ~ * { }
+  /* Right panel below chart — full width */
+  .nd-side{
     width: 100% !important;
     max-width: 100% !important;
     border-left: none !important;
     border-top: 1px solid rgba(255,255,255,.06) !important;
   }
-  /* Chart toolbar wraps on mobile */
-  .nd-chart-top, [style*="display:flex"][style*="align-items:center"][style*="gap:8px"]{
+  /* Chart toolbar wraps */
+  .nd-chart-top{
     flex-wrap: wrap !important;
     gap: 6px !important;
+    padding: 6px 8px !important;
+  }
+  /* Snapshot + Run buttons full width stacked */
+  #snapBtn, #azBtn{
+    font-size: 11px !important;
   }
   /* Tool grid scrollable */
   #toolGrid{
-    max-height: 300px;
+    max-height: 280px;
     overflow-y: auto;
   }
-  /* Hero grid — stack logo and text */
-  .hero-in[style*="grid-template-columns"]{
+  /* Hero grid — stack */
+  .hero-in{
     display: flex !important;
     flex-direction: column !important;
     gap: 24px !important;
   }
-  /* Metrics row — 2 cols on mobile */
+  /* Metrics 2 cols */
   .nd-metrics{
     grid-template-columns: 1fr 1fr !important;
   }
-  /* res cols */
   .res-4col{grid-template-columns:1fr 1fr !important}
   .res-3col{grid-template-columns:1fr 1fr !important}
+  /* Toolbar pair input full width */
+  #pairIn{ width: 100% !important; }
+  /* Padding adjustments */
+  #analyzer{ padding: 20px 0 !important; }
+  .az-wrap{ padding: 0 !important; }
 }
 /* ── Hide TradingView watermark ── */
 #tv_chart_container iframe { border:none; }
@@ -789,7 +802,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
           <div id="smaAlertBar" style="display:none;padding:6px 14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;border-bottom:1px solid rgba(201,168,76,.2);position:relative;z-index:20"></div>
 
           <!-- TradingView Chart -->
-          <div style="position:relative;flex:1;min-height:500px">
+          <div style="position:relative;flex:1">
             <div id="tv_chart_container" style="width:100%;height:500px"></div>
             <!-- Hidden canvas kept for fallback compatibility -->
             <canvas id="chartCanvas" style="display:none"></canvas>
@@ -1527,8 +1540,10 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
     <a href="#pricing" id="t-fn3">Pricing</a>
     <a href="/profile">Profile</a>
     <a href="/auth" id="footer-auth-link">Sign In</a>
+    <a href="/terms" style="color:var(--muted)">Terms</a>
+    <a href="/privacy" style="color:var(--muted)">Privacy</a>
   </div>
-  <div class="f-copy">© 2026 Fractal AI Agent · Built on fractal mathematics</div>
+  <div class="f-copy">© 2026 Fractal AI Agent · All rights reserved</div>
 </footer>
 
 <script>
