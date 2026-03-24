@@ -486,6 +486,44 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 #tv_chart_container [class*="watermark"],
 #tv_chart_container [class*="trademark"],
 #tv_chart_container [class*="logo"] { display:none!important; opacity:0!important; pointer-events:none!important; }
+
+/* ── Mobile chart layout — stack chart over tools ── */
+@media(max-width:768px){
+  /* Main chart+tools panel: single column */
+  #chartToolsPanel{
+    grid-template-columns: 1fr !important;
+    min-height: unset !important;
+  }
+  /* Left chart column: full width */
+  #chartToolsPanel > div:first-child{
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255,255,255,.06) !important;
+  }
+  /* TV chart: proportional height */
+  #tv_chart_container{
+    height: 56vw !important;
+    min-height: 240px !important;
+    max-height: 360px !important;
+  }
+  /* Right tools panel: full width, reasonable height */
+  #chartToolsPanel > div:last-child{
+    width: 100% !important;
+    max-height: 420px !important;
+    overflow-y: auto !important;
+  }
+  /* Toolbar: wrap and compress */
+  #chartToolsPanel input, #chartToolsPanel select{
+    font-size: 12px !important;
+  }
+  #pairIn{ width: 90px !important; }
+  /* Snapshot + Run buttons */
+  #snapBtn, #azBtn{
+    padding: 8px !important;
+    font-size: 11px !important;
+  }
+  /* Tool grid */
+  #toolGrid{ max-height: 200px; overflow-y: auto; }
+}
 </style>
 </head>
 <body>
@@ -767,7 +805,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
       </div>
 
       <!-- ══ LIVE CHART PANEL ══ -->
-      <div style="display:grid;grid-template-columns:1fr 260px;min-height:520px;border-bottom:1px solid var(--border2)">
+      <div id="chartToolsPanel" style="display:grid;grid-template-columns:1fr 260px;min-height:520px;border-bottom:1px solid var(--border2)">
 
         <!-- LEFT: Lightweight Charts -->
         <div style="position:relative;border-right:1px solid var(--border2)">
@@ -4002,6 +4040,7 @@ function initTVChart(symbol, tf) {
     style:        '1',
     timezone:     'Etc/UTC',
     autosize:     true,
+    fullscreen:   false,
     disabled_features: [
       'header_symbol_search',
       'symbol_search_hot_key',
