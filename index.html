@@ -522,18 +522,13 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 .tb-arr{position:absolute;bottom:3px;right:3px;width:0;height:0;border-left:4px solid transparent;border-bottom:4px solid rgba(201,168,76,.5)}
 .tb-sep{width:26px;height:1px;background:rgba(255,255,255,.08);margin:4px 0}
 .tb-flyout{
-  position:fixed;left:48px;top:0;
-  background:#0a0d15;border:1px solid rgba(201,168,76,.25);
-  border-radius:4px;padding:4px;
+  position:fixed;left:46px;top:0;
+  background:#0a0d15;border:1px solid rgba(201,168,76,.3);
+  border-radius:0 4px 4px 0;padding:4px;
   flex-direction:column;gap:1px;
   min-width:170px;z-index:9999;
-  box-shadow:4px 6px 28px rgba(0,0,0,.9);
+  box-shadow:6px 4px 24px rgba(0,0,0,.9);
   display:none;
-  /* invisible bridge on right keeps flyout open while mouse crosses */
-}
-.tb-flyout::before{
-  content:'';position:absolute;
-  right:-12px;top:0;width:12px;height:100%;
 }
 .tb-item{width:100%;height:30px;background:transparent;border:none;color:rgba(240,244,250,.75);cursor:pointer;border-radius:3px;display:flex;align-items:center;gap:9px;padding:0 10px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.04em;transition:background .1s,color .1s;white-space:nowrap}
 .tb-item svg{flex-shrink:0;stroke-width:1.8;width:14px;height:14px;opacity:.8}
@@ -3374,9 +3369,11 @@ var chartType = 'candles'; /* candles | bars | hollow | area | line */
 
 function renderChart() {
   if (!chartCtx || !chartCanvas.width) return;
-  var W = chartCanvas.width, H = chartCanvas.height;
+  /* Context has setTransform(DPR,...) so coords are CSS pixels */
+  var dpr = window.devicePixelRatio || 1;
+  var W = chartCanvas.width / dpr;
+  var H = chartCanvas.height / dpr;
   chartCtx.fillStyle = C.bg; chartCtx.fillRect(0,0,W,H);
-  /* Crisp text rendering */
   chartCtx.imageSmoothingEnabled = false;
   var candles = chartCandles;
   if (!candles || candles.length < 2) {
@@ -4174,14 +4171,18 @@ function buildToolbar() {
       function showFly(){
         clearTimeout(_flyTimer);
         var rect=wrap.getBoundingClientRect();
-        fly.style.top=Math.min(rect.top, window.innerHeight-200)+'px';
+        var flyH=g.items.length*32+8;
+        var topPos=Math.min(rect.top, window.innerHeight-flyH-8);
+        fly.style.top=topPos+'px';
+        fly.style.left='46px'; /* right next to toolbar, no gap */
         fly.style.display='flex';
       }
-      function hideFly(){ _flyTimer=setTimeout(function(){ fly.style.display='none'; },120); }
+      function hideFly(){ _flyTimer=setTimeout(function(){ fly.style.display='none'; },220); }
       wrap.addEventListener('mouseenter', showFly);
       wrap.addEventListener('mouseleave', hideFly);
       fly.addEventListener('mouseenter', function(){ clearTimeout(_flyTimer); });
       fly.addEventListener('mouseleave', hideFly);
+      fly.addEventListener('click', function(){ clearTimeout(_flyTimer); });
       g.items.forEach(function(item){
         var row=document.createElement('button'); row.className='tb-item'+(activeItem&&activeItem.id===item.id?' active':'');
         row.innerHTML=item.icon+'<span>'+item.label+'</span>';
@@ -4359,9 +4360,11 @@ function drawAnnotations(ctx,co){
     drawOne(ctx,makeDrawing(drawStart,hoverPoint),co,true);
   }
 
-  /* Live brush stroke — smooth bezier preview */
+  /* Live brush stroke preview */
   if(isBrushing&&brushPath.length>1){
     ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
+    var dprL=window.devicePixelRatio||1; ctx.scale(dprL,dprL);
     ctx.strokeStyle='rgba(201,168,76,.7)'; ctx.lineWidth=2.5;
     ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
     ctx.beginPath();
@@ -4683,13 +4686,16 @@ function drawOne(ctx,d,co,prev){
     ctx.restore();return;
   }
 
-  /* Brush stroke */
+  /* Brush stroke — stored in CSS pixel coords, drawn directly */
   if(d.type==='brush'&&d.path&&d.path.length>1){
     ctx.save();
-    ctx.strokeStyle='rgba(201,168,76,.8)'; ctx.lineWidth=2.5;
+    ctx.setTransform(1,0,0,1,0,0); /* reset to identity for raw pixel coords */
+    /* re-apply DPR scale since path is in CSS pixels */
+    var dprB=window.devicePixelRatio||1;
+    ctx.scale(dprB,dprB);
+    ctx.strokeStyle='#c9a84c'; ctx.lineWidth=2.5;
     ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
     ctx.beginPath();
-    /* Smooth curve through points using quadratic bezier */
     ctx.moveTo(d.path[0].x,d.path[0].y);
     for(var bi2=1;bi2<d.path.length-1;bi2++){
       var cpx=(d.path[bi2].x+d.path[bi2+1].x)/2;
@@ -4697,10 +4703,7 @@ function drawOne(ctx,d,co,prev){
       ctx.quadraticCurveTo(d.path[bi2].x,d.path[bi2].y,cpx,cpy);
     }
     ctx.lineTo(d.path[d.path.length-1].x,d.path[d.path.length-1].y);
-    if(d.closed){
-      ctx.closePath();
-      ctx.fillStyle='rgba(201,168,76,.07)'; ctx.fill();
-    }
+    if(d.closed){ ctx.closePath(); ctx.fillStyle='rgba(201,168,76,.08)'; ctx.fill(); }
     ctx.stroke(); ctx.restore(); return;
   }
   /* Standard line (trendline / ray / extended) */
