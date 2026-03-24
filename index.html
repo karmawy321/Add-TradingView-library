@@ -4158,23 +4158,6 @@ window.addEventListener('load', function(){
 </script>
 
 
-<script>
-/* ── Animated logo loop — clone/replace forces full SVG restart ── */
-function loopLogo(id, interval) {
-  function restart() {
-    var el = document.getElementById(id);
-    if (!el) return;
-    var clone = el.cloneNode(true);
-    clone.id = id;
-    el.parentNode.replaceChild(clone, el);
-  }
-  setInterval(restart, interval || 5000);
-}
-window.addEventListener('load', function() {
-  loopLogo('navLogoImg',    5000);
-  loopLogo('chartEmptyLogo', 5000);
-  loopLogo('rEmptyLogo',    5000);
-});
-</script>
+<!-- logo loops natively via SVG CSS animations -->
 </body>
 </html>
