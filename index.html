@@ -709,7 +709,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
         <div style="position:relative;border-right:1px solid var(--border2)">
           <!-- Chart toolbar -->
           <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap">
-            <input type="text" id="pairIn" placeholder="BTCUSDT, ETHUSDT…" oninput="onPairInput(this.value)"
+            <input type="text" id="pairIn" placeholder="BTC/USDT…" oninput="onPairInput(this.value)"
               style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:110px;outline:none;letter-spacing:.04em">
             <select id="tfIn" onchange="onTfChange()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
               <option value="4h" selected>H4</option>
@@ -806,9 +806,9 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
                 <button onclick="quickLoad('BTCUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BTC/USDT</button>
                 <button onclick="quickLoad('ETHUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">ETH/USDT</button>
-                <button onclick="quickLoad('SOLUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SOL/USDT</button>
                 <button onclick="quickLoad('BNBUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BNB/USDT</button>
                 <button onclick="quickLoad('XRPUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">XRP/USDT</button>
+                <button onclick="quickLoad('SOLUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SOL/USDT</button>
               </div>
             </div>
           </div>
@@ -2892,13 +2892,9 @@ async function refreshSession(){
   if(!sb || !sbReady) return;
   var { data } = await sb.auth.getSession();
   if(!data.session){
-    /* Supabase session missing — check if we have a stored token */
     var storedToken = localStorage.getItem('fractal_token');
     var storedUser  = JSON.parse(localStorage.getItem('fractal_user') || 'null');
-    if(!storedToken || !storedUser){
-      showLoggedOut(); currentUser = null;
-    }
-    /* If we have a stored token, keep showing logged in — session will refresh on next action */
+    if(!storedToken || !storedUser){ showLoggedOut(); currentUser=null; }
     return;
   }
   currentUser = data.session.user;
@@ -3466,8 +3462,6 @@ function loadChart(symbol,interval){
   if(chartSSE){chartSSE.close();chartSSE=null;}
   chartCandles=[];
   resizeCanvas();
-  /* Start live price polling immediately */
-  startPricePolling(sym);
   if(chartCtx){
     chartCtx.fillStyle=C.bg;chartCtx.fillRect(0,0,chartCanvas.width,chartCanvas.height);
     chartCtx.fillStyle='rgba(201,168,76,.4)';chartCtx.font='11px DM Mono';chartCtx.textAlign='center';
@@ -3488,46 +3482,373 @@ function loadChart(symbol,interval){
         lwChartInstance=true;
         var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
       } else {
-        fetchBinanceFallback(sym,currentInterval);
+        if(isForexSymbol(sym)) fetchTwelveDataFallback(sym,currentInterval);
+        else fetchBinanceFallback(sym,currentInterval);
       }
     }).catch(function(){
-      fetchBinanceFallback(sym,currentInterval);
+      if(isForexSymbol(sym)) fetchTwelveDataFallback(sym,currentInterval);
+      else fetchBinanceFallback(sym,currentInterval);
     });
 
-  function openSSE(symbol) {
-    if(chartSSE){ try{chartSSE.close();}catch(e){} chartSSE=null; }
-    var es = new EventSource(BACKEND_URL+'/subscribe/'+symbol);
-    chartSSE = es;
-    es.onmessage = function(e){
-      try{
-        var data=JSON.parse(e.data);
-        if(data.status==='loading'){ showChartMsg('Loading '+symbol+'\u2026'); return; }
-        if(!data.candles||!data.candles[currentInterval]) return;
-        if(symbol!==currentSymbol) return;
-        chartCandles=data.candles[currentInterval];
-        if(!allCandleData[symbol]) allCandleData[symbol]={};
-        allCandleData[symbol]=data.candles;
-        renderChart();
-        var last=chartCandles[chartCandles.length-1];
-        var prev=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last.o;
-        showLivePrice({symbol:symbol,price:last.c,change_24h:((last.c-prev)/prev*100).toFixed(3),trend_24h:last.c>=prev?'up':'dn'});
-        lwChartInstance=true;
-        var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
-      }catch(err){}
-    };
-    es.onerror = function(){
-      console.warn('[SSE] dropped for',symbol,'— reconnecting in 3s');
-      es.close();
-      /* Only reconnect if still on same symbol */
-      if(symbol===currentSymbol){
-        setTimeout(function(){ if(symbol===currentSymbol) openSSE(symbol); }, 3000);
-      }
-    };
-  }
-  openSSE(sym);
+  chartSSE=new EventSource(BACKEND_URL+'/subscribe/'+sym);
+  chartSSE.onmessage=function(e){
+    try{
+      var data=JSON.parse(e.data);
+      /* Loading status — Railway is fetching, show message */
+      if(data.status==='loading'){ showChartMsg('Loading '+sym+'\u2026\nRailway fetching from TwelveData'); return; }
+      if(!data.candles||!data.candles[currentInterval])return;
+      if(sym!==currentSymbol)return;
+      chartCandles=data.candles[currentInterval];
+      if(!allCandleData[sym])allCandleData[sym]={};
+      allCandleData[sym]=data.candles;
+      renderChart();
+      var last=chartCandles[chartCandles.length-1];
+      var prev=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last.o;
+      showLivePrice({symbol:sym,price:last.c,change_24h:((last.c-prev)/prev*100).toFixed(3),trend_24h:last.c>=prev?'up':'dn'});
+      lwChartInstance=true;
+      var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
+    }catch(err){}
+  };
+  chartSSE.onerror=function(){console.warn('[SSE] error for',sym);};
+
+  fetch(BACKEND_URL+'/price/'+sym)
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.price&&sym===currentSymbol)
+        showLivePrice({symbol:sym,price:d.price,change_24h:d.change_pct,trend_24h:parseFloat(d.change_pct||0)>=0?'up':'dn'});
+    })
+    .catch(function(){ if(isForexSymbol(sym)) fetchTwelveDataPrice(sym); });
 }
 
-/* isForexSymbol removed */
+function isForexSymbol(sym){
+  var s=sym.toUpperCase();
+  return FOREX_FULL.includes(s)||s.startsWith('XAU')||s.startsWith('XAG')||
+    (s.length===6&&['USD','EUR','GBP','JPY','AUD','CAD','CHF','NZD'].some(function(q){return s.endsWith(q);}));
+}
+
+function fetchTwelveDataFallback(sym, tf) {
+  /* TwelveData blocks browser requests (CORS) — retry Railway instead */
+  /* Railway fetches on demand and will have data within ~3s */
+  showChartMsg('Loading '+sym+'\nFetching from TwelveData via Railway\u2026');
+  var attempts = 0;
+  var retryTimer = setInterval(function(){
+    attempts++;
+    fetch(BACKEND_URL+'/candles/'+sym+'?tf='+tf)
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.candles && d.candles.length > 0){
+          clearInterval(retryTimer);
+          chartCandles = d.candles;
+          if(!allCandleData[sym]) allCandleData[sym]={};
+          allCandleData[sym][tf] = d.candles;
+          renderChart(); detectCrossovers(d.candles);
+          lwChartInstance = true;
+          var btn=document.getElementById('azBtn'); if(btn) btn.disabled=false;
+          if(sym===currentSymbol){
+            var last=d.candles[d.candles.length-1], prev=d.candles.length>1?d.candles[d.candles.length-2].c:last.o;
+            showLivePrice({symbol:sym,price:last.c,change_24h:((last.c-prev)/prev*100).toFixed(3),trend_24h:last.c>=prev?'up':'dn'});
+          }
+        } else if(attempts >= 6){
+          clearInterval(retryTimer);
+          showChartMsg('Could not load '+sym+'.\nCheck TWELVEDATA_API_KEY in Railway.');
+        }
+      })
+      .catch(function(){
+        if(attempts >= 6){ clearInterval(retryTimer); showChartMsg('Railway connection failed.'); }
+      });
+  }, 1500);
+}
+
+function fetchTwelveDataPrice(sym){
+  /* Use Railway /price endpoint which has the latest tick */
+  fetch(BACKEND_URL+'/price/'+sym)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.price && sym===currentSymbol)
+        showLivePrice({symbol:sym, price:d.price, change_24h:d.change_pct||'0', trend_24h:parseFloat(d.change_pct||0)>=0?'up':'dn'});
+    }).catch(function(){});
+}
+
+function showChartMsg(msg){
+  if(!chartCtx||!chartCanvas)return;
+  chartCtx.fillStyle=C.bg;chartCtx.fillRect(0,0,chartCanvas.width,chartCanvas.height);
+  chartCtx.fillStyle='rgba(201,168,76,.5)';chartCtx.font='11px DM Mono';chartCtx.textAlign='center';
+  var lines=msg.split('\n'),cy=chartCanvas.height/2-(lines.length-1)*12;
+  lines.forEach(function(l,i){chartCtx.fillText(l,chartCanvas.width/2,cy+i*22);});
+}
+
+function fetchBinanceFallback(sym, tf) {
+  /* Map tf to Binance interval */
+  var ivMap = {'1m':'1m','5m':'5m','15m':'15m','1h':'1h','4h':'4h','1d':'1d'};
+  var iv = ivMap[tf] || '4h';
+  fetch('https://api.binance.com/api/v3/klines?symbol='+sym+'&interval='+iv+'&limit=500')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(!Array.isArray(data)||data.length<2) return;
+      var candles = data.map(function(c){
+        return { t:c[0], o:parseFloat(c[1]), h:parseFloat(c[2]), l:parseFloat(c[3]), c:parseFloat(c[4]), v:parseFloat(c[5]) };
+      });
+      chartCandles = candles;
+      if(!allCandleData[sym]) allCandleData[sym]={};
+      allCandleData[sym][tf] = candles;
+      renderChart();
+      detectCrossovers(candles);
+      lwChartInstance = true;
+      var btn = document.getElementById('azBtn'); if(btn) btn.disabled=false;
+      /* Show source label */
+      if(chartCtx){
+        chartCtx.fillStyle='rgba(201,168,76,0.4)';
+        chartCtx.font='8px DM Mono'; chartCtx.textAlign='left';
+        chartCtx.fillText('Binance direct',10,12);
+      }
+    })
+    .catch(function(e){ console.warn('[Binance fallback] failed for',sym,e.message); });
+}
+
+
+function onTfChange(){
+  var tf=document.getElementById('tfIn');
+  if(!tf||!currentSymbol)return;
+  currentInterval=tf.value;
+  if(allCandleData[currentSymbol]&&allCandleData[currentSymbol][currentInterval]&&allCandleData[currentSymbol][currentInterval].length>0){
+    chartCandles=allCandleData[currentSymbol][currentInterval];
+    renderChart();detectCrossovers(chartCandles);return;
+  }
+  fetch(BACKEND_URL+'/candles/'+currentSymbol+'?tf='+currentInterval)
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.candles&&d.candles.length>0){
+        chartCandles=d.candles;
+        if(!allCandleData[currentSymbol])allCandleData[currentSymbol]={};
+        allCandleData[currentSymbol][currentInterval]=d.candles;
+        renderChart();detectCrossovers(d.candles);
+      } else { fetchBinanceFallback(currentSymbol,currentInterval); }
+    }).catch(function(){ fetchBinanceFallback(currentSymbol,currentInterval); });
+}
+
+function toggleSMA(period){
+  if(period===50){sma50On=!sma50On;var b=document.getElementById('sma50Btn');if(b)b.style.opacity=sma50On?'1':'0.35';}
+  else{sma200On=!sma200On;var b=document.getElementById('sma200Btn');if(b)b.style.opacity=sma200On?'1':'0.35';}
+  renderChart();
+}
+
+function yToPrice(y){
+  if(!chartCandles.length)return 0;
+  var mn=Math.min.apply(null,chartCandles.slice(-100).map(function(c){return c.l;}));
+  var mx=Math.max.apply(null,chartCandles.slice(-100).map(function(c){return c.h;}));
+  return mx-y*(mx-mn);
+}
+
+function drawToolResultOnChart(toolId,result){
+  if(!chartCtx||!chartCandles.length)return;
+  renderChart();
+  var W=chartCanvas.width,H=chartCanvas.height;
+  var PAD={t:12,b:40,l:8,r:64,vol:45};
+  var CH=H-PAD.t-PAD.b-PAD.vol;
+  var mn=Math.min.apply(null,chartCandles.slice(-100).map(function(c){return c.l;}));
+  var mx=Math.max.apply(null,chartCandles.slice(-100).map(function(c){return c.h;}));
+  var rng=mx-mn||0.0001;mn-=rng*0.04;mx+=rng*0.04;rng=mx-mn;
+  function pyN(y){return PAD.t+CH-(1-y)*CH;}
+  if(toolId==='fib'&&result.retracements){
+    result.retracements.forEach(function(r){
+      var y=pyN(r.y);
+      chartCtx.strokeStyle=r.color||'#c9a84c';chartCtx.lineWidth=0.8;chartCtx.setLineDash([4,3]);
+      chartCtx.beginPath();chartCtx.moveTo(PAD.l,y);chartCtx.lineTo(W-PAD.r,y);chartCtx.stroke();chartCtx.setLineDash([]);
+      chartCtx.fillStyle=r.color||'#c9a84c';chartCtx.font='8px DM Mono';chartCtx.textAlign='right';
+      chartCtx.fillText(r.level+(r.price?' '+r.price:''),W-PAD.r-2,y-2);
+    });
+  }
+  if(toolId==='smc'){
+    if(result.order_blocks)result.order_blocks.forEach(function(ob){
+      var y1=pyN(ob.y1||0.5),y2=pyN(ob.y2||0.55);
+      chartCtx.fillStyle=ob.type==='bullish'?'rgba(39,174,96,0.12)':'rgba(239,83,80,0.12)';
+      chartCtx.fillRect(PAD.l,y1,W-PAD.l-PAD.r,y2-y1);
+      chartCtx.strokeStyle=ob.color||'#27ae60';chartCtx.lineWidth=0.8;
+      chartCtx.strokeRect(PAD.l,y1,W-PAD.l-PAD.r,y2-y1);
+    });
+    if(result.liquidity_pools)result.liquidity_pools.forEach(function(lp){
+      var y=pyN(lp.y||0.5);
+      chartCtx.strokeStyle=lp.color||'#c9a84c';chartCtx.lineWidth=1;chartCtx.setLineDash([6,3]);
+      chartCtx.beginPath();chartCtx.moveTo(PAD.l,y);chartCtx.lineTo(W-PAD.r,y);chartCtx.stroke();chartCtx.setLineDash([]);
+    });
+  }
+}
+
+var pairInputTimer=null;
+/* Resolve short input to full symbol */
+var FOREX_FULL = [];
+var CRYPTO_AUTO = {
+  'BTC':'BTCUSDT','ETH':'ETHUSDT','SOL':'SOLUSDT','BNB':'BNBUSDT',
+  'XRP':'XRPUSDT','ADA':'ADAUSDT','DOGE':'DOGEUSDT','AVAX':'AVAXUSDT',
+  'LINK':'LINKUSDT','DOT':'DOTUSDT','MATIC':'MATICUSDT','LTC':'LTCUSDT',
+  'UNI':'UNIUSDT','ATOM':'ATOMUSDT','NEAR':'NEARUSDT','APT':'APTUSDT'
+};
+/* Forex base currencies — 3-letter codes that are NOT crypto */
+var FOREX_BASES = ['EUR','GBP','USD','JPY','AUD','CAD','CHF','NZD','XAU','XAG'];
+
+function resolveSymbol(raw) {
+  var s = raw.toUpperCase().replace('/','').replace('-','').replace(' ','');
+  /* Already a full known forex pair */
+  if (FOREX_FULL.includes(s)) return s;
+  /* Known crypto shorthand */
+  if (CRYPTO_AUTO[s]) return CRYPTO_AUTO[s];
+  /* 6-char: check if it looks like a forex pair (base + quote both in FOREX_BASES) */
+  if (s.length === 6) {
+    var base  = s.slice(0,3);
+    var quote = s.slice(3,6);
+    if (FOREX_BASES.includes(base) && FOREX_BASES.includes(quote)) return s; /* forex */
+  }
+  /* Already has a crypto quote suffix */
+  var cryptoQuotes = ['USDT','USDC','BUSD','BTC','ETH','BNB'];
+  if (cryptoQuotes.some(function(q){ return s.endsWith(q) && s.length > q.length; })) return s;
+  /* XAU/XAG with USD */
+  if (s.startsWith('XAU') || s.startsWith('XAG')) return s.length===3 ? s+'USD' : s;
+  /* 3-letter forex base typed alone → append USD */
+  if (s.length === 3 && FOREX_BASES.includes(s) && s !== 'BTC' && s !== 'ETH' && s !== 'BNB') return s + 'USD';
+  /* Default for unknown short → try USDT */
+  if (s.length <= 5) return s + 'USDT';
+  return s;
+}
+
+function onPairInput(val){
+  clearTimeout(pairInputTimer);
+  var raw = val.trim();
+  if(raw.length < 2) return;
+  pairInputTimer = setTimeout(function(){
+    var sym = resolveSymbol(raw);
+    /* Update input to show resolved symbol */
+    var inp = document.getElementById('pairIn');
+    if(inp && sym !== raw.toUpperCase().replace('/','').replace('-','')) inp.value = sym;
+    loadChart(sym, document.getElementById('tfIn') ? document.getElementById('tfIn').value : '4h');
+  }, 600);
+}
+
+function quickLoad(symbol){
+  var p=document.getElementById('pairIn'); if(p) p.value=symbol;
+  loadChart(symbol, document.getElementById('tfIn') ? document.getElementById('tfIn').value : '4h');
+}
+
+function showLivePrice(d){
+  var bar=document.getElementById('livePriceBar'),val=document.getElementById('livePriceVal');
+  var chg=document.getElementById('livePriceChange'),meta=document.getElementById('livePriceMeta');
+  if(!bar||!val)return;
+  bar.classList.add('show');
+  val.textContent=formatPrice(parseFloat(d.price));
+  val.style.color=parseFloat(d.change_24h||0)>=0?'#27ae60':'#ef5350';
+  if(chg){chg.textContent=(parseFloat(d.change_24h||0)>=0?'+':'')+parseFloat(d.change_24h||0).toFixed(3)+'%';chg.style.color=val.style.color;}
+  if(meta)meta.textContent='LIVE · '+d.symbol;
+}
+function hideLivePrice(){var b=document.getElementById('livePriceBar');if(b)b.classList.remove('show');}
+
+function showCapturePrompt(){
+  var overlay=document.getElementById('capturePrompt');
+  if(overlay){overlay.style.display='flex';return;}
+  overlay=document.createElement('div');
+  overlay.id='capturePrompt';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(6,8,13,.92);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;padding:32px';
+  overlay.innerHTML='<div style="font-family:Cinzel,serif;font-size:16px;color:#f0f4fa;letter-spacing:.08em">No chart loaded</div>'
+    +'<div style="font-size:13px;color:#8a95a8;text-align:center;max-width:360px;line-height:1.6">Type a pair to load a live chart, or upload a screenshot.</div>'
+    +'<div style="display:flex;gap:12px"><label style="font-family:DM Mono,monospace;font-size:11px;padding:10px 20px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);color:#c9a84c;cursor:pointer">📁 UPLOAD<input type="file" accept="image/*" style="display:none" onchange="handleCaptureUpload(this)"></label>'
+    +'<button onclick="closeCapturePrompt()" style="font-family:DM Mono,monospace;font-size:11px;padding:10px 20px;background:transparent;border:1px solid rgba(138,149,168,.3);color:#8a95a8;cursor:pointer">CANCEL</button></div>';
+  document.body.appendChild(overlay);
+}
+function closeCapturePrompt(){var o=document.getElementById('capturePrompt');if(o)o.style.display='none';window._pendingTool=null;}
+function runPendingTool(){if(window._pendingTool){var t=window._pendingTool;window._pendingTool=null;if(dataUrl)executeTool(t,dataUrl);}}
+function handleCaptureUpload(input){
+  if(!input.files||!input.files[0])return;
+  var r=new FileReader();
+  r.onload=function(e){dataUrl=e.target.result;var o=document.getElementById('capturePrompt');if(o)o.style.display='none';runPendingTool();};
+  r.readAsDataURL(input.files[0]);
+}
+
+function executeTool(tool,imgData){
+  var btn=document.getElementById('tbtn-'+tool.id);
+  if(!imgData){showErr('Load a chart first');if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">'+tool.cost+' cr</span>';return;}
+  dataUrl=imgData;
+  if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c">running…</span>';
+  var pair=currentSymbol||(document.getElementById('pairIn')||{}).value||'';
+  var token=localStorage.getItem('fractal_token');
+  var langVal=localStorage.getItem('fractal_lang')||'en';
+  var b64=imgData.split(',')[1], mType=imgData.split(';')[0].split(':')[1];
+  callBackend(tool.endpoint,{image:b64,mediaType:mType,pair:pair,timeframe:currentInterval,language:langVal,_token:token,sma_context:smaContextStr})
+  .then(function(result){
+    if(result&&result.error){showErr(result.error);return;}
+    drawToolResultOnChart(tool.id,result);
+    if(tool.id==='fib'&&typeof renderFibonacci==='function')renderFibonacci(result);
+    else if(tool.id==='smc'&&typeof renderSMC==='function')renderSMC(result);
+    else if(tool.id==='proj'&&typeof renderProjection==='function')renderProjection(result);
+    else if(tool.id==='vol'&&typeof renderVolatility==='function')renderVolatility(result);
+    else if(tool.id==='mtf'&&typeof renderMTF==='function')renderMTF(result);
+    else if(tool.id==='age'&&typeof renderFractalAge==='function')renderFractalAge(result);
+    else if(tool.id==='liq'&&typeof renderLiquidity==='function')renderLiquidity(result);
+    else if(tool.id==='journal'&&typeof renderJournal==='function')renderJournal(result);
+    var ud=document.getElementById('uniDash');if(ud)ud.style.display='flex';
+    var re=document.getElementById('rEmpty2');if(re)re.style.display='none';
+    if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#27ae60">✓ done</span>';
+  })
+  .catch(function(e){
+    showErr(tool.label+' failed: '+e.message);
+    if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">'+tool.cost+' cr</span>';
+  });
+}
+
+function runSingleTool(tool){
+  var img=captureForTool();
+  if(!img){showErr('Load a chart first — type a pair or upload a screenshot.');return;}
+  executeTool(tool,img);
+}
+
+
+function buildDropdown(symbols) {
+  removeDropdown();
+  var inp = document.getElementById('pairIn');
+  if (!inp) return;
+  inp.parentNode.style.position = 'relative';
+  var dd = document.createElement('div');
+  dd.id = 'pairDD';
+  dd.style.cssText = 'position:absolute;top:100%;left:0;min-width:180px;z-index:9999;background:#131720;border:1px solid rgba(201,168,76,.3);border-top:none;max-height:240px;overflow-y:auto;box-shadow:0 12px 32px rgba(0,0,0,.6)';
+  symbols.forEach(function(sym){
+    var row = document.createElement('div');
+    row.textContent = sym;
+    row.style.cssText = 'padding:7px 12px;font-family:DM Mono,monospace;font-size:11px;color:#dde4ee;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04)';
+    row.onmouseover = function(){ this.style.background='rgba(201,168,76,.1)'; this.style.color='#c9a84c'; };
+    row.onmouseout  = function(){ this.style.background=''; this.style.color='#dde4ee'; };
+    row.onmousedown = function(e){
+      e.preventDefault();
+      inp.value = sym;
+      removeDropdown();
+      loadChart(sym, document.getElementById('tfIn') ? document.getElementById('tfIn').value || '4h' : '4h');
+    };
+    dd.appendChild(row);
+  });
+  inp.parentNode.appendChild(dd);
+}
+
+function removeDropdown() { var d = document.getElementById('pairDD'); if(d) d.remove(); }
+document.addEventListener('click', function(e){ if(e.target && e.target.id !== 'pairIn') removeDropdown(); });
+
+/* init on load */
+window.addEventListener('load', function(){
+  setTimeout(function(){ drawMW(); }, 100);
+  buildToolGrid();
+  resizeCanvas();
+});
+window.addEventListener('resize', function(){
+  if(document.getElementById('smp0').classList.contains('active')) drawMW();
+  if(document.getElementById('smp1').classList.contains('active')) drawMTS();
+  if(document.getElementById('smp2').classList.contains('active')) drawMF();
+});
+
 </script>
+
+<!-- No credits gate -->
+<div class="no-credits-gate" id="noCreditsGate">
+  <div style="font-size:32px">◈</div>
+  <h2>Out of Credits</h2>
+  <p>You've used all your credits. Purchase a credit pack to continue running fractal analyses.</p>
+  <a href="#pricing" class="btn-g" onclick="document.getElementById('noCreditsGate').classList.remove('show')">View Credit Packs</a>
+  <button onclick="document.getElementById('noCreditsGate').classList.remove('show')" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;margin-top:4px">Dismiss</button>
+</div>
+
 </body>
 </html>
