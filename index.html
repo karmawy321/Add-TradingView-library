@@ -422,6 +422,12 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   .levels{grid-template-columns:1fr 1fr}
   #analyzer{padding:60px 20px}
 }
+/* ── Hide TradingView watermark ── */
+#tv_chart_container iframe { border:none; }
+#tv_chart_container .tv-watermark,
+#tv_chart_container [class*="watermark"],
+#tv_chart_container [class*="trademark"],
+#tv_chart_container [class*="logo"] { display:none!important; opacity:0!important; pointer-events:none!important; }
 </style>
 </head>
 <body>
@@ -3813,9 +3819,27 @@ function executeTool(tool,imgData){
 }
 
 function runSingleTool(tool){
-  var img=captureForTool();
-  if(!img){showErr('Load a chart first — type a pair or upload a screenshot.');return;}
-  executeTool(tool,img);
+  /* If TV widget is active, capture screenshot first then run tool */
+  if(tvWidget && tvReady){
+    /* Show loading state immediately */
+    var btn = document.getElementById('tbtn-'+tool.id);
+    if(btn) btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">capturing…</span>';
+    tvWidget.takeClientScreenshot().then(function(canvas){
+      var img = canvas.toDataURL('image/png');
+      dataUrl = img; /* cache it */
+      executeTool(tool, img);
+    }).catch(function(e){
+      /* Fallback to cached dataUrl */
+      if(dataUrl){ executeTool(tool, dataUrl); return; }
+      showErr('Screenshot failed: '+e.message);
+      if(btn) btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">'+tool.cost+' cr</span>';
+    });
+    return;
+  }
+  /* Canvas fallback */
+  var img = captureForTool();
+  if(!img){ showErr('Load a chart first — type a pair or upload a screenshot.'); return; }
+  executeTool(tool, img);
 }
 
 
@@ -3974,23 +3998,36 @@ function initTVChart(symbol, tf) {
 /* ── Override captureChart to use TV screenshot ── */
 function captureChart() {
   if(dataUrl){ runPendingTool(); return; }
-  /* Use TV screenshot if available */
   if(tvWidget && tvReady){
     tvWidget.takeClientScreenshot().then(function(canvas){
       dataUrl = canvas.toDataURL('image/png');
       runPendingTool();
     }).catch(function(){
-      /* Fallback to canvas if TV screenshot fails */
       var cv = document.getElementById('chartCanvas');
-      if(cv) dataUrl = cv.toDataURL('image/png');
+      if(cv && chartCandles && chartCandles.length > 0) dataUrl = cv.toDataURL('image/png');
       runPendingTool();
     });
     return;
   }
-  /* Fallback canvas */
   var cv = document.getElementById('chartCanvas');
   if(cv && chartCandles && chartCandles.length > 0){ dataUrl = cv.toDataURL('image/png'); runPendingTool(); return; }
   showCapturePrompt();
+}
+
+/* ── captureAndStore async ── */
+function captureAndStore(callback) {
+  if(tvWidget && tvReady){
+    tvWidget.takeClientScreenshot().then(function(canvas){
+      dataUrl = canvas.toDataURL('image/png');
+      if(callback) callback(dataUrl);
+    }).catch(function(){});
+    return;
+  }
+  var cv = document.getElementById('chartCanvas');
+  if(cv && chartCandles && chartCandles.length > 0){
+    dataUrl = cv.toDataURL('image/png');
+    if(callback) callback(dataUrl);
+  }
 }
 
 function captureAndStore() {
