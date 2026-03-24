@@ -17,8 +17,36 @@ async function verifyAndDeduct(token, cost) {
   if (!token)   throw new Error('Not authenticated');
   const { data: { user }, error } = await sbAdmin.auth.getUser(token);
   if (error || !user) throw new Error('Invalid token');
+
+  /* Ensure profile row exists — new users may not have one yet */
+  const { data: profile } = await sbAdmin
+    .from('profiles')
+    .select('credits')
+    .eq('id', user.id)
+    .single();
+
+  if (!profile) {
+    /* Create profile with 50 starter credits */
+    await sbAdmin.from('profiles').insert({
+      id: user.id,
+      credits: 50,
+      username: user.email.split('@')[0]
+    });
+  } else if (profile.credits === null || profile.credits === undefined) {
+    /* Fix null credits */
+    await sbAdmin.from('profiles').update({ credits: 50 }).eq('id', user.id);
+  } else if (profile.credits < cost) {
+    throw new Error('Insufficient credits');
+  }
+
+  /* Deduct credits */
   const { error: deductErr } = await sbAdmin.rpc('deduct_credits', { user_id: user.id, amount: cost });
-  if (deductErr) throw new Error('Insufficient credits');
+  if (deductErr) {
+    /* Fallback: manual deduct if RPC fails */
+    const current = profile ? (profile.credits || 50) : 50;
+    if (current < cost) throw new Error('Insufficient credits');
+    await sbAdmin.from('profiles').update({ credits: current - cost }).eq('id', user.id);
+  }
   return { userId: user.id };
 }
 

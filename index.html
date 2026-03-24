@@ -2972,7 +2972,8 @@ async function refreshSession(){
   /* Fetch balance + username from Supabase */
   var { data: profile } = await sb.from('profiles').select('credits, username, display_name').eq('id', currentUser.id).single();
   if(profile){
-    creditBalance = profile.credits;
+    /* Guard: null/undefined credits = new user, treat as 50 */
+    creditBalance = (profile.credits !== null && profile.credits !== undefined) ? profile.credits : 50;
     localStorage.setItem('fractal_credits', creditBalance);
     var displayName = profile.username || profile.display_name || currentUser.email.split('@')[0];
     localStorage.setItem('fractal_username', displayName);
@@ -3023,7 +3024,8 @@ function checkCredits(toolKey){
     return false;
   }
   var cost = TOOL_COSTS[toolKey] || 3;
-  if(creditBalance < cost){
+  /* creditBalance may still be loading (null) — treat as sufficient and let server decide */
+  if(creditBalance !== null && creditBalance !== undefined && creditBalance < cost){
     document.getElementById('noCreditsGate').classList.add('show');
     return false;
   }
