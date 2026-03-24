@@ -281,17 +281,25 @@ app.use('/charting_library', express.static(path.join(__dirname, 'charting_libra
 
 /* ── Serve SVG and image files explicitly ── */
 app.get('/logo.svg',    (req, res) => {
-  const p = path.resolve(__dirname, 'logo.svg');
-  res.setHeader('Content-Type', 'image/svg+xml');
-  res.sendFile(p, err => { if(err) res.status(500).json({ error: err.message, path: p, cwd: __dirname }); });
+  fs.readFile(path.resolve(__dirname, 'logo.svg'), (err, data) => {
+    if (err) return res.status(500).json({ error: err.message, cwd: __dirname });
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.send(data);
+  });
 });
 app.get('/favicon.svg', (req, res) => {
-  res.setHeader('Content-Type', 'image/svg+xml');
-  res.sendFile(path.resolve(__dirname, 'favicon.svg'), err => { if(err) res.status(500).json({ error: err.message }); });
+  fs.readFile(path.resolve(__dirname, 'favicon.svg'), (err, data) => {
+    if (err) return res.status(404).end();
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.send(data);
+  });
 });
 app.get('/favicon.ico', (req, res) => {
-  res.setHeader('Content-Type', 'image/svg+xml');
-  res.sendFile(path.resolve(__dirname, 'favicon.svg'), err => { if(err) res.status(500).json({ error: err.message }); });
+  fs.readFile(path.resolve(__dirname, 'favicon.svg'), (err, data) => {
+    if (err) return res.status(404).end();
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.send(data);
+  });
 });
 
 /* ── Serve HTML pages ── */
