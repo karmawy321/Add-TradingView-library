@@ -205,16 +205,15 @@ app.use('/charting_library', express.static(path.join(__dirname, 'charting_libra
   maxAge: '1d',
   setHeaders: (res) => res.setHeader('Access-Control-Allow-Origin', '*')
 }));
-app.use('/assets', express.static(path.join(__dirname, 'assets'), { maxAge: '1d' }));
 
-/* ── Serve root-level static files (logo.svg, favicon.svg, etc) ── */
-['logo.svg', 'favicon.svg', 'favicon.ico'].forEach(file => {
-  app.get('/' + file, (req, res) => {
-    const p = path.join(__dirname, file);
-    if (fs.existsSync(p)) res.sendFile(p);
-    else res.status(404).send('Not found');
-  });
-});
+/* ── Serve SVG, ICO, PNG files from root directory ── */
+app.use(express.static(__dirname, {
+  index: false, /* don't serve index.html automatically — we handle that */
+  extensions: ['svg', 'ico', 'png', 'webp', 'jpg'],
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.svg')) res.setHeader('Content-Type', 'image/svg+xml');
+  }
+}));
 
 /* ── Serve HTML pages ── */
 function sendPage(file, res) {
