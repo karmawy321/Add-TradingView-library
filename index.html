@@ -125,10 +125,6 @@
 .nd-wrap{display:flex;flex-direction:column;gap:0;border-top:1px solid rgba(255,255,255,.06)}
 /* Main chart row */
 .nd-main{display:grid;grid-template-columns:1fr 320px;min-height:360px;border-bottom:1px solid rgba(255,255,255,.06)}
-@media(max-width:768px){
-  .nd-main{grid-template-columns:1fr !important;}
-  .nd-side{border-left:none !important;border-top:1px solid rgba(255,255,255,.06);}
-}
 .nd-chart-area{position:relative;background:var(--dark);display:flex;flex-direction:column}
 .nd-chart-top{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.05);background:var(--dark3)}
 .nd-tabs{display:flex;gap:1px}
@@ -425,104 +421,6 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   .divider{padding:0 20px}
   .levels{grid-template-columns:1fr 1fr}
   #analyzer{padding:60px 20px}
-
-  /* ── Analyzer panel — stack chart over tools ── */
-  .nd-main{
-    grid-template-columns: 1fr !important;
-    grid-template-rows: auto auto;
-  }
-  /* Chart full width, fixed height for phone */
-  #tv_chart_container{
-    height: calc(100vw * 0.65) !important;
-    min-height: 260px !important;
-    max-height: 380px !important;
-  }
-  /* Wrapper also needs height */
-  #tv_chart_container + canvas,
-  #tv_chart_container ~ * { }
-  /* Right panel below chart — full width */
-  .nd-side{
-    width: 100% !important;
-    max-width: 100% !important;
-    border-left: none !important;
-    border-top: 1px solid rgba(255,255,255,.06) !important;
-  }
-  /* Chart toolbar wraps */
-  .nd-chart-top{
-    flex-wrap: wrap !important;
-    gap: 6px !important;
-    padding: 6px 8px !important;
-  }
-  /* Snapshot + Run buttons full width stacked */
-  #snapBtn, #azBtn{
-    font-size: 11px !important;
-  }
-  /* Tool grid scrollable */
-  #toolGrid{
-    max-height: 280px;
-    overflow-y: auto;
-  }
-  /* Hero grid — stack */
-  .hero-in{
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 24px !important;
-  }
-  /* Metrics 2 cols */
-  .nd-metrics{
-    grid-template-columns: 1fr 1fr !important;
-  }
-  .res-4col{grid-template-columns:1fr 1fr !important}
-  .res-3col{grid-template-columns:1fr 1fr !important}
-  /* Toolbar pair input full width */
-  #pairIn{ width: 100% !important; }
-  /* Padding adjustments */
-  #analyzer{ padding: 20px 0 !important; }
-  .az-wrap{ padding: 0 !important; }
-}
-/* ── Hide TradingView watermark ── */
-#tv_chart_container iframe { border:none; }
-#tv_chart_container .tv-watermark,
-#tv_chart_container [class*="watermark"],
-#tv_chart_container [class*="trademark"],
-#tv_chart_container [class*="logo"] { display:none!important; opacity:0!important; pointer-events:none!important; }
-
-/* ── Mobile chart layout — stack chart over tools ── */
-@media(max-width:768px){
-  /* Main chart+tools panel: single column */
-  #chartToolsPanel{
-    grid-template-columns: 1fr !important;
-    min-height: unset !important;
-  }
-  /* Left chart column: full width */
-  #chartToolsPanel > div:first-child{
-    border-right: none !important;
-    border-bottom: 1px solid rgba(255,255,255,.06) !important;
-  }
-  /* TV chart: proportional height */
-  #tv_chart_container{
-    height: 56vw !important;
-    min-height: 240px !important;
-    max-height: 360px !important;
-  }
-  /* Right tools panel: full width, reasonable height */
-  #chartToolsPanel > div:last-child{
-    width: 100% !important;
-    max-height: 420px !important;
-    overflow-y: auto !important;
-  }
-  /* Toolbar: wrap and compress */
-  #chartToolsPanel input, #chartToolsPanel select{
-    font-size: 12px !important;
-  }
-  #pairIn{ width: 90px !important; }
-  /* Snapshot + Run buttons */
-  #snapBtn, #azBtn{
-    padding: 8px !important;
-    font-size: 11px !important;
-  }
-  /* Tool grid */
-  #toolGrid{ max-height: 200px; overflow-y: auto; }
 }
 </style>
 </head>
@@ -530,55 +428,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
 <nav id="nav">
   <a href="#" class="logo">
-    <svg width="30" height="30" viewBox="0 0 208 208" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;display:block">
-      <defs>
-        <linearGradient id="mcg" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#9a7a2e"/>
-          <stop offset="45%" stop-color="#c9a84c"/>
-          <stop offset="100%" stop-color="#f0d878"/>
-        </linearGradient>
-        <linearGradient id="mcf" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#c9a84c" stop-opacity="0.22"/>
-          <stop offset="100%" stop-color="#c9a84c" stop-opacity="0.0"/>
-        </linearGradient>
-        <linearGradient id="mbg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#141820"/>
-          <stop offset="100%" stop-color="#0a0c12"/>
-        </linearGradient>
-        <linearGradient id="mng" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#1e2330"/>
-          <stop offset="100%" stop-color="#0d1018"/>
-        </linearGradient>
-      </defs>
-      <rect width="208" height="208" rx="32" fill="url(#mbg)"/>
-      <rect width="208" height="208" rx="32" fill="none" stroke="rgba(201,168,76,.2)" stroke-width="3"/>
-      <rect x="38" y="38" width="132" height="132" rx="6" fill="rgba(201,168,76,.035)" stroke="rgba(201,168,76,.18)" stroke-width="3"/>
-      <line x1="38" y1="104" x2="170" y2="104" stroke="rgba(201,168,76,.06)" stroke-width="2"/>
-      <line x1="104" y1="38" x2="104" y2="170" stroke="rgba(201,168,76,.06)" stroke-width="2"/>
-      <polygon points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86 166,166 44,166" fill="url(#mcf)"/>
-      <polyline points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86" fill="none" stroke="url(#mcg)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-      <line x1="38" y1="38"   x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
-      <line x1="170" y1="38"  x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
-      <line x1="38" y1="170"  x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
-      <line x1="170" y1="170" x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="5" stroke-linecap="round"/>
-      <circle cx="38" cy="38"   r="22" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.15)" stroke-width="2.5"/>
-      <circle cx="170" cy="38"  r="22" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.15)" stroke-width="2.5"/>
-      <circle cx="38" cy="170"  r="22" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.15)" stroke-width="2.5"/>
-      <circle cx="170" cy="170" r="22" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.15)" stroke-width="2.5"/>
-      <circle cx="38" cy="38"   r="16" fill="url(#mng)" stroke="#c9a84c" stroke-width="5"/>
-      <circle cx="170" cy="38"  r="16" fill="url(#mng)" stroke="#c9a84c" stroke-width="5"/>
-      <circle cx="38" cy="170"  r="16" fill="url(#mng)" stroke="#c9a84c" stroke-width="5"/>
-      <circle cx="170" cy="170" r="16" fill="url(#mng)" stroke="#c9a84c" stroke-width="5"/>
-      <circle cx="38" cy="38"   r="7" fill="#c9a84c"/>
-      <circle cx="170" cy="38"  r="7" fill="#c9a84c"/>
-      <circle cx="38" cy="170"  r="7" fill="#c9a84c"/>
-      <circle cx="170" cy="170" r="7" fill="#c9a84c"/>
-      <circle cx="104" cy="104" r="17" fill="rgba(201,168,76,.06)" stroke="rgba(201,168,76,.2)" stroke-width="2.5"/>
-      <circle cx="104" cy="104" r="11" fill="url(#mng)" stroke="#c9a84c" stroke-width="4.5"/>
-      <line x1="94"  y1="104" x2="114" y2="104" stroke="#c9a84c" stroke-width="3" stroke-linecap="round"/>
-      <line x1="104" y1="94"  x2="104" y2="114" stroke="#c9a84c" stroke-width="3" stroke-linecap="round"/>
-      <circle cx="104" cy="104" r="4" fill="#e8c97a"/>
-    </svg>
+    <img src="/logo-animated.svg" width="30" height="30" alt="Fractal AI Agent" style="flex-shrink:0;display:block">
     <span id="t-brand">Fractal AI Agent</span>
   </a>
   <ul class="nav-links">
@@ -614,7 +464,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 <section class="hero" id="home">
   <canvas id="hc"></canvas>
   <div class="hero-in" style="display:grid;grid-template-columns:200px 1fr;align-items:start;gap:64px;text-align:left;max-width:1100px;width:100%">
-<div style="opacity:0.9;padding-top:8px"><img src="logo.svg" width="200" height="200" alt="Fractal AI Agent" style="display:block;width:200px;height:200px"></div>
+<div style="opacity:0.9;padding-top:8px"><img src="/logo-animated.svg" width="200" height="200" alt="Fractal AI Agent" style="display:block;width:200px;height:200px"></div>
 <div>
     <p class="hero-eye" id="t-heye">Fractal Intelligence for Traders</p>
     <h1 id="t-h1">The Market Is a<br><em>Fractal.</em> Read It.</h1>
@@ -805,12 +655,12 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
       </div>
 
       <!-- ══ LIVE CHART PANEL ══ -->
-      <div id="chartToolsPanel" style="display:grid;grid-template-columns:1fr 260px;min-height:520px;border-bottom:1px solid var(--border2)">
+      <div style="display:grid;grid-template-columns:1fr 260px;min-height:520px;border-bottom:1px solid var(--border2)">
 
         <!-- LEFT: Lightweight Charts -->
         <div style="position:relative;border-right:1px solid var(--border2)">
-          <!-- Chart toolbar — always visible -->
-          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
+          <!-- Chart toolbar -->
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap">
             <input type="text" id="pairIn" placeholder="BTC/USDT…" oninput="onPairInput(this.value)"
               style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:110px;outline:none;letter-spacing:.04em">
             <select id="tfIn" onchange="onTfChange()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
@@ -820,7 +670,9 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               <option value="1h">H1</option><option value="1d">D1</option>
               <option value="1w">W1</option>
             </select>
-            <!-- SMA indicators loaded silently in background -->
+            <!-- SMA toggles -->
+            <button id="sma200Btn" onclick="toggleSMA(200)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(52,152,219,.15);border:1px solid rgba(52,152,219,.4);color:#3498db;cursor:pointer;letter-spacing:.06em">SMA 200</button>
+            <button id="sma50Btn"  onclick="toggleSMA(50)"  style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.4);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SMA 50</button>
             <!-- Upload fallback -->
             <label style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
               ↑ UPLOAD
@@ -837,44 +689,56 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
           </div>
 
           <!-- SMA crossover alert bar -->
-          <div id="smaAlertBar" style="display:none;padding:6px 14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;border-bottom:1px solid rgba(201,168,76,.2);position:relative;z-index:20"></div>
+          <div id="smaAlertBar" style="display:none;padding:6px 14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;border-bottom:1px solid rgba(201,168,76,.2)"></div>
 
-          <!-- TradingView Chart -->
-          <div style="position:relative;flex:1">
-            <div id="tv_chart_container" style="width:100%;height:500px"></div>
-            <!-- Hidden canvas kept for fallback compatibility -->
-            <canvas id="chartCanvas" style="display:none"></canvas>
+          <!-- Canvas chart — our own renderer -->
+          <div style="position:relative;flex:1;min-height:460px">
+            <canvas id="chartCanvas" style="display:block;width:100%;height:460px;cursor:crosshair"></canvas>
             <!-- Upload preview overlay -->
-            <div class="img-pv" id="imgPv" style="display:none;position:absolute;inset:0;z-index:100">
+            <div class="img-pv" id="imgPv" style="display:none;position:absolute;inset:0">
               <img id="prevImg" src="" alt="" style="width:100%;height:100%;object-fit:contain">
               <button class="rm-x" id="rmX">✕</button>
             </div>
-            <!-- Welcome overlay — inside chart wrapper so it only covers the chart area -->
-            <div id="chartEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#06080d;z-index:10;overflow-y:auto">
-              <div style="text-align:center;max-width:380px;padding:24px">
-                <div style="font-family:'Cinzel',serif;font-size:16px;font-weight:600;color:#f0f4fa;letter-spacing:.08em;margin-bottom:8px">Begin Your Analysis</div>
-                <div style="font-family:'DM Mono',monospace;font-size:9px;color:rgba(201,168,76,.6);letter-spacing:.12em;margin-bottom:20px">FRACTAL INTELLIGENCE FOR TRADERS</div>
-                <div style="display:flex;flex-direction:column;gap:10px;text-align:left;margin-bottom:20px">
-                  <div style="display:flex;align-items:center;gap:10px">
-                    <div style="width:24px;height:24px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:10px;color:#c9a84c;font-weight:600">1</div>
-                    <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:#8a95a8">Type a symbol — <span style="color:#c9a84c">BTCUSDT</span>, <span style="color:#c9a84c">ETHUSDT</span></div>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:10px">
-                    <div style="width:24px;height:24px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:10px;color:#c9a84c;font-weight:600">2</div>
-                    <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:#8a95a8">Capture chart → run <span style="color:#c9a84c">AI tools</span></div>
-                  </div>
+            <!-- Crosshair price label -->
+            <div id="crosshairLabel" style="display:none;position:absolute;font-family:'DM Mono',monospace;font-size:9px;background:rgba(6,8,13,.9);border:1px solid rgba(201,168,76,.3);padding:2px 6px;color:#c9a84c;pointer-events:none;z-index:20"></div>
+          </div>
+
+          <!-- Welcome overlay — shown before any chart loads -->
+          <div id="chartEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#06080d;z-index:10">
+            <div style="text-align:center;max-width:420px;padding:40px">
+              <!-- Logo mark -->
+              <img src="/logo-animated.svg" width="80" height="80" style="margin:0 auto 24px;display:block">
+
+              <!-- Headline -->
+              <div style="font-family:'Cinzel',serif;font-size:18px;font-weight:600;color:#f0f4fa;letter-spacing:.08em;margin-bottom:8px">Begin Your Analysis</div>
+              <div style="font-family:'DM Mono',monospace;font-size:10px;color:rgba(201,168,76,.6);letter-spacing:.12em;margin-bottom:28px">FRACTAL INTELLIGENCE FOR TRADERS</div>
+
+              <!-- Instructions -->
+              <div style="display:flex;flex-direction:column;gap:12px;text-align:left;margin-bottom:28px">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="width:28px;height:28px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:600">1</div>
+                  <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:#8a95a8">Type a symbol above — <span style="color:#c9a84c">BTCUSDT</span>, <span style="color:#c9a84c">EURUSD</span>, <span style="color:#c9a84c">AAPL</span> — or search inside the chart</div>
                 </div>
-                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                  <button onclick="quickLoad('BTCUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BTC/USDT</button>
-                  <button onclick="quickLoad('ETHUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">ETH/USDT</button>
-                  <button onclick="quickLoad('SOLUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SOL/USDT</button>
-                  <button onclick="quickLoad('BNBUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BNB/USDT</button>
-                  <button onclick="quickLoad('XRPUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">XRP/USDT</button>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="width:28px;height:28px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:600">2</div>
+                  <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:#8a95a8">Select your timeframe and run any of the <span style="color:#c9a84c">10 AI tools</span> on the right</div>
                 </div>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="width:28px;height:28px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:600">3</div>
+                  <div style="font-family:'DM Sans',sans-serif;font-size:13px;color:#8a95a8">Or <span style="color:#c9a84c">upload any chart screenshot</span> from TradingView, MT4, Binance</div>
+                </div>
+              </div>
+
+              <!-- Quick launch buttons -->
+              <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+                <button onclick="quickLoad('BTCUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BTC/USDT</button>
+                <button onclick="quickLoad('ETHUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">ETH/USDT</button>
+                <button onclick="quickLoad('BNBUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BNB/USDT</button>
+                <button onclick="quickLoad('XRPUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">XRP/USDT</button>
+                <button onclick="quickLoad('SOLUSDT')" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SOL/USDT</button>
               </div>
             </div>
           </div>
-
         </div>
 
         <!-- RIGHT: Controls panel -->
@@ -897,19 +761,15 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             </div>
           </div>
 
-          <!-- Screenshot + Run buttons -->
-          <div style="padding:12px;border-bottom:1px solid var(--border2);display:flex;flex-direction:column;gap:8px">
-            <!-- Screenshot button — free, captures chart -->
-            <button id="snapBtn" style="width:100%;font-family:'DM Mono',monospace;font-size:10px;padding:8px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#8a95a8;cursor:pointer;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:8px" onclick="takeSnapshot()">
-              <span>📷</span><span id="snapTxt">Capture Chart</span>
-            </button>
-            <!-- Run 3 Tools button -->
+          <!-- Main analyze button -->
+          <div style="padding:12px;border-bottom:1px solid var(--border2)">
             <button class="az-btn" id="azBtn" disabled style="width:100%">
               <div class="az-spin" id="azSpin"></div>
-              <span id="azTxt">Fractal · Bar Pattern · Weierstrass</span>
-              <span class="cost-badge" id="main-cost-badge">11 cr</span>
+              <span id="azTxt">Run All 3 Tools</span>
+              <span class="cost-badge" id="main-cost-badge">3 cr</span>
             </button>
           </div>
+
           <!-- 10 individual tools -->
           <div style="padding:10px;flex:1;overflow-y:auto">
             <div style="font-family:'DM Mono',monospace;font-size:8px;color:rgba(201,168,76,.4);letter-spacing:.12em;margin-bottom:8px">ALL TOOLS</div>
@@ -1595,7 +1455,7 @@ var rmX     = document.getElementById('rmX');
 var azBtn   = document.getElementById('azBtn');
 var azSpin  = document.getElementById('azSpin');
 var azTxtEl = document.getElementById('azTxt');
-var BACKEND_URL = ''; /* same domain — Railway serves everything */
+var BACKEND_URL = '';
 
 /* Guard — elements may not exist in new layout */
 if (dropZone) {
@@ -1813,9 +1673,10 @@ azBtn.addEventListener('click', function(){
     showErr('Enter a pair or upload a screenshot to analyze.');
     return;
   }
-  /* If no screenshot yet — ask user to capture first */
+  /* If TV chart is showing but no screenshot yet — trigger capture */
   if(!hasChart && lwChartInstance) {
-    takeSnapshot();
+    window._pendingTool = { id:'analyze', label:'Fractal Analysis', endpoint:'/analyze', cost:3 };
+    captureChart();
     return;
   }
 
@@ -1877,7 +1738,7 @@ azBtn.addEventListener('click', function(){
   }
 
   setTimeout(function(){
-    azBtn.disabled=false;azSpin.style.display='none';azTxtEl.textContent='Fractal · Bar Pattern · Weierstrass';
+    azBtn.disabled=false;azSpin.style.display='none';azTxtEl.textContent='Run All 3 Tools';
   },3000);
 });
 
@@ -2939,7 +2800,7 @@ function buildToolGrid() {
 
 /* ══ USER STATE ══ */
 var currentUser   = null;
-var creditBalance = null; /* null = not loaded yet, avoids false "out of credits" */
+var creditBalance = null;
 
 /* Load from localStorage (fast, sync) — refreshed from Supabase async */
 function loadLocalSession(){
@@ -2971,7 +2832,6 @@ async function refreshSession(){
   /* Fetch balance + username from Supabase */
   var { data: profile } = await sb.from('profiles').select('credits, username, display_name').eq('id', currentUser.id).single();
   if(profile){
-    /* Guard: null/undefined credits = new user, treat as 50 */
     creditBalance = (profile.credits !== null && profile.credits !== undefined) ? profile.credits : 50;
     localStorage.setItem('fractal_credits', creditBalance);
     var displayName = profile.username || profile.display_name || currentUser.email.split('@')[0];
@@ -3023,7 +2883,6 @@ function checkCredits(toolKey){
     return false;
   }
   var cost = TOOL_COSTS[toolKey] || 3;
-  /* creditBalance may still be loading (null) — treat as sufficient and let server decide */
   if(creditBalance !== null && creditBalance !== undefined && creditBalance < cost){
     document.getElementById('noCreditsGate').classList.add('show');
     return false;
@@ -3353,7 +3212,6 @@ var currentInterval = '4h';
 var chartSSE        = null;
 var sma50On         = true;
 var sma200On        = true;
-var sma400On        = false;
 var allCandleData   = {};
 var smaContextStr   = '';
 var lwChartInstance = null; /* truthy flag for compatibility */
@@ -3508,9 +3366,19 @@ if(chartCanvas){
   },{passive:false});
 }
 
-/* captureChart overridden by TV block below */
-/* captureAndStore defined in TV block */
-/* captureForTool overridden by TV block */
+function captureChart() {
+  if(dataUrl){runPendingTool();return;}
+  if(chartCanvas&&chartCandles.length>0){dataUrl=chartCanvas.toDataURL('image/png');runPendingTool();return;}
+  showCapturePrompt();
+}
+function captureAndStore() {
+  if(chartCanvas&&chartCandles.length>0) dataUrl=chartCanvas.toDataURL('image/png');
+}
+function captureForTool() {
+  if(dataUrl) return dataUrl;
+  if(chartCanvas&&chartCandles.length>0) return chartCanvas.toDataURL('image/png');
+  return null;
+}
 
 function loadChart(symbol,interval){
   if(!symbol) return;
@@ -3691,30 +3559,9 @@ function onTfChange(){
 }
 
 function toggleSMA(period){
-  var chart = tvWidget && tvReady ? tvWidget.activeChart() : null;
-  if(period===50){
-    sma50On=!sma50On;
-    var b=document.getElementById('sma50Btn');if(b)b.style.opacity=sma50On?'1':'0.35';
-    if(chart){
-      if(sma50On && !tvStudyIds.sma50) tvStudyIds.sma50 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:50},{'Plot.color':'#c9a84c'});
-      else if(!sma50On && tvStudyIds.sma50){ chart.removeEntity(tvStudyIds.sma50); tvStudyIds.sma50=null; }
-    }
-  } else if(period===200){
-    sma200On=!sma200On;
-    var b=document.getElementById('sma200Btn');if(b)b.style.opacity=sma200On?'1':'0.35';
-    if(chart){
-      if(sma200On && !tvStudyIds.sma200) tvStudyIds.sma200 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:200},{'Plot.color':'#3498db'});
-      else if(!sma200On && tvStudyIds.sma200){ chart.removeEntity(tvStudyIds.sma200); tvStudyIds.sma200=null; }
-    }
-  } else if(period===400){
-    sma400On=!sma400On;
-    var b=document.getElementById('sma400Btn');if(b)b.style.opacity=sma400On?'1':'0.35';
-    if(chart){
-      if(sma400On && !tvStudyIds.sma400) tvStudyIds.sma400 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:400},{'Plot.color':'#9b8fe8'});
-      else if(!sma400On && tvStudyIds.sma400){ chart.removeEntity(tvStudyIds.sma400); tvStudyIds.sma400=null; }
-    }
-  }
-  if(!chart) renderChart();
+  if(period===50){sma50On=!sma50On;var b=document.getElementById('sma50Btn');if(b)b.style.opacity=sma50On?'1':'0.35';}
+  else{sma200On=!sma200On;var b=document.getElementById('sma200Btn');if(b)b.style.opacity=sma200On?'1':'0.35';}
+  renderChart();
 }
 
 function yToPrice(y){
@@ -3878,27 +3725,9 @@ function executeTool(tool,imgData){
 }
 
 function runSingleTool(tool){
-  /* If TV widget is active, capture screenshot first then run tool */
-  if(tvWidget && tvReady){
-    /* Show loading state immediately */
-    var btn = document.getElementById('tbtn-'+tool.id);
-    if(btn) btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">capturing…</span>';
-    tvWidget.takeClientScreenshot().then(function(canvas){
-      var img = canvas.toDataURL('image/png');
-      dataUrl = img; /* cache it */
-      executeTool(tool, img);
-    }).catch(function(e){
-      /* Fallback to cached dataUrl */
-      if(dataUrl){ executeTool(tool, dataUrl); return; }
-      showErr('Screenshot failed: '+e.message);
-      if(btn) btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">'+tool.cost+' cr</span>';
-    });
-    return;
-  }
-  /* Canvas fallback */
-  var img = captureForTool();
-  if(!img){ showErr('Load a chart first — type a pair or upload a screenshot.'); return; }
-  executeTool(tool, img);
+  var img=captureForTool();
+  if(!img){showErr('Load a chart first — type a pair or upload a screenshot.');return;}
+  executeTool(tool,img);
 }
 
 
@@ -3957,252 +3786,171 @@ window.addEventListener('resize', function(){
 <script src="/charting_library/charting_library.standalone.js"></script>
 <script src="/datafeed.js"></script>
 <script>
-/* ── TV Resolution map ── */
-var TF_TO_TV = {'1m':'1','3m':'3','5m':'5','15m':'15','30m':'30','1h':'60','4h':'240','1d':'1D','1w':'1W','1M':'1M'};
-var tvWidget  = null;
-var tvReady   = false;
-var tvStudyIds = { sma50: null, sma200: null, sma400: null };
-
-/* ── Live price polling — direct Binance, no Railway dependency ── */
-var _pricePollerTimer = null;
-function stopPricePolling() {
-  if(_pricePollerTimer){ clearInterval(_pricePollerTimer); _pricePollerTimer = null; }
-}
-function startPricePolling(sym) {
+var TF_TO_TV={'1m':'1','3m':'3','5m':'5','15m':'15','30m':'30','1h':'60','4h':'240','1d':'1D','1w':'1W','1M':'1M'};
+var tvWidget=null,tvReady=false;
+var tvStudyIds={sma50:null,sma200:null,sma400:null};
+var _pricePollerTimer=null;
+function stopPricePolling(){if(_pricePollerTimer){clearInterval(_pricePollerTimer);_pricePollerTimer=null;}}
+function startPricePolling(sym){
   stopPricePolling();
-  function pollBinancePrice() {
-    if(sym !== currentSymbol){ stopPricePolling(); return; }
+  function poll(){
+    if(sym!==currentSymbol){stopPricePolling();return;}
     fetch('https://api.binance.com/api/v3/ticker/24hr?symbol='+sym)
-      .then(function(r){ return r.json(); })
+      .then(function(r){return r.json();})
       .then(function(d){
-        if(d.lastPrice && sym===currentSymbol){
-          showLivePrice({symbol:sym, price:parseFloat(d.lastPrice),
-            change_24h: parseFloat(d.priceChangePercent||0).toFixed(3)});
-        }
+        if(d.lastPrice&&sym===currentSymbol)
+          showLivePrice({symbol:sym,price:parseFloat(d.lastPrice),change_24h:parseFloat(d.priceChangePercent||0).toFixed(3)});
       }).catch(function(){});
   }
-  pollBinancePrice();
-  _pricePollerTimer = setInterval(pollBinancePrice, 5000);
+  poll();
+  _pricePollerTimer=setInterval(poll,5000);
 }
-
-function initTVChart(symbol, tf) {
-  symbol = (symbol || 'BTCUSDT').toUpperCase().replace('/','');
-  var tvRes = TF_TO_TV[tf || '4h'] || '240';
-
-  /* Remove existing widget */
-  if(tvWidget){ try{ tvWidget.remove(); }catch(e){} tvWidget=null; tvReady=false; }
-
-  var container = document.getElementById('tv_chart_container');
-  if(!container){ console.warn('[TV] container not found'); return; }
-  if(typeof TradingView === 'undefined'){ console.warn('[TV] library not loaded'); return; }
-
-  tvWidget = new TradingView.widget({
-    container:    'tv_chart_container',
-    datafeed:     FractalDatafeed,
-    library_path: '/charting_library/',
-    locale:       'en',
-    symbol:       symbol,
-    interval:     tvRes,
-    theme:        'Dark',
-    style:        '1',
-    timezone:     'Etc/UTC',
-    autosize:     true,
-    fullscreen:   false,
-    disabled_features: [
-      'header_symbol_search',
-      'symbol_search_hot_key',
-      'header_compare',
-      'use_localstorage_for_settings',
-      'save_load_all_charts_button',
-      'study_templates',
-      'header_screenshot',
-      /* fullscreen enabled */  /* 'header_fullscreen_button', */
-      'display_market_status',
-      'go_to_date',
-      'timeframes_toolbar',
-      'show_chart_property_page',
-      'popup_hints',
-      'show_object_tree',
-    ],
-    enabled_features: ['side_toolbar_in_fullscreen_mode'],
-    overrides: {
-      'mainSeriesProperties.candleStyle.upColor':          '#26a69a',
-      'mainSeriesProperties.candleStyle.downColor':        '#ef5350',
-      'mainSeriesProperties.candleStyle.borderUpColor':   '#26a69a',
-      'mainSeriesProperties.candleStyle.borderDownColor': '#ef5350',
-      'mainSeriesProperties.candleStyle.wickUpColor':     '#26a69a',
-      'mainSeriesProperties.candleStyle.wickDownColor':   '#ef5350',
-      'paneProperties.background':                        '#06080d',
-      'paneProperties.backgroundType':                    'solid',
-      'paneProperties.vertGridProperties.color':          'rgba(255,255,255,0.04)',
-      'paneProperties.horzGridProperties.color':          'rgba(255,255,255,0.04)',
-      'scalesProperties.textColor':                       '#8a95a8',
-      'scalesProperties.backgroundColor':                 '#06080d',
-      'watermark.visible':                                false,
-      'watermark.color':                                  'rgba(0,0,0,0)',
-    },
+function showLivePrice(d){
+  var bar=document.getElementById('livePriceBar'),val=document.getElementById('livePriceVal');
+  var chg=document.getElementById('livePriceChange'),meta=document.getElementById('livePriceMeta');
+  if(!bar||!val||!d.price)return;
+  bar.classList.add('show');
+  val.textContent=formatPrice(parseFloat(d.price));
+  var pct=parseFloat(d.change_24h||0),isUp=pct>=0;
+  val.style.color=isUp?'#27ae60':'#ef5350';
+  if(chg){chg.textContent=(isUp?'+':'')+pct.toFixed(3)+'%';chg.className='live-price-change '+(isUp?'up':'down');}
+  if(meta)meta.textContent='LIVE · '+(d.symbol||currentSymbol||'');
+}
+function initTVChart(symbol,tf){
+  symbol=(symbol||'BTCUSDT').toUpperCase().replace('/','');
+  var tvRes=TF_TO_TV[tf||'4h']||'240';
+  if(tvWidget){try{tvWidget.remove();}catch(e){}tvWidget=null;tvReady=false;}
+  var container=document.getElementById('tv_chart_container');
+  if(!container||typeof TradingView==='undefined')return;
+  tvWidget=new TradingView.widget({
+    container:'tv_chart_container',datafeed:FractalDatafeed,
+    library_path:'/charting_library/',locale:'en',symbol:symbol,interval:tvRes,
+    theme:'Dark',style:'1',timezone:'Etc/UTC',autosize:true,fullscreen:false,
+    disabled_features:['header_symbol_search','symbol_search_hot_key','header_compare',
+      'use_localstorage_for_settings','save_load_all_charts_button','study_templates',
+      'header_screenshot','display_market_status','go_to_date','timeframes_toolbar',
+      'show_chart_property_page','popup_hints'],
+    enabled_features:['side_toolbar_in_fullscreen_mode'],
+    overrides:{
+      'mainSeriesProperties.candleStyle.upColor':'#26a69a',
+      'mainSeriesProperties.candleStyle.downColor':'#ef5350',
+      'mainSeriesProperties.candleStyle.borderUpColor':'#26a69a',
+      'mainSeriesProperties.candleStyle.borderDownColor':'#ef5350',
+      'mainSeriesProperties.candleStyle.wickUpColor':'#26a69a',
+      'mainSeriesProperties.candleStyle.wickDownColor':'#ef5350',
+      'paneProperties.background':'#06080d',
+      'paneProperties.backgroundType':'solid',
+      'paneProperties.vertGridProperties.color':'rgba(255,255,255,0.04)',
+      'paneProperties.horzGridProperties.color':'rgba(255,255,255,0.04)',
+      'scalesProperties.textColor':'#8a95a8',
+      'scalesProperties.backgroundColor':'#06080d',
+      'watermark.visible':false,'watermark.color':'rgba(0,0,0,0)'
+    }
   });
-
   tvWidget.onChartReady(function(){
-    tvReady = true;
-    lwChartInstance = true;
-    var btn = document.getElementById('azBtn'); if(btn) btn.disabled = false;
-    /* SMAs loaded on demand */
+    tvReady=true;lwChartInstance=true;
+    var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
   });
 }
-
-/* ── Override captureChart to use TV screenshot ── */
-function captureChart() {
-  if(dataUrl){ runPendingTool(); return; }
-  if(tvWidget && tvReady){
-    tvWidget.takeClientScreenshot().then(function(canvas){
-      dataUrl = canvas.toDataURL('image/png');
-      runPendingTool();
-    }).catch(function(){
-      var cv = document.getElementById('chartCanvas');
-      if(cv && chartCandles && chartCandles.length > 0) dataUrl = cv.toDataURL('image/png');
-      runPendingTool();
-    });
-    return;
+function takeSnapshot(){
+  var btn=document.getElementById('snapBtn'),txt=document.getElementById('snapTxt');
+  var azBtn=document.getElementById('azBtn');
+  if(txt)txt.textContent='Capturing…';if(btn)btn.disabled=true;
+  function onGot(img){
+    dataUrl=img;
+    if(txt)txt.textContent='✓ Chart captured';
+    if(btn){btn.disabled=false;btn.style.borderColor='rgba(39,174,96,.4)';btn.style.color='#27ae60';}
+    if(azBtn)azBtn.disabled=false;
   }
-  var cv = document.getElementById('chartCanvas');
-  if(cv && chartCandles && chartCandles.length > 0){ dataUrl = cv.toDataURL('image/png'); runPendingTool(); return; }
-  showCapturePrompt();
-}
-
-/* ── captureAndStore async ── */
-function captureAndStore(callback) {
-  if(tvWidget && tvReady){
-    tvWidget.takeClientScreenshot().then(function(canvas){
-      dataUrl = canvas.toDataURL('image/png');
-      if(callback) callback(dataUrl);
-    }).catch(function(){});
-    return;
-  }
-  var cv = document.getElementById('chartCanvas');
-  if(cv && chartCandles && chartCandles.length > 0){
-    dataUrl = cv.toDataURL('image/png');
-    if(callback) callback(dataUrl);
-  }
-}
-
-function captureForTool() {
-  /* Returns a promise or null — callers that use this must handle async */
-  if(tvWidget && tvReady) return null; /* will be called via captureChart */
-  var cv = document.getElementById('chartCanvas');
-  if(cv && chartCandles && chartCandles.length > 0) return cv.toDataURL('image/png');
-  return null;
-}
-
-/* ── Wire loadChart to TV ── */
-var _origLoadChart = loadChart;
-loadChart = function(symbol, interval) {
-  var sym = (symbol || '').toUpperCase().replace('/','').replace('-','');
-  var tf  = interval || currentInterval || '4h';
-  /* Update our state */
-  currentSymbol   = sym;
-  currentInterval = tf;
-  dataUrl = null;
-  /* Hide welcome overlay */
-  var empty = document.getElementById('chartEmpty'); if(empty) empty.style.display = 'none';
-  /* Update live price badge */
-  var _lm = document.getElementById('livePriceMeta');
-  var _lv = document.getElementById('livePriceVal');
-  var _lb = document.getElementById('livePriceBar');
-  if(_lm) _lm.textContent = 'LIVE · ' + sym;
-  if(_lv) _lv.textContent = '—';
-  if(_lb) _lb.classList.add('show');
-  /* Start price polling */
-  startPricePolling(sym);
-  /* TV: always re-init for symbol change (most reliable) */
-  resetSnapshot();
-  initTVChart(sym, tf);
-  /* Connect SSE for candle data (crossover detection) */
-  if(typeof chartSSE !== 'undefined' && chartSSE){ try{ chartSSE.close(); }catch(e){} chartSSE = null; }
-  /* Also fetch price directly from Binance for immediate badge update */
-  fetch('https://api.binance.com/api/v3/ticker/24hr?symbol='+sym)
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      if(d.lastPrice && sym===currentSymbol){
-        showLivePrice({symbol:sym, price:parseFloat(d.lastPrice),
-          change_24h: parseFloat(d.priceChangePercent||0).toFixed(3)});
-      }
-    }).catch(function(){});
-};
-
-/* ── Wire tfIn change to TV ── */
-var _origOnTfChange = onTfChange;
-onTfChange = function(){
-  var tf = document.getElementById('tfIn');
-  if(!tf || !currentSymbol) return;
-  currentInterval = tf.value;
-  if(tvWidget && tvReady){
-    tvWidget.activeChart().setResolution(TF_TO_TV[currentInterval] || '240', function(){});
+  if(tvWidget&&tvReady){
+    tvWidget.takeClientScreenshot().then(function(canvas){onGot(canvas.toDataURL('image/png'));})
+      .catch(function(){if(txt)txt.textContent='✗ Failed';if(btn)btn.disabled=false;});
   } else {
-    _origOnTfChange();
+    var cv=document.getElementById('chartCanvas');
+    if(cv&&chartCandles&&chartCandles.length>0)onGot(cv.toDataURL('image/png'));
+    else{if(txt)txt.textContent='Load a chart first';if(btn)btn.disabled=false;}
   }
-};
-
-/* ── takeSnapshot — captures chart and stores, enables Run button ── */
-function takeSnapshot() {
-  var btn  = document.getElementById('snapBtn');
-  var txt  = document.getElementById('snapTxt');
-  var azBtn = document.getElementById('azBtn');
-  if(txt) txt.textContent = 'Capturing…';
-  if(btn) btn.disabled = true;
-
-  function onGot(img) {
-    dataUrl = img;
-    if(txt) txt.textContent = '✓ Chart captured';
-    if(btn){ btn.disabled=false; btn.style.borderColor='rgba(39,174,96,.4)'; btn.style.color='#27ae60'; }
-    if(azBtn) azBtn.disabled = false;
-    /* Show preview */
-    var prev = document.getElementById('prevImg');
-    var pv   = document.getElementById('imgPv');
-    if(prev && pv){ prev.src=img; pv.style.display='none'; } /* don't show overlay, just store */
-  }
-
-  if(tvWidget && tvReady){
+}
+function resetSnapshot(){
+  dataUrl=null;
+  var btn=document.getElementById('snapBtn'),txt=document.getElementById('snapTxt');
+  var azBtn=document.getElementById('azBtn');
+  if(txt)txt.textContent='Capture Chart';
+  if(btn){btn.disabled=false;btn.style.borderColor='rgba(255,255,255,.12)';btn.style.color='#8a95a8';}
+  if(azBtn)azBtn.disabled=true;
+}
+/* Tool loading overlay */
+function showToolLoading(label){
+  var ov=document.createElement('div');ov.id='toolLoadOverlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(6,8,13,.88);z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
+  ov.innerHTML='<img src="/logo-animated.svg" width="100" height="100" style="display:block">'
+    +'<div style="font-family:DM Mono,monospace;font-size:11px;color:rgba(201,168,76,.7);letter-spacing:.12em">'+(label||'ANALYZING')+'</div>';
+  document.body.appendChild(ov);
+}
+function hideToolLoading(){var ov=document.getElementById('toolLoadOverlay');if(ov)ov.remove();}
+/* Override runSingleTool to show loading */
+var _origRunSingleTool=runSingleTool;
+runSingleTool=function(tool){
+  if(tvWidget&&tvReady){
+    var btn=document.getElementById('tbtn-'+tool.id);
+    if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">capturing…</span>';
     tvWidget.takeClientScreenshot().then(function(canvas){
-      onGot(canvas.toDataURL('image/png'));
+      var img=canvas.toDataURL('image/png');dataUrl=img;
+      showToolLoading(tool.label.toUpperCase()+'…');
+      executeTool(tool,img);
     }).catch(function(e){
-      if(txt) txt.textContent = '✗ Failed — try again';
-      if(btn) btn.disabled = false;
-      console.warn('[Snapshot] TV screenshot failed:', e.message);
+      if(dataUrl){showToolLoading(tool.label.toUpperCase()+'…');executeTool(tool,dataUrl);return;}
+      showErr('Screenshot failed: '+e.message);
+      if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">'+tool.cost+' cr</span>';
     });
-  } else {
-    var cv = document.getElementById('chartCanvas');
-    if(cv && chartCandles && chartCandles.length > 0){
-      onGot(cv.toDataURL('image/png'));
-    } else {
-      if(txt) txt.textContent = 'Load a chart first';
-      if(btn) btn.disabled = false;
-    }
+    return;
   }
-}
-
-/* Reset snapshot button when symbol changes */
-function resetSnapshot() {
-  dataUrl = null;
-  var btn = document.getElementById('snapBtn');
-  var txt = document.getElementById('snapTxt');
-  var azBtn = document.getElementById('azBtn');
-  if(txt) txt.textContent = 'Capture Chart';
-  if(btn){ btn.disabled=false; btn.style.borderColor='rgba(255,255,255,.12)'; btn.style.color='#8a95a8'; }
-  if(azBtn) azBtn.disabled = true;
-}
-
-/* ── Init TV chart on page load if analyzer section is visible ── */
-window.addEventListener('load', function(){
-  /* Small delay so library initializes */
+  _origRunSingleTool(tool);
+};
+/* Override executeTool to hide loading when done */
+var _origExecuteTool=executeTool;
+executeTool=function(tool,imgData){
+  var p=_origExecuteTool(tool,imgData);
+  if(p&&p.then)p.then(function(){hideToolLoading();}).catch(function(){hideToolLoading();});
+  else hideToolLoading();
+  return p;
+};
+/* Override loadChart */
+loadChart=function(symbol,interval){
+  var sym=(symbol||'').toUpperCase().replace('/','').replace('-','');
+  var tf=interval||currentInterval||'4h';
+  currentSymbol=sym;currentInterval=tf;dataUrl=null;
+  var empty=document.getElementById('chartEmpty');if(empty)empty.style.display='none';
+  var _lm=document.getElementById('livePriceMeta'),_lv=document.getElementById('livePriceVal'),_lb=document.getElementById('livePriceBar');
+  if(_lm)_lm.textContent='LIVE · '+sym;if(_lv)_lv.textContent='—';if(_lb)_lb.classList.add('show');
+  startPricePolling(sym);resetSnapshot();initTVChart(sym,tf);
+  if(chartSSE){try{chartSSE.close();}catch(e){}chartSSE=null;}
+};
+/* Override onTfChange */
+onTfChange=function(){
+  var tf=document.getElementById('tfIn');if(!tf||!currentSymbol)return;
+  currentInterval=tf.value;
+  if(tvWidget&&tvReady)tvWidget.activeChart().setResolution(TF_TO_TV[currentInterval]||'240',function(){});
+};
+/* Capture overrides */
+captureChart=function(){
+  if(dataUrl){runPendingTool();return;}
+  if(tvWidget&&tvReady){
+    tvWidget.takeClientScreenshot().then(function(canvas){dataUrl=canvas.toDataURL('image/png');runPendingTool();})
+      .catch(function(){var cv=document.getElementById('chartCanvas');if(cv&&chartCandles&&chartCandles.length>0)dataUrl=cv.toDataURL('image/png');runPendingTool();});
+    return;
+  }
+  var cv=document.getElementById('chartCanvas');
+  if(cv&&chartCandles&&chartCandles.length>0){dataUrl=cv.toDataURL('image/png');runPendingTool();return;}
+  showCapturePrompt();
+};
+/* Init on load */
+window.addEventListener('load',function(){
   setTimeout(function(){
-    var container = document.getElementById('tv_chart_container');
-    if(container && typeof TradingView !== 'undefined' && typeof FractalDatafeed !== 'undefined'){
-      initTVChart('BTCUSDT', '4h');
-    }
-  }, 500);
+    if(document.getElementById('tv_chart_container')&&typeof TradingView!=='undefined'&&typeof FractalDatafeed!=='undefined')
+      initTVChart('BTCUSDT','4h');
+  },500);
 });
 </script>
-
 </body>
 </html>

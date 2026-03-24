@@ -1,0 +1,66 @@
+<svg viewBox="0 0 208 208" xmlns="http://www.w3.org/2000/svg" width="208" height="208">
+<style>
+.cc{opacity:0;animation:popIn .3s ease-out forwards}
+.cc1{animation-delay:.2s}.cc2{animation-delay:.55s}.cc3{animation-delay:.9s}.cc4{animation-delay:1.25s}
+.cline{stroke-dasharray:100;stroke-dashoffset:100;animation:drawLine .4s ease-out forwards}
+.cl1{animation-delay:.5s}.cl2{animation-delay:.85s}.cl3{animation-delay:1.2s}.cl4{animation-delay:1.55s}
+.chart-red{stroke:#e74c3c;stroke-dasharray:400;stroke-dashoffset:400;animation:drawChart 1.2s ease-in-out 1.9s forwards}
+.chart-gold{stroke:url(#gl);stroke-dasharray:400;stroke-dashoffset:400;opacity:0;animation:drawChart 1.2s ease-in-out 1.9s forwards,fadeIn .5s ease-out 3.1s forwards}
+.cfill{opacity:0;animation:fadeIn .5s ease-out 3.1s forwards}
+.cn{opacity:0;animation:popIn .4s cubic-bezier(.17,.67,.3,1.5) 3.4s forwards;transform-origin:104px 104px}
+.cd{opacity:0;animation:popIn .4s cubic-bezier(.17,.67,.3,1.5) 3.6s forwards;transform-origin:104px 104px}
+@keyframes popIn{0%{opacity:0;transform:scale(.3)}70%{transform:scale(1.2);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes drawLine{to{stroke-dashoffset:0}}
+@keyframes drawChart{to{stroke-dashoffset:0}}
+@keyframes fadeIn{to{opacity:1}}
+</style>
+<defs>
+  <linearGradient id="cf" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#c9a84c" stop-opacity=".22"/>
+    <stop offset="100%" stop-color="#c9a84c" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="gl" x1="0%" y1="100%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#9a7a2e"/>
+    <stop offset="50%" stop-color="#c9a84c"/>
+    <stop offset="100%" stop-color="#f0d878"/>
+  </linearGradient>
+</defs>
+
+<rect width="208" height="208" rx="32" fill="#0d1018"/>
+<rect x="38" y="38" width="132" height="132" rx="6" fill="rgba(201,168,76,.04)" stroke="rgba(201,168,76,.2)" stroke-width="2.5"/>
+
+<line class="cline cl1" x1="38"  y1="38"  x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="4.5" stroke-linecap="round"/>
+<line class="cline cl2" x1="170" y1="38"  x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="4.5" stroke-linecap="round"/>
+<line class="cline cl3" x1="38"  y1="170" x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="4.5" stroke-linecap="round"/>
+<line class="cline cl4" x1="170" y1="170" x2="104" y2="104" stroke="rgba(201,168,76,.4)" stroke-width="4.5" stroke-linecap="round"/>
+
+<polygon class="cfill" points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86 166,166 44,166" fill="url(#cf)"/>
+<polyline class="chart-red"  points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86" fill="none" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline class="chart-gold" points="44,158 58,144 70,150 82,134 96,138 104,104 116,118 128,112 142,96 158,82 166,86" fill="none" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+<g class="cc cc1" style="transform-origin:38px 38px">
+  <circle cx="38"  cy="38"  r="17" fill="#0d1018" stroke="#c9a84c" stroke-width="4"/>
+  <circle cx="38"  cy="38"  r="6"  fill="#c9a84c"/>
+</g>
+<g class="cc cc2" style="transform-origin:170px 38px">
+  <circle cx="170" cy="38"  r="17" fill="#0d1018" stroke="#c9a84c" stroke-width="4"/>
+  <circle cx="170" cy="38"  r="6"  fill="#c9a84c"/>
+</g>
+<g class="cc cc3" style="transform-origin:38px 170px">
+  <circle cx="38"  cy="170" r="17" fill="#0d1018" stroke="#c9a84c" stroke-width="4"/>
+  <circle cx="38"  cy="170" r="6"  fill="#c9a84c"/>
+</g>
+<g class="cc cc4" style="transform-origin:170px 170px">
+  <circle cx="170" cy="170" r="17" fill="#0d1018" stroke="#c9a84c" stroke-width="4"/>
+  <circle cx="170" cy="170" r="6"  fill="#c9a84c"/>
+</g>
+
+<g class="cn">
+  <circle cx="104" cy="104" r="13" fill="#0d1018" stroke="#c9a84c" stroke-width="3.5"/>
+  <g class="cd">
+    <circle cx="104" cy="104" r="5" fill="#e8c97a"/>
+    <line x1="94" y1="104" x2="114" y2="104" stroke="#c9a84c" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="104" y1="94"  x2="104" y2="114" stroke="#c9a84c" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+</g>
+</svg>
