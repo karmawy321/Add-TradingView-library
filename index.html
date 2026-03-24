@@ -838,8 +838,13 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             </div>
           </div>
 
-          <!-- Main analyze button -->
-          <div style="padding:12px;border-bottom:1px solid var(--border2)">
+          <!-- Screenshot + Run buttons -->
+          <div style="padding:12px;border-bottom:1px solid var(--border2);display:flex;flex-direction:column;gap:8px">
+            <!-- Screenshot button — free, captures chart -->
+            <button id="snapBtn" style="width:100%;font-family:'DM Mono',monospace;font-size:10px;padding:8px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#8a95a8;cursor:pointer;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:8px" onclick="takeSnapshot()">
+              <span>📷</span><span id="snapTxt">Capture Chart</span>
+            </button>
+            <!-- Run All 3 Tools button -->
             <button class="az-btn" id="azBtn" disabled style="width:100%">
               <div class="az-spin" id="azSpin"></div>
               <span id="azTxt">Run All 3 Tools</span>
@@ -1748,10 +1753,9 @@ azBtn.addEventListener('click', function(){
     showErr('Enter a pair or upload a screenshot to analyze.');
     return;
   }
-  /* If TV chart is showing but no screenshot yet — trigger capture */
+  /* If no screenshot yet — ask user to capture first */
   if(!hasChart && lwChartInstance) {
-    window._pendingTool = { id:'analyze', label:'Fractal Analysis', endpoint:'/analyze', cost:3 };
-    captureChart();
+    takeSnapshot();
     return;
   }
 
@@ -4045,6 +4049,7 @@ loadChart = function(symbol, interval) {
   /* Start price polling */
   startPricePolling(sym);
   /* TV: always re-init for symbol change (most reliable) */
+  resetSnapshot();
   initTVChart(sym, tf);
   /* Connect SSE for candle data (crossover detection) */
   if(typeof chartSSE !== 'undefined' && chartSSE){ try{ chartSSE.close(); }catch(e){} chartSSE = null; }
@@ -4071,6 +4076,55 @@ onTfChange = function(){
     _origOnTfChange();
   }
 };
+
+/* ── takeSnapshot — captures chart and stores, enables Run button ── */
+function takeSnapshot() {
+  var btn  = document.getElementById('snapBtn');
+  var txt  = document.getElementById('snapTxt');
+  var azBtn = document.getElementById('azBtn');
+  if(txt) txt.textContent = 'Capturing…';
+  if(btn) btn.disabled = true;
+
+  function onGot(img) {
+    dataUrl = img;
+    if(txt) txt.textContent = '✓ Chart captured';
+    if(btn){ btn.disabled=false; btn.style.borderColor='rgba(39,174,96,.4)'; btn.style.color='#27ae60'; }
+    if(azBtn) azBtn.disabled = false;
+    /* Show preview */
+    var prev = document.getElementById('prevImg');
+    var pv   = document.getElementById('imgPv');
+    if(prev && pv){ prev.src=img; pv.style.display='none'; } /* don't show overlay, just store */
+  }
+
+  if(tvWidget && tvReady){
+    tvWidget.takeClientScreenshot().then(function(canvas){
+      onGot(canvas.toDataURL('image/png'));
+    }).catch(function(e){
+      if(txt) txt.textContent = '✗ Failed — try again';
+      if(btn) btn.disabled = false;
+      console.warn('[Snapshot] TV screenshot failed:', e.message);
+    });
+  } else {
+    var cv = document.getElementById('chartCanvas');
+    if(cv && chartCandles && chartCandles.length > 0){
+      onGot(cv.toDataURL('image/png'));
+    } else {
+      if(txt) txt.textContent = 'Load a chart first';
+      if(btn) btn.disabled = false;
+    }
+  }
+}
+
+/* Reset snapshot button when symbol changes */
+function resetSnapshot() {
+  dataUrl = null;
+  var btn = document.getElementById('snapBtn');
+  var txt = document.getElementById('snapTxt');
+  var azBtn = document.getElementById('azBtn');
+  if(txt) txt.textContent = 'Capture Chart';
+  if(btn){ btn.disabled=false; btn.style.borderColor='rgba(255,255,255,.12)'; btn.style.color='#8a95a8'; }
+  if(azBtn) azBtn.disabled = true;
+}
 
 /* ── Init TV chart on page load if analyzer section is visible ── */
 window.addEventListener('load', function(){
