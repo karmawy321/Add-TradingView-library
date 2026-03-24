@@ -4237,7 +4237,7 @@ function getChartCoords(e) {
   if (!cv || !chartCandles || chartCandles.length < 2) return null;
   var r   = cv.getBoundingClientRect();
   var W   = cv.width, H = cv.height;
-  var PAD = { l:8+36, r:64, t:12, b:40, vol:45 }; /* l includes toolbar width */
+  var PAD = { l:8, r:64, t:12, b:40, vol:45 }; /* toolbar is outside canvas, no offset needed */
   var mx  = (e.clientX - r.left) * (W / r.width);
   var my  = (e.clientY - r.top)  * (H / r.height);
   var visibleBars = Math.max(20, Math.floor(chartCandles.length / chartView.zoom));
@@ -4513,11 +4513,14 @@ function resetSnapBtn() {
 
 /* ── Init ── */
 window.addEventListener('load', function() {
+  /* Re-init chartCanvas and chartCtx now that canvas is display:block */
+  chartCanvas = document.getElementById('chartCanvas');
+  if (chartCanvas) {
+    chartCtx = chartCanvas.getContext('2d');
+    resizeCanvas();
+  }
   buildToolbar();
   initDrawEvents();
-  /* Show canvas, ensure TV is hidden */
-  var cv = document.getElementById('chartCanvas');
-  if (cv) cv.style.display = 'block';
 });
 })();
 </script>
