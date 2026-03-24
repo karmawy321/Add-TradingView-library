@@ -3548,7 +3548,7 @@ if(chartCanvas){
     var cssX=e.clientX-r.left, cssY=e.clientY-r.top;
     renderChart();
     var W=chartCanvas.width/dpr, H=chartCanvas.height/dpr;
-    var PAD2={t:16,b:56,l:8,r:72,vol:40};
+    var PAD2={t:16,b:44,l:8,r:72,vol:40};
     var vis=Math.max(20,Math.floor((chartCandles.length||0)/chartView.zoom));
     var si2=Math.max(0,(chartCandles.length||0)-vis-chartView.offset);
     var visible2=chartCandles.slice(si2,Math.min(chartCandles.length,si2+vis));
@@ -3582,9 +3582,9 @@ if(chartCanvas){
       var bx=PAD2.l+(bi2+0.5)*barW2;
       var dw=dateStr.length*6.5+12;
       chartCtx.fillStyle='rgba(201,168,76,.85)';
-      chartCtx.fillRect(Math.max(PAD2.l,Math.min(W-PAD2.r-dw,bx-dw/2)),H-PAD2.b+22,dw,17);
+      chartCtx.fillRect(Math.max(PAD2.l,Math.min(W-PAD2.r-dw,bx-dw/2)),H-18,dw,17);
       chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 9px DM Mono'; chartCtx.textAlign='center';
-      chartCtx.fillText(dateStr,Math.max(PAD2.l+dw/2,Math.min(W-PAD2.r-dw/2,bx)),H-PAD2.b+34);
+      chartCtx.fillText(dateStr,Math.max(PAD2.l+dw/2,Math.min(W-PAD2.r-dw/2,bx)),H-5);
       /* OHLC panel top-left */
       var isUp=candle2.c>=candle2.o;
       var col=isUp?'#26a69a':'#ef5350';
@@ -3603,9 +3603,46 @@ if(chartCanvas){
   });
   chartCanvas.addEventListener('wheel',function(e){
     e.preventDefault();
-    chartView.zoom=Math.max(0.5,Math.min(8,chartView.zoom+(e.deltaY>0?-0.1:0.1)));
+    var dpr=window.devicePixelRatio||1;
+    var r=chartCanvas.getBoundingClientRect();
+    var cssX=e.clientX-r.left;
+    var W=chartCanvas.width/dpr;
+    var PADl=8, PADr=72;
+    var CW=W-PADl-PADr;
+    /* How far along the chart is the cursor (0=left, 1=right) */
+    var cursorRatio=Math.max(0,Math.min(1,(cssX-PADl)/CW));
+    var oldZoom=chartView.zoom;
+    var newZoom=Math.max(0.3,Math.min(12,oldZoom*(e.deltaY>0?0.9:1.1)));
+    /* Adjust offset so the bar under cursor stays fixed */
+    var oldVis=Math.floor(chartCandles.length/oldZoom);
+    var newVis=Math.floor(chartCandles.length/newZoom);
+    var diff=oldVis-newVis;
+    chartView.offset=Math.max(0,chartView.offset+Math.round(diff*cursorRatio));
+    chartView.zoom=newZoom;
     renderChart();
   },{passive:false});
+
+  /* Pan by dragging */
+  var _panStart=null, _panOffset=0;
+  chartCanvas.addEventListener('mousedown',function(e){
+    /* Only pan when cursor tool is active or no tool selected */
+    if(typeof activeItem!=='undefined'&&activeItem&&activeItem.id!=='cursor'&&activeItem.id!=='arrow_cur')return;
+    _panStart=e.clientX; _panOffset=chartView.offset;
+  });
+  document.addEventListener('mousemove',function(e){
+    if(_panStart===null)return;
+    var dpr=window.devicePixelRatio||1;
+    var W=chartCanvas.width/dpr;
+    var vis=Math.max(20,Math.floor(chartCandles.length/chartView.zoom));
+    var barW=(W-8-72)/Math.max(vis,1);
+    var dx=e.clientX-_panStart;
+    var bars=Math.round(-dx/barW);
+    chartView.offset=Math.max(0,Math.min(chartCandles.length-20,_panOffset+bars));
+    renderChart();
+  });
+  document.addEventListener('mouseup',function(e){
+    if(_panStart!==null){ _panStart=null; }
+  });
 }
 
 function captureChart(){
@@ -4582,6 +4619,22 @@ function drawOne(ctx,d,co,prev){
     ctx.restore();return;
   }
 
+  /* Brush stroke — has no p1/p2, uses raw CSS pixel path */
+  if(d.type==='brush'&&d.path&&d.path.length>1){
+    ctx.strokeStyle='#c9a84c'; ctx.lineWidth=2;
+    ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(d.path[0].x,d.path[0].y);
+    for(var _bi=1;_bi<d.path.length-1;_bi++){
+      var _cx=(d.path[_bi].x+d.path[_bi+1].x)/2;
+      var _cy=(d.path[_bi].y+d.path[_bi+1].y)/2;
+      ctx.quadraticCurveTo(d.path[_bi].x,d.path[_bi].y,_cx,_cy);
+    }
+    ctx.lineTo(d.path[d.path.length-1].x,d.path[d.path.length-1].y);
+    if(d.closed){ctx.closePath();ctx.fillStyle='rgba(201,168,76,.07)';ctx.fill();}
+    ctx.stroke(); ctx.restore(); return;
+  }
+
   /* ── Two-point types ── */
   if(!d.p1||!d.p2){ctx.restore();return;}
   var x1=cpX(d.p1.bi,co),y1=cpY(d.p1.price,co);
@@ -4735,24 +4788,6 @@ function drawOne(ctx,d,co,prev){
     ctx.restore();return;
   }
 
-  /* Brush stroke — CSS pixel coords, context already has DPR transform */
-  if(d.type==='brush'&&d.path&&d.path.length>1){
-    ctx.save();
-    /* Context already has setTransform(DPR,...) from resizeCanvas
-       Path coords are CSS pixels — draw directly, no extra scaling needed */
-    ctx.strokeStyle='#c9a84c'; ctx.lineWidth=2;
-    ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(d.path[0].x,d.path[0].y);
-    for(var bi2=1;bi2<d.path.length-1;bi2++){
-      var cpx=(d.path[bi2].x+d.path[bi2+1].x)/2;
-      var cpy=(d.path[bi2].y+d.path[bi2+1].y)/2;
-      ctx.quadraticCurveTo(d.path[bi2].x,d.path[bi2].y,cpx,cpy);
-    }
-    ctx.lineTo(d.path[d.path.length-1].x,d.path[d.path.length-1].y);
-    if(d.closed){ ctx.closePath(); ctx.fillStyle='rgba(201,168,76,.07)'; ctx.fill(); }
-    ctx.stroke(); ctx.restore(); return;
-  }
   /* Standard line (trendline / ray / extended) */
   var dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1;
   var ux=dx/len,uy=dy/len,ext=5000;
