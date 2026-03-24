@@ -251,6 +251,8 @@ async function signUp(){
 }
 
 async function checkSession(){
+  /* Don't auto-redirect if user explicitly navigated here */
+  if(window.location.search.indexOf('force=1') !== -1) return;
   try {
     var res = await sb.auth.getSession();
     if(res.data && res.data.session){
@@ -259,7 +261,8 @@ async function checkSession(){
         id: res.data.session.user.id,
         email: res.data.session.user.email
       }));
-      window.location.href = '/';
+      showMsg('in', 'Already signed in — redirecting…', 'ok');
+      setTimeout(function(){ window.location.href = '/'; }, 800);
     }
   } catch(e){}
 }

@@ -207,6 +207,15 @@ app.use('/charting_library', express.static(path.join(__dirname, 'charting_libra
 }));
 app.use('/assets', express.static(path.join(__dirname, 'assets'), { maxAge: '1d' }));
 
+/* ── Serve root-level static files (logo.svg, favicon.svg, etc) ── */
+['logo.svg', 'favicon.svg', 'favicon.ico'].forEach(file => {
+  app.get('/' + file, (req, res) => {
+    const p = path.join(__dirname, file);
+    if (fs.existsSync(p)) res.sendFile(p);
+    else res.status(404).send('Not found');
+  });
+});
+
 /* ── Serve HTML pages ── */
 function sendPage(file, res) {
   const p = path.join(__dirname, file);
