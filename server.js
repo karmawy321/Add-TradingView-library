@@ -303,7 +303,7 @@ function sendPage(file, res) {
 app.get('/',        (req, res) => sendPage('index.html',   res));
 app.get('/auth',    (req, res) => sendPage('auth.html',    res));
 app.get('/profile', (req, res) => sendPage('profile.html', res));
-app.get('/health',  (req, res) => res.json({ status: 'ok' }));
+app.get('/health',  (req, res) => res.json({ status: 'ok', version: 'has-logo-route' }));
 app.get('/debug-files', (req, res) => {
   const files = fs.readdirSync(__dirname).filter(f => !f.startsWith('.'));
   res.json({ cwd: __dirname, files, hasSvg: files.filter(f => f.endsWith('.svg')) });
