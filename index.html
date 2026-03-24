@@ -3613,35 +3613,55 @@ if(chartCanvas){
     var cursorRatio=Math.max(0,Math.min(1,(cssX-PADl)/CW));
     var oldZoom=chartView.zoom;
     var newZoom=Math.max(0.3,Math.min(12,oldZoom*(e.deltaY>0?0.9:1.1)));
-    /* Adjust offset so the bar under cursor stays fixed */
-    var oldVis=Math.floor(chartCandles.length/oldZoom);
-    var newVis=Math.floor(chartCandles.length/newZoom);
-    var diff=oldVis-newVis;
-    chartView.offset=Math.max(0,chartView.offset+Math.round(diff*cursorRatio));
+    /* Keep the bar under cursor fixed during zoom */
+    var n=chartCandles.length;
+    var oldVis=Math.floor(n/oldZoom);
+    var newVis=Math.floor(n/newZoom);
+    var oldSi=Math.max(0,n-oldVis-chartView.offset);
+    /* Bar index under cursor in full candles array */
+    var cursorBar=Math.round(oldSi+cursorRatio*oldVis);
+    /* After zoom, set offset so cursorBar stays at same screen position */
+    var newSi=Math.round(cursorBar-cursorRatio*newVis);
+    chartView.offset=Math.max(0,Math.min(n-newVis,n-newVis-newSi));
     chartView.zoom=newZoom;
     renderChart();
   },{passive:false});
 
-  /* Pan by dragging */
+  /* Pan by dragging — grab cursor */
   var _panStart=null, _panOffset=0;
   chartCanvas.addEventListener('mousedown',function(e){
-    /* Only pan when cursor tool is active or no tool selected */
-    if(typeof activeItem!=='undefined'&&activeItem&&activeItem.id!=='cursor'&&activeItem.id!=='arrow_cur')return;
+    if(typeof activeItem!=='undefined'&&activeItem&&
+       activeItem.id!=='cursor'&&activeItem.id!=='arrow_cur') return;
+    if(typeof isBrushing!=='undefined'&&isBrushing) return;
     _panStart=e.clientX; _panOffset=chartView.offset;
+    chartCanvas.style.cursor='grabbing';
+    e.preventDefault();
   });
   document.addEventListener('mousemove',function(e){
-    if(_panStart===null)return;
+    if(_panStart===null) return;
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
-    var vis=Math.max(20,Math.floor(chartCandles.length/chartView.zoom));
+    var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
     var barW=(W-8-72)/Math.max(vis,1);
     var dx=e.clientX-_panStart;
     var bars=Math.round(-dx/barW);
-    chartView.offset=Math.max(0,Math.min(chartCandles.length-20,_panOffset+bars));
+    chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-20)||0,_panOffset+bars));
     renderChart();
   });
-  document.addEventListener('mouseup',function(e){
-    if(_panStart!==null){ _panStart=null; }
+  document.addEventListener('mouseup',function(){
+    if(_panStart!==null){
+      _panStart=null;
+      /* Restore cursor based on active tool */
+      if(typeof activeItem!=='undefined'&&activeItem)
+        chartCanvas.style.cursor=activeItem.cur||'crosshair';
+      else chartCanvas.style.cursor='default';
+    }
+  });
+  /* Show grab cursor on hover when cursor tool active */
+  chartCanvas.addEventListener('mouseover',function(){
+    if(typeof activeItem!=='undefined'&&activeItem&&
+       (activeItem.id==='cursor'||activeItem.id==='arrow_cur'))
+      chartCanvas.style.cursor='grab';
   });
 }
 
@@ -3689,9 +3709,11 @@ function loadChart(symbol,interval){
   chartCandles=[];
   resizeCanvas();
   if(chartCtx){
-    chartCtx.fillStyle=C.bg;chartCtx.fillRect(0,0,chartCanvas.width,chartCanvas.height);
+    var _dpr=window.devicePixelRatio||1;
+    var _cw=chartCanvas.width/_dpr, _ch=chartCanvas.height/_dpr;
+    chartCtx.fillStyle=C.bg;chartCtx.fillRect(0,0,_cw,_ch);
     chartCtx.fillStyle='rgba(201,168,76,.4)';chartCtx.font='11px DM Mono';chartCtx.textAlign='center';
-    chartCtx.fillText('Loading '+sym+'…',chartCanvas.width/2,chartCanvas.height/2);
+    chartCtx.fillText('Loading '+sym+'…',_cw/2,_ch/2);
   }
   /* Update badge immediately for new symbol */
   var _lm=document.getElementById('livePriceMeta'),_lv=document.getElementById('livePriceVal'),_lb=document.getElementById('livePriceBar');
@@ -3798,10 +3820,12 @@ function fetchTwelveDataPrice(sym){
 
 function showChartMsg(msg){
   if(!chartCtx||!chartCanvas)return;
-  chartCtx.fillStyle=C.bg;chartCtx.fillRect(0,0,chartCanvas.width,chartCanvas.height);
+  var _dpr=window.devicePixelRatio||1;
+  var _cw=chartCanvas.width/_dpr, _ch=chartCanvas.height/_dpr;
+  chartCtx.fillStyle=C.bg;chartCtx.fillRect(0,0,_cw,_ch);
   chartCtx.fillStyle='rgba(201,168,76,.5)';chartCtx.font='11px DM Mono';chartCtx.textAlign='center';
-  var lines=msg.split('\n'),cy=chartCanvas.height/2-(lines.length-1)*12;
-  lines.forEach(function(l,i){chartCtx.fillText(l,chartCanvas.width/2,cy+i*22);});
+  var lines=msg.split('\n'),cy=_ch/2-(lines.length-1)*12;
+  lines.forEach(function(l,i){chartCtx.fillText(l,_cw/2,cy+i*22);});
 }
 
 function fetchBinanceFallback(sym, tf) {
@@ -3823,11 +3847,7 @@ function fetchBinanceFallback(sym, tf) {
       lwChartInstance = true;
       var btn = document.getElementById('azBtn'); if(btn) btn.disabled=false;
       /* Show source label */
-      if(chartCtx){
-        chartCtx.fillStyle='rgba(201,168,76,0.4)';
-        chartCtx.font='8px DM Mono'; chartCtx.textAlign='left';
-        chartCtx.fillText('Binance direct',10,12);
-      }
+
     })
     .catch(function(e){ console.warn('[Binance fallback] failed for',sym,e.message); });
 }
