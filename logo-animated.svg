@@ -4,7 +4,7 @@
 .cc1{animation-delay:.2s}.cc2{animation-delay:.55s}.cc3{animation-delay:.9s}.cc4{animation-delay:1.25s}
 .cline{stroke-dasharray:100;stroke-dashoffset:100;animation:drawLine .4s ease-out forwards}
 .cl1{animation-delay:.5s}.cl2{animation-delay:.85s}.cl3{animation-delay:1.2s}.cl4{animation-delay:1.55s}
-.chart-red{stroke:#e74c3c;stroke-dasharray:400;stroke-dashoffset:400;animation:drawChart 1.2s ease-in-out 1.9s forwards}
+.chart-red{stroke:#27ae60;stroke-dasharray:400;stroke-dashoffset:400;animation:drawChart 1.2s ease-in-out 1.9s forwards}
 .chart-gold{stroke:url(#gl);stroke-dasharray:400;stroke-dashoffset:400;opacity:0;animation:drawChart 1.2s ease-in-out 1.9s forwards,fadeIn .5s ease-out 3.1s forwards}
 .cfill{opacity:0;animation:fadeIn .5s ease-out 3.1s forwards}
 .cn{opacity:0;animation:popIn .4s cubic-bezier(.17,.67,.3,1.5) 3.4s forwards;transform-origin:104px 104px}
