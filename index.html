@@ -511,6 +511,9 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   }
   /* Tool grid */
   #toolGrid{ max-height: 200px; overflow-y: auto; }
+  /* Flyout — stays right of toolbar, scrollable if tall */
+  .tb-flyout{ left:44px !important; max-height:70vh !important; overflow-y:auto !important; }
+  .tb-tooltip{ left:48px !important; }
 }
 /* ══ DRAWING TOOLBAR ══ */
 #drawToolbar{width:44px;background:#07090e;border-right:1px solid rgba(201,168,76,.15);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;flex-shrink:0;user-select:none}
@@ -810,7 +813,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
           <!-- Custom Fractal Chart -->
           <div style="position:relative;flex:1;display:flex">
             <!-- Drawing toolbar — left strip -->
-            <div id="drawToolbar" style="width:36px;background:#08090e;border-right:1px solid rgba(201,168,76,.12);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px;z-index:30;flex-shrink:0"></div>
+            <div id="drawToolbar" style="width:44px;flex-shrink:0;background:#07090e;border-right:1px solid rgba(201,168,76,.13);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;overflow:visible"></div>
             <!-- Canvas wrapper -->
             <div style="position:relative;flex:1">
               <canvas id="chartCanvas" style="display:block;width:100%;height:500px;cursor:crosshair"></canvas>
@@ -3529,29 +3532,73 @@ function detectCrossovers(candles) {
 }
 
 if(chartCanvas){
+  /* OHLC tooltip div — created once */
+  var _ohlcTip = document.createElement('div');
+  _ohlcTip.id = 'ohlcTip';
+  _ohlcTip.style.cssText = 'position:absolute;top:6px;left:52px;pointer-events:none;display:none;' +
+    'background:rgba(7,9,14,.92);border:1px solid rgba(201,168,76,.2);padding:5px 10px;' +
+    'font-family:"DM Mono",monospace;font-size:10px;line-height:1.8;z-index:50;border-radius:2px;white-space:nowrap';
+  /* Insert into canvas wrapper */
+  chartCanvas.parentElement.appendChild(_ohlcTip);
+
   chartCanvas.addEventListener('mousemove',function(e){
+    if(typeof hoverPoint !== 'undefined' && hoverPoint) return; /* toolbar handles it */
     var r=chartCanvas.getBoundingClientRect();
-    var x=e.clientX-r.left, y=e.clientY-r.top;
+    var dpr=window.devicePixelRatio||1;
+    var cssX=e.clientX-r.left, cssY=e.clientY-r.top;
     renderChart();
-    var W=chartCanvas.width,H=chartCanvas.height;
-    chartCtx.strokeStyle=C.crosshair; chartCtx.lineWidth=0.5; chartCtx.setLineDash([4,4]);
-    chartCtx.beginPath();chartCtx.moveTo(x,0);chartCtx.lineTo(x,H);chartCtx.stroke();
-    chartCtx.beginPath();chartCtx.moveTo(0,y);chartCtx.lineTo(W,y);chartCtx.stroke();
+    var W=chartCanvas.width/dpr, H=chartCanvas.height/dpr;
+    var PAD2={t:16,b:44,l:8,r:72,vol:40};
+    var vis=Math.max(20,Math.floor((chartCandles.length||0)/chartView.zoom));
+    var si2=Math.max(0,(chartCandles.length||0)-vis-chartView.offset);
+    var visible2=chartCandles.slice(si2,Math.min(chartCandles.length,si2+vis));
+    if(!visible2.length)return;
+    var CW2=W-PAD2.l-PAD2.r, CH2=H-PAD2.t-PAD2.b-PAD2.vol;
+    var mn2=Math.min.apply(null,visible2.map(function(c){return c.l;}));
+    var mx2=Math.max.apply(null,visible2.map(function(c){return c.h;}));
+    var rng2=mx2-mn2||mn2*.001||.0001;
+    mn2-=rng2*.05; mx2+=rng2*.05; rng2=mx2-mn2;
+    var barW2=CW2/Math.max(visible2.length,1);
+    var bi2=Math.max(0,Math.min(visible2.length-1,Math.round((cssX-PAD2.l)/barW2)));
+    var price2=mx2-((cssY-PAD2.t)/CH2)*rng2;
+    /* Draw crosshair */
+    chartCtx.strokeStyle='rgba(201,168,76,.25)'; chartCtx.lineWidth=0.6; chartCtx.setLineDash([4,4]);
+    chartCtx.beginPath();chartCtx.moveTo(cssX,0);chartCtx.lineTo(cssX,H);chartCtx.stroke();
+    chartCtx.beginPath();chartCtx.moveTo(0,cssY);chartCtx.lineTo(W,cssY);chartCtx.stroke();
     chartCtx.setLineDash([]);
-    var lbl=document.getElementById('crosshairLabel');
-    if(lbl&&chartCandles.length>1){
-      var PAD={t:12,b:40,l:8,r:64,vol:45};
-      var CH=H-PAD.t-PAD.b-PAD.vol;
-      var mn=Math.min.apply(null,chartCandles.slice(-200).map(function(c){return c.l;}));
-      var mx=Math.max.apply(null,chartCandles.slice(-200).map(function(c){return c.h;}));
-      var rng=mx-mn||0.0001; mn-=rng*0.04;mx+=rng*0.04;rng=mx-mn;
-      var price=mx-((y-PAD.t)/CH)*rng;
-      lbl.style.display='block';lbl.style.left=(W-PAD.r+2)+'px';lbl.style.top=(y-8)+'px';
-      lbl.textContent=formatPrice(price);
+    /* Price badge on right axis */
+    var priceStr=formatPrice(price2);
+    var bw=priceStr.length*7+12;
+    chartCtx.fillStyle='rgba(201,168,76,.9)'; chartCtx.fillRect(W-PAD2.r,cssY-9,PAD2.r,18);
+    chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 10px DM Mono'; chartCtx.textAlign='left';
+    chartCtx.fillText(priceStr,W-PAD2.r+3,cssY+4);
+    /* Date badge on bottom axis */
+    var candle2=visible2[bi2];
+    if(candle2){
+      var d2=new Date(candle2.t);
+      var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d2.getMonth()];
+      var dateStr=d2.getDate()+' '+mo+" '"+String(d2.getFullYear()).slice(2)+
+        (currentInterval!=='1d'&&currentInterval!=='1w'?' '+d2.getHours().toString().padStart(2,'0')+':'+d2.getMinutes().toString().padStart(2,'0'):'');
+      var bx=PAD2.l+(bi2+0.5)*barW2;
+      var dw=dateStr.length*6.5+12;
+      chartCtx.fillStyle='rgba(201,168,76,.85)';
+      chartCtx.fillRect(Math.max(PAD2.l,Math.min(W-PAD2.r-dw,bx-dw/2)),H-PAD2.b+2,dw,16);
+      chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 9px DM Mono'; chartCtx.textAlign='center';
+      chartCtx.fillText(dateStr,Math.max(PAD2.l+dw/2,Math.min(W-PAD2.r-dw/2,bx)),H-PAD2.b+13);
+      /* OHLC panel top-left */
+      var isUp=candle2.c>=candle2.o;
+      var col=isUp?'#26a69a':'#ef5350';
+      _ohlcTip.innerHTML=
+        '<span style="color:rgba(201,168,76,.6);margin-right:8px">O</span><span style="color:'+col+'">'+formatPrice(candle2.o)+'</span>  '+
+        '<span style="color:rgba(201,168,76,.6);margin-right:4px">H</span><span style="color:'+col+'">'+formatPrice(candle2.h)+'</span>  '+
+        '<span style="color:rgba(201,168,76,.6);margin-right:4px">L</span><span style="color:'+col+'">'+formatPrice(candle2.l)+'</span>  '+
+        '<span style="color:rgba(201,168,76,.6);margin-right:4px">C</span><span style="color:'+col+'">'+formatPrice(candle2.c)+'</span>';
+      _ohlcTip.style.display='block';
     }
   });
   chartCanvas.addEventListener('mouseleave',function(){
     renderChart();
+    _ohlcTip.style.display='none';
     var lbl=document.getElementById('crosshairLabel'); if(lbl)lbl.style.display='none';
   });
   chartCanvas.addEventListener('wheel',function(e){
@@ -4360,12 +4407,10 @@ function drawAnnotations(ctx,co){
     drawOne(ctx,makeDrawing(drawStart,hoverPoint),co,true);
   }
 
-  /* Live brush stroke preview */
+  /* Live brush stroke preview — same context transform as saved brush */
   if(isBrushing&&brushPath.length>1){
     ctx.save();
-    ctx.setTransform(1,0,0,1,0,0);
-    var dprL=window.devicePixelRatio||1; ctx.scale(dprL,dprL);
-    ctx.strokeStyle='rgba(201,168,76,.7)'; ctx.lineWidth=2.5;
+    ctx.strokeStyle='rgba(201,168,76,.65)'; ctx.lineWidth=2;
     ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(brushPath[0].x,brushPath[0].y);
@@ -4686,14 +4731,12 @@ function drawOne(ctx,d,co,prev){
     ctx.restore();return;
   }
 
-  /* Brush stroke — stored in CSS pixel coords, drawn directly */
+  /* Brush stroke — CSS pixel coords, context already has DPR transform */
   if(d.type==='brush'&&d.path&&d.path.length>1){
     ctx.save();
-    ctx.setTransform(1,0,0,1,0,0); /* reset to identity for raw pixel coords */
-    /* re-apply DPR scale since path is in CSS pixels */
-    var dprB=window.devicePixelRatio||1;
-    ctx.scale(dprB,dprB);
-    ctx.strokeStyle='#c9a84c'; ctx.lineWidth=2.5;
+    /* Context already has setTransform(DPR,...) from resizeCanvas
+       Path coords are CSS pixels — draw directly, no extra scaling needed */
+    ctx.strokeStyle='#c9a84c'; ctx.lineWidth=2;
     ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(d.path[0].x,d.path[0].y);
@@ -4703,7 +4746,7 @@ function drawOne(ctx,d,co,prev){
       ctx.quadraticCurveTo(d.path[bi2].x,d.path[bi2].y,cpx,cpy);
     }
     ctx.lineTo(d.path[d.path.length-1].x,d.path[d.path.length-1].y);
-    if(d.closed){ ctx.closePath(); ctx.fillStyle='rgba(201,168,76,.08)'; ctx.fill(); }
+    if(d.closed){ ctx.closePath(); ctx.fillStyle='rgba(201,168,76,.07)'; ctx.fill(); }
     ctx.stroke(); ctx.restore(); return;
   }
   /* Standard line (trendline / ray / extended) */
