@@ -279,14 +279,16 @@ app.use('/charting_library', express.static(path.join(__dirname, 'charting_libra
   setHeaders: (res) => res.setHeader('Access-Control-Allow-Origin', '*')
 }));
 
-/* ── Serve SVG, ICO, PNG files from root directory ── */
+/* ── Serve SVG and image files explicitly ── */
 app.use(express.static(__dirname, {
-  index: false, /* don't serve index.html automatically — we handle that */
-  extensions: ['svg', 'ico', 'png', 'webp', 'jpg'],
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.svg')) res.setHeader('Content-Type', 'image/svg+xml');
-  }
+  index: false,
+  dotfiles: 'ignore'
 }));
+
+/* Explicit fallback routes for known static files */
+app.get('/logo.svg',    (req, res) => res.sendFile(path.join(__dirname, 'logo.svg')));
+app.get('/favicon.svg', (req, res) => res.sendFile(path.join(__dirname, 'favicon.svg')));
+app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'favicon.svg')));
 
 /* ── Serve HTML pages ── */
 function sendPage(file, res) {
