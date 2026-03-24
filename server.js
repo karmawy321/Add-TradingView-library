@@ -86,6 +86,79 @@ function disconnectBinanceIfUnused(symbol) {
   }
 }
 
+const binanceWs = {};
+const binancePollers = {};
+
+function connectBinance(symbol) {
+  const lower = symbol.toLowerCase();
+  if (binanceWs[lower]) return;
+  fetchBinanceHistory(symbol.toUpperCase());
+
+  const wsUrls = [
+    `wss://stream.binance.com:9443/ws/${lower}@aggTrade`,
+    `wss://stream.binance.com:443/ws/${lower}@aggTrade`,
+    `wss://stream1.binance.com:9443/ws/${lower}@aggTrade`,
+    `wss://stream.binance.us:9443/ws/${lower}@aggTrade`
+  ];
+  let urlIdx = 0;
+
+  function tryConnect() {
+    if (urlIdx >= wsUrls.length) {
+      console.log(`[Binance] All WS blocked for ${symbol} — using REST polling`);
+      startBinancePolling(symbol.toUpperCase());
+      return;
+    }
+    const ws = new WebSocket(wsUrls[urlIdx]);
+    ws.on('open',    ()  => console.log(`[Binance] Connected: ${symbol}`));
+    ws.on('message', raw => {
+      try {
+        const m = JSON.parse(raw);
+        processTick(symbol.toUpperCase(), parseFloat(m.p), parseFloat(m.q), m.T || Date.now());
+      } catch(e) {}
+    });
+    ws.on('close',  ()  => { delete binanceWs[lower]; });
+    ws.on('error',  err => {
+      ws.terminate(); urlIdx++;
+      setTimeout(tryConnect, 1000);
+    });
+    binanceWs[lower] = ws;
+  }
+  tryConnect();
+}
+
+function startBinancePolling(symbol) {
+  if (binancePollers[symbol]) return;
+  console.log(`[Binance] REST polling: ${symbol}`);
+  binancePollers[symbol] = setInterval(() => {
+    const req = https.request({ hostname: 'api.binance.com', path: `/api/v3/ticker/24hr?symbol=${symbol}`, method: 'GET' }, res => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        try {
+          const d = JSON.parse(data);
+          if (d.lastPrice) processTick(symbol, parseFloat(d.lastPrice), parseFloat(d.lastQty||0), Date.now());
+        } catch(e) {}
+      });
+    });
+    req.on('error', () => {});
+    req.end();
+  }, 3000);
+}
+
+function stopBinancePolling(symbol) {
+  if (binancePollers[symbol]) { clearInterval(binancePollers[symbol]); delete binancePollers[symbol]; }
+}
+
+function disconnectBinanceIfUnused(symbol) {
+  const lower = symbol.toLowerCase();
+  const key   = symbol.toUpperCase();
+  if (!sseClients[key] || sseClients[key].size === 0) {
+    if (binanceWs[lower]) { binanceWs[lower].terminate(); delete binanceWs[lower]; }
+    stopBinancePolling(key);
+  }
+}
+
+
 function fetchBinanceHistory(symbol) {
   TIMEFRAMES.forEach(tf => {
     const path = `/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
@@ -226,6 +299,10 @@ app.get('/',        (req, res) => sendPage('index.html',   res));
 app.get('/auth',    (req, res) => sendPage('auth.html',    res));
 app.get('/profile', (req, res) => sendPage('profile.html', res));
 app.get('/health',  (req, res) => res.json({ status: 'ok' }));
+app.get('/debug-files', (req, res) => {
+  const files = fs.readdirSync(__dirname).filter(f => !f.startsWith('.'));
+  res.json({ cwd: __dirname, files, hasSvg: files.filter(f => f.endsWith('.svg')) });
+});
 app.get('/status',  (req, res) => res.json({
   status: 'ok', service: 'Fractal AI Agent', version: '3.0.0',
   hasKey: !!process.env.ANTHROPIC_API_KEY,
