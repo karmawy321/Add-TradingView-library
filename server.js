@@ -301,6 +301,13 @@ app.get('/favicon.ico', (req, res) => {
     res.send(data);
   });
 });
+app.get('/datafeed.js', (req, res) => {
+  fs.readFile(path.resolve(__dirname, 'datafeed.js'), (err, data) => {
+    if (err) return res.status(404).json({ error: 'datafeed.js not found' });
+    res.setHeader('Content-Type', 'application/javascript');
+    res.send(data);
+  });
+});
 
 /* ── Serve HTML pages ── */
 function sendPage(file, res) {

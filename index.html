@@ -721,6 +721,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <!-- SMA toggles -->
             <button id="sma200Btn" onclick="toggleSMA(200)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(52,152,219,.15);border:1px solid rgba(52,152,219,.4);color:#3498db;cursor:pointer;letter-spacing:.06em">SMA 200</button>
             <button id="sma50Btn"  onclick="toggleSMA(50)"  style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.4);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SMA 50</button>
+            <button id="sma400Btn" onclick="toggleSMA(400)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(155,143,232,.15);border:1px solid rgba(155,143,232,.4);color:#9b8fe8;cursor:pointer;letter-spacing:.06em">SMA 400</button>
             <!-- Upload fallback -->
             <label style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
               ↑ UPLOAD
@@ -739,16 +740,16 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
           <!-- SMA crossover alert bar -->
           <div id="smaAlertBar" style="display:none;padding:6px 14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;border-bottom:1px solid rgba(201,168,76,.2)"></div>
 
-          <!-- Canvas chart — our own renderer -->
-          <div style="position:relative;flex:1;min-height:460px">
-            <canvas id="chartCanvas" style="display:block;width:100%;height:460px;cursor:crosshair"></canvas>
+          <!-- TradingView Chart -->
+          <div style="position:relative;flex:1;min-height:500px">
+            <div id="tv_chart_container" style="width:100%;height:500px"></div>
+            <!-- Hidden canvas kept for fallback compatibility -->
+            <canvas id="chartCanvas" style="display:none"></canvas>
             <!-- Upload preview overlay -->
-            <div class="img-pv" id="imgPv" style="display:none;position:absolute;inset:0">
+            <div class="img-pv" id="imgPv" style="display:none;position:absolute;inset:0;z-index:100">
               <img id="prevImg" src="" alt="" style="width:100%;height:100%;object-fit:contain">
               <button class="rm-x" id="rmX">✕</button>
             </div>
-            <!-- Crosshair price label -->
-            <div id="crosshairLabel" style="display:none;position:absolute;font-family:'DM Mono',monospace;font-size:9px;background:rgba(6,8,13,.9);border:1px solid rgba(201,168,76,.3);padding:2px 6px;color:#c9a84c;pointer-events:none;z-index:20"></div>
           </div>
 
           <!-- Welcome overlay — shown before any chart loads -->
@@ -3280,6 +3281,7 @@ var currentInterval = '4h';
 var chartSSE        = null;
 var sma50On         = true;
 var sma200On        = true;
+var sma400On        = false;
 var allCandleData   = {};
 var smaContextStr   = '';
 var lwChartInstance = null; /* truthy flag for compatibility */
@@ -3627,9 +3629,21 @@ function onTfChange(){
 }
 
 function toggleSMA(period){
-  if(period===50){sma50On=!sma50On;var b=document.getElementById('sma50Btn');if(b)b.style.opacity=sma50On?'1':'0.35';}
-  else{sma200On=!sma200On;var b=document.getElementById('sma200Btn');if(b)b.style.opacity=sma200On?'1':'0.35';}
-  renderChart();
+  var studies = tvWidget && tvReady ? tvWidget.activeChart() : null;
+  if(period===50){
+    sma50On=!sma50On;
+    var b=document.getElementById('sma50Btn');if(b)b.style.opacity=sma50On?'1':'0.35';
+    if(studies) studies.createStudy('Moving Average',false,false,[50],{'Plot.color':'#c9a84c','Plot.linewidth':1});
+  } else if(period===200){
+    sma200On=!sma200On;
+    var b=document.getElementById('sma200Btn');if(b)b.style.opacity=sma200On?'1':'0.35';
+    if(studies) studies.createStudy('Moving Average',false,false,[200],{'Plot.color':'#3498db','Plot.linewidth':1});
+  } else if(period===400){
+    sma400On=!sma400On;
+    var b=document.getElementById('sma400Btn');if(b)b.style.opacity=sma400On?'1':'0.35';
+    if(studies) studies.createStudy('Moving Average',false,false,[400],{'Plot.color':'#9b8fe8','Plot.linewidth':1});
+  }
+  if(!studies) renderChart();
 }
 
 function yToPrice(y){
@@ -3849,6 +3863,174 @@ window.addEventListener('resize', function(){
   <a href="#pricing" class="btn-g" onclick="document.getElementById('noCreditsGate').classList.remove('show')">View Credit Packs</a>
   <button onclick="document.getElementById('noCreditsGate').classList.remove('show')" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;margin-top:4px">Dismiss</button>
 </div>
+
+<!-- TradingView Charting Library -->
+<script src="/charting_library/charting_library.standalone.js"></script>
+<script src="/datafeed.js"></script>
+<script>
+/* ── TV Resolution map ── */
+var TF_TO_TV = {'1m':'1','3m':'3','5m':'5','15m':'15','30m':'30','1h':'60','4h':'240','1d':'1D','1w':'1W','1M':'1M'};
+var tvWidget  = null;
+var tvReady   = false;
+var tvStudyIds = { sma50: null, sma200: null, sma400: null };
+
+function initTVChart(symbol, tf) {
+  symbol = (symbol || 'BTCUSDT').toUpperCase().replace('/','');
+  var tvRes = TF_TO_TV[tf || '4h'] || '240';
+
+  /* Remove existing widget */
+  if(tvWidget){ try{ tvWidget.remove(); }catch(e){} tvWidget=null; tvReady=false; }
+
+  var container = document.getElementById('tv_chart_container');
+  if(!container){ console.warn('[TV] container not found'); return; }
+  if(typeof TradingView === 'undefined'){ console.warn('[TV] library not loaded'); return; }
+
+  tvWidget = new TradingView.widget({
+    container:    'tv_chart_container',
+    datafeed:     FractalDatafeed,
+    library_path: '/charting_library/',
+    locale:       'en',
+    symbol:       symbol,
+    interval:     tvRes,
+    theme:        'Dark',
+    style:        '1',
+    timezone:     'Etc/UTC',
+    autosize:     true,
+    disabled_features: [
+      'header_symbol_search',
+      'symbol_search_hot_key',
+      'header_compare',
+      'use_localstorage_for_settings',
+      'save_load_all_charts_button',
+      'study_templates',
+      'header_screenshot',
+      'header_fullscreen_button',
+      'display_market_status',
+      'go_to_date',
+      'timeframes_toolbar',
+      'show_chart_property_page',
+      'popup_hints',
+    ],
+    enabled_features: ['side_toolbar_in_fullscreen_mode'],
+    overrides: {
+      'mainSeriesProperties.candleStyle.upColor':          '#26a69a',
+      'mainSeriesProperties.candleStyle.downColor':        '#ef5350',
+      'mainSeriesProperties.candleStyle.borderUpColor':   '#26a69a',
+      'mainSeriesProperties.candleStyle.borderDownColor': '#ef5350',
+      'mainSeriesProperties.candleStyle.wickUpColor':     '#26a69a',
+      'mainSeriesProperties.candleStyle.wickDownColor':   '#ef5350',
+      'paneProperties.background':                        '#06080d',
+      'paneProperties.backgroundType':                    'solid',
+      'paneProperties.vertGridProperties.color':          'rgba(255,255,255,0.04)',
+      'paneProperties.horzGridProperties.color':          'rgba(255,255,255,0.04)',
+      'scalesProperties.textColor':                       '#8a95a8',
+      'scalesProperties.backgroundColor':                 '#06080d',
+    },
+  });
+
+  tvWidget.onChartReady(function(){
+    tvReady = true;
+    lwChartInstance = true;
+    var btn = document.getElementById('azBtn'); if(btn) btn.disabled = false;
+    var chart = tvWidget.activeChart();
+    /* Add active SMAs */
+    if(sma50On)  tvStudyIds.sma50  = chart.createStudy('Moving Average',false,false,[50], {'Plot.color':'#c9a84c','Plot.linewidth':1});
+    if(sma200On) tvStudyIds.sma200 = chart.createStudy('Moving Average',false,false,[200],{'Plot.color':'#3498db','Plot.linewidth':1});
+    if(sma400On) tvStudyIds.sma400 = chart.createStudy('Moving Average',false,false,[400],{'Plot.color':'#9b8fe8','Plot.linewidth':1});
+  });
+}
+
+/* ── Override captureChart to use TV screenshot ── */
+function captureChart() {
+  if(dataUrl){ runPendingTool(); return; }
+  /* Use TV screenshot if available */
+  if(tvWidget && tvReady){
+    tvWidget.takeClientScreenshot().then(function(canvas){
+      dataUrl = canvas.toDataURL('image/png');
+      runPendingTool();
+    }).catch(function(){
+      /* Fallback to canvas if TV screenshot fails */
+      var cv = document.getElementById('chartCanvas');
+      if(cv) dataUrl = cv.toDataURL('image/png');
+      runPendingTool();
+    });
+    return;
+  }
+  /* Fallback canvas */
+  var cv = document.getElementById('chartCanvas');
+  if(cv && chartCandles && chartCandles.length > 0){ dataUrl = cv.toDataURL('image/png'); runPendingTool(); return; }
+  showCapturePrompt();
+}
+
+function captureAndStore() {
+  if(tvWidget && tvReady){
+    tvWidget.takeClientScreenshot().then(function(canvas){ dataUrl = canvas.toDataURL('image/png'); }).catch(function(){});
+  }
+}
+
+function captureForTool() {
+  /* Returns a promise or null — callers that use this must handle async */
+  if(tvWidget && tvReady) return null; /* will be called via captureChart */
+  var cv = document.getElementById('chartCanvas');
+  if(cv && chartCandles && chartCandles.length > 0) return cv.toDataURL('image/png');
+  return null;
+}
+
+/* ── Wire loadChart to TV ── */
+var _origLoadChart = loadChart;
+loadChart = function(symbol, interval) {
+  var sym = (symbol || '').toUpperCase().replace('/','').replace('-','');
+  var tf  = interval || currentInterval || '4h';
+  /* Update our state */
+  currentSymbol   = sym;
+  currentInterval = tf;
+  dataUrl = null;
+  /* Hide welcome overlay */
+  var empty = document.getElementById('chartEmpty'); if(empty) empty.style.display = 'none';
+  /* Update live price badge */
+  var _lm = document.getElementById('livePriceMeta');
+  var _lv = document.getElementById('livePriceVal');
+  var _lb = document.getElementById('livePriceBar');
+  if(_lm) _lm.textContent = 'LIVE · ' + sym;
+  if(_lv) _lv.textContent = '—';
+  if(_lb) _lb.classList.add('show');
+  /* Start price polling */
+  startPricePolling(sym);
+  /* TV: set symbol or init */
+  if(tvWidget && tvReady){
+    tvWidget.setSymbol(sym, TF_TO_TV[tf] || '240', function(){});
+  } else {
+    initTVChart(sym, tf);
+  }
+  /* Also trigger SSE for price data + crossover detection */
+  if(chartSSE){ try{ chartSSE.close(); }catch(e){} chartSSE = null; }
+  openSSE(sym);
+};
+
+/* ── Wire tfIn change to TV ── */
+var _origOnTfChange = onTfChange;
+onTfChange = function(){
+  var tf = document.getElementById('tfIn');
+  if(!tf || !currentSymbol) return;
+  currentInterval = tf.value;
+  if(tvWidget && tvReady){
+    tvWidget.activeChart().setResolution(TF_TO_TV[currentInterval] || '240', function(){});
+  } else {
+    _origOnTfChange();
+  }
+};
+
+/* ── Init TV chart on page load if analyzer section is visible ── */
+window.addEventListener('load', function(){
+  /* Small delay so library initializes */
+  setTimeout(function(){
+    var container = document.getElementById('tv_chart_container');
+    if(container && typeof TradingView !== 'undefined' && typeof FractalDatafeed !== 'undefined'){
+      initTVChart('BTCUSDT', '4h');
+    }
+  }, 500);
+});
+</script>
 
 </body>
 </html>
