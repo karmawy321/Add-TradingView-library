@@ -95,7 +95,10 @@
 
 
 /* ══ LIVE PRICE BADGE ══ */
-.live-price-bar{display:none;align-items:center;gap:10px;padding:7px 12px;background:rgba(39,174,96,.06);border:1px solid rgba(39,174,96,.2);margin-top:6px;border-radius:1px}
+.live-price-bar{display:none;align-items:center;gap:8px;padding:6px 14px;
+  background:rgba(6,8,13,.92);border:1px solid rgba(39,174,96,.3);
+  border-radius:3px;position:absolute;top:10px;right:80px;z-index:40;
+  box-shadow:0 2px 12px rgba(0,0,0,.5)}
 .live-price-bar.show{display:flex}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#27ae60;animation:pulse 2s infinite;flex-shrink:0}
 .live-price-val{font-family:'Cinzel',serif;font-size:14px;font-weight:600;color:#f0f4fa}
@@ -797,7 +800,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               <input type="file" id="fileIn" accept="image/*" style="display:none">
             </label>
             <!-- Live price -->
-            <div class="live-price-bar" id="livePriceBar" style="margin-left:auto">
+            <div class="live-price-bar" id="livePriceBar">
               <div class="live-dot"></div>
               <div class="live-price-val" id="livePriceVal">—</div>
               <div class="live-price-change" id="livePriceChange"></div>
@@ -4253,77 +4256,68 @@ function S(p,vb){ return '<svg width="16" height="16" viewBox="'+(vb||'0 0 16 16
 
 /* ── Tool groups ── */
 var GROUPS = [
+  /* ── Cursor ── */
   { id:'cursor', icon:S('<path d="M3 2l9 6-4 1-1.5 5z" fill="currentColor" stroke="none"/>'), tooltip:'Cursor',
     items:[
-      { id:'cursor',    label:'Cross',        icon:S('<line x1="8" y1="1" x2="8" y2="15"/><line x1="1" y1="8" x2="15" y2="8"/>'), cur:'crosshair' },
-      { id:'dot',       label:'Dot',          icon:S('<circle cx="8" cy="8" r="3.5" fill="currentColor" stroke="none"/>'), cur:'crosshair' },
-      { id:'arrow_cur', label:'Arrow',        icon:S('<path d="M3 2l9 6-4 1-1.5 5z" fill="currentColor" stroke="none"/>'), cur:'default' },
+      { id:'cursor',    label:'Cross cursor',  icon:S('<line x1="8" y1="1" x2="8" y2="15"/><line x1="1" y1="8" x2="15" y2="8"/>'), cur:'crosshair' },
+      { id:'dot',       label:'Dot cursor',    icon:S('<circle cx="8" cy="8" r="3.5" fill="currentColor" stroke="none"/>'), cur:'crosshair' },
+      { id:'arrow_cur', label:'Arrow cursor',  icon:S('<path d="M3 2l9 6-4 1-1.5 5z" fill="currentColor" stroke="none"/>'), cur:'default' },
     ]},
   'sep',
-  { id:'lines_grp', icon:S('<line x1="2" y1="13" x2="14" y2="3"/><circle cx="2" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="14" cy="3" r="1.8" fill="currentColor" stroke="none"/>'), tooltip:'Lines',
+  /* ── Lines + H/V + Channels + Shapes + Arrows — all in one group ── */
+  { id:'lines_grp', icon:S('<line x1="2" y1="13" x2="14" y2="3"/><circle cx="2" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="14" cy="3" r="1.8" fill="currentColor" stroke="none"/>'), tooltip:'Lines & Shapes',
     items:[
-      { id:'trendline', label:'Trend Line',    icon:S('<line x1="2" y1="13" x2="14" y2="3"/><circle cx="2" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="14" cy="3" r="1.8" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2 },
-      { id:'ray',       label:'Ray',           icon:S('<line x1="2" y1="11" x2="15" y2="4"/><circle cx="2" cy="11" r="1.8" fill="currentColor" stroke="none"/><path d="M13 3l3 1-1 3"/>'), cur:'crosshair', points:2, ray:true },
-      { id:'extline',   label:'Extended Line', icon:S('<line x1="1" y1="8" x2="15" y2="8"/><path d="M2 6l-2 2 2 2"/><path d="M14 6l2 2-2 2"/>'), cur:'crosshair', points:2, extended:true },
-      { id:'infoline',  label:'Trend Angle',   icon:S('<line x1="2" y1="13" x2="14" y2="5"/><path d="M2 13 a5 5 0 0 1 4.5-4"/><text x="7" y="15" font-size="6" fill="currentColor" stroke="none">°</text>'), cur:'crosshair', points:2, angle:true },
+      { id:'trendline', label:'Trend Line',       icon:S('<line x1="2" y1="13" x2="14" y2="3"/><circle cx="2" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="14" cy="3" r="1.8" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2 },
+      { id:'ray',       label:'Ray',              icon:S('<line x1="2" y1="11" x2="15" y2="4"/><circle cx="2" cy="11" r="1.8" fill="currentColor" stroke="none"/><path d="M13 3l3 1-1 3"/>'), cur:'crosshair', points:2, ray:true },
+      { id:'extline',   label:'Extended Line',    icon:S('<line x1="1" y1="8" x2="15" y2="8"/><path d="M2 6l-2 2 2 2"/><path d="M14 6l2 2-2 2"/>'), cur:'crosshair', points:2, extended:true },
+      { id:'infoline',  label:'Trend Angle',      icon:S('<line x1="2" y1="13" x2="14" y2="5"/><path d="M2 13 a5 5 0 0 1 4.5-4"/><text x="7" y="15" font-size="6" fill="currentColor" stroke="none">°</text>'), cur:'crosshair', points:2, angle:true },
+      { id:'hline',     label:'Horizontal Line',  icon:S('<line x1="1" y1="8" x2="15" y2="8"/>'), cur:'crosshair', hline:true },
+      { id:'hray',      label:'Horizontal Ray',   icon:S('<line x1="1" y1="8" x2="15" y2="8"/><path d="M14 6l2 2-2 2"/>'), cur:'crosshair', hline:true, ray:true },
+      { id:'vline',     label:'Vertical Line',    icon:S('<line x1="8" y1="1" x2="8" y2="15"/>'), cur:'crosshair', vline:true },
+      { id:'parallel',  label:'Parallel Channel', icon:S('<line x1="2" y1="4" x2="14" y2="7"/><line x1="2" y1="9" x2="14" y2="12"/>'), cur:'crosshair', points:2, channel:'parallel' },
+      { id:'flattop',   label:'Flat Top/Bottom',  icon:S('<line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="11" x2="14" y2="7"/>'), cur:'crosshair', points:2, channel:'flat' },
+      { id:'rect',      label:'Rectangle',        icon:S('<rect x="2" y="5" width="12" height="8" rx="1"/>'), cur:'crosshair', points:2, shape:'rect' },
+      { id:'ellipse',   label:'Ellipse',          icon:S('<ellipse cx="8" cy="8" rx="6" ry="4.5"/>'), cur:'crosshair', points:2, shape:'ellipse' },
+      { id:'triangle',  label:'Triangle',         icon:S('<path d="M8 2l7 12H1z"/>'), cur:'crosshair', points:2, shape:'triangle' },
+      { id:'arrow',     label:'Arrow',            icon:S('<line x1="3" y1="13" x2="13" y2="3"/><path d="M13 3l-5 1.5 1.5-5z" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2, arrowline:true },
+      { id:'arrowup',   label:'Arrow Up mark',    icon:S('<line x1="8" y1="13" x2="8" y2="4"/><path d="M4 7l4-4 4 4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'up' },
+      { id:'arrowdn',   label:'Arrow Down mark',  icon:S('<line x1="8" y1="3" x2="8" y2="12"/><path d="M4 9l4 4 4-4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'down' },
     ]},
-  { id:'hv_grp', icon:S('<line x1="1" y1="8" x2="15" y2="8"/>'), tooltip:'H/V Lines',
-    items:[
-      { id:'hline',   label:'Horizontal Line', icon:S('<line x1="1" y1="8" x2="15" y2="8"/>'), cur:'crosshair', hline:true },
-      { id:'hray',    label:'Horizontal Ray',  icon:S('<line x1="1" y1="8" x2="15" y2="8"/><path d="M14 6l2 2-2 2"/>'), cur:'crosshair', hline:true, ray:true },
-      { id:'vline',   label:'Vertical Line',   icon:S('<line x1="8" y1="1" x2="8" y2="15"/>'), cur:'crosshair', vline:true },
-    ]},
-  { id:'chan_grp', icon:S('<line x1="2" y1="5" x2="14" y2="5"/><line x1="2" y1="11" x2="14" y2="11"/>'), tooltip:'Channels',
-    items:[
-      { id:'parallel', label:'Parallel Channel', icon:S('<line x1="2" y1="4" x2="14" y2="7"/><line x1="2" y1="9" x2="14" y2="12"/>'), cur:'crosshair', points:2, channel:'parallel' },
-      { id:'flattop',  label:'Flat Top/Bottom',  icon:S('<line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="11" x2="14" y2="7"/>'), cur:'crosshair', points:2, channel:'flat' },
-    ]},
-  'sep',
+  /* ── Fibonacci ── */
   { id:'fib_grp', icon:S('<line x1="2" y1="2" x2="14" y2="2"/><line x1="2" y1="6" x2="14" y2="6" opacity=".7"/><line x1="2" y1="10" x2="14" y2="10" opacity=".5"/><line x1="2" y1="14" x2="14" y2="14" opacity=".3"/><line x1="4" y1="2" x2="4" y2="14"/>'), tooltip:'Fibonacci',
     items:[
-      { id:'fib',       label:'Fib Retracement', icon:S('<line x1="2" y1="2" x2="14" y2="2"/><line x1="2" y1="6" x2="14" y2="6" opacity=".7"/><line x1="2" y1="10" x2="14" y2="10" opacity=".4"/><line x1="4" y1="2" x2="4" y2="14"/>'), cur:'crosshair', points:2, fibtype:'retrace' },
-      { id:'fibext',    label:'Fib Extension',   icon:S('<line x1="2" y1="13" x2="14" y2="3"/><line x1="9" y1="2" x2="15" y2="2" stroke-dasharray="2 2"/><line x1="9" y1="5" x2="15" y2="5" stroke-dasharray="2 2"/>'), cur:'crosshair', points:2, fibtype:'ext' },
-      { id:'fibcirc',   label:'Fib Circles',     icon:S('<circle cx="6" cy="8" r="5"/><circle cx="6" cy="8" r="3"/><circle cx="6" cy="8" r="1.2" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2, fibtype:'circle' },
-      { id:'fibfan',    label:'Fib Fan',          icon:S('<line x1="2" y1="13" x2="14" y2="5"/><line x1="2" y1="13" x2="14" y2="8" opacity=".6"/><line x1="2" y1="13" x2="14" y2="11" opacity=".4"/>'), cur:'crosshair', points:2, fibtype:'fan' },
+      { id:'fib',      label:'Fib Retracement', icon:S('<line x1="2" y1="2" x2="14" y2="2"/><line x1="2" y1="6" x2="14" y2="6" opacity=".7"/><line x1="2" y1="10" x2="14" y2="10" opacity=".4"/><line x1="4" y1="2" x2="4" y2="14"/>'), cur:'crosshair', points:2, fibtype:'retrace' },
+      { id:'fibext',   label:'Fib Extension',   icon:S('<line x1="2" y1="13" x2="14" y2="3"/><line x1="9" y1="2" x2="15" y2="2" stroke-dasharray="2 2"/><line x1="9" y1="5" x2="15" y2="5" stroke-dasharray="2 2"/>'), cur:'crosshair', points:2, fibtype:'ext' },
+      { id:'fibcirc',  label:'Fib Circles',     icon:S('<circle cx="6" cy="8" r="5"/><circle cx="6" cy="8" r="3"/><circle cx="6" cy="8" r="1.2" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2, fibtype:'circle' },
+      { id:'fibfan',   label:'Fib Fan',         icon:S('<line x1="2" y1="13" x2="14" y2="5"/><line x1="2" y1="13" x2="14" y2="8" opacity=".6"/><line x1="2" y1="13" x2="14" y2="11" opacity=".4"/>'), cur:'crosshair', points:2, fibtype:'fan' },
+    ]},
+  /* ── Text ── */
+  { id:'text_grp', icon:S('<text x="4" y="13" font-size="13" font-family="serif" fill="currentColor" stroke="none" font-weight="bold">T</text>'), tooltip:'Text & Labels',
+    items:[
+      { id:'text',    label:'Text label', icon:S('<text x="4" y="13" font-size="13" font-family="serif" fill="currentColor" stroke="none" font-weight="bold">T</text>'), cur:'text', textdraw:true },
+      { id:'callout', label:'Callout box', icon:S('<rect x="2" y="2" width="10" height="8" rx="1"/><path d="M4 10l2 4 3-4"/>'), cur:'text', textdraw:true, callout:true },
     ]},
   'sep',
-  { id:'shape_grp', icon:S('<rect x="2" y="5" width="12" height="8" rx="1"/>'), tooltip:'Shapes',
+  /* ── Brush ── */
+  { id:'brush_grp', icon:S('<path d="M2 13c3-3 5-7 8-9s4 2 2 4c-1 2-4 3-6 6c-1 1-2 2-3 2s-1-1-1-3z"/>'), tooltip:'Brush',
     items:[
-      { id:'rect',     label:'Rectangle', icon:S('<rect x="2" y="5" width="12" height="8" rx="1"/>'), cur:'crosshair', points:2, shape:'rect' },
-      { id:'ellipse',  label:'Ellipse',   icon:S('<ellipse cx="8" cy="8" rx="6" ry="4.5"/>'), cur:'crosshair', points:2, shape:'ellipse' },
-      { id:'triangle', label:'Triangle',  icon:S('<path d="M8 2l7 12H1z"/>'), cur:'crosshair', points:2, shape:'triangle' },
-    ]},
-  { id:'arrow_grp', icon:S('<line x1="3" y1="13" x2="13" y2="3"/><path d="M13 3l-5 1.5 1.5-5z" fill="currentColor" stroke="none"/>'), tooltip:'Arrows',
-    items:[
-      { id:'arrow',   label:'Arrow',      icon:S('<line x1="3" y1="13" x2="13" y2="3"/><path d="M13 3l-5 1.5 1.5-5z" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2, arrowline:true },
-      { id:'arrowup', label:'Arrow Up',   icon:S('<line x1="8" y1="13" x2="8" y2="4"/><path d="M4 7l4-4 4 4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'up' },
-      { id:'arrowdn', label:'Arrow Down', icon:S('<line x1="8" y1="3" x2="8" y2="12"/><path d="M4 9l4 4 4-4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'down' },
-    ]},
-  { id:'text_grp', icon:S('<text x="4" y="13" font-size="13" font-family="serif" fill="currentColor" stroke="none" font-weight="bold">T</text>'), tooltip:'Text',
-    items:[
-      { id:'text',    label:'Text',    icon:S('<text x="4" y="13" font-size="13" font-family="serif" fill="currentColor" stroke="none" font-weight="bold">T</text>'), cur:'text', textdraw:true },
-      { id:'callout', label:'Callout', icon:S('<rect x="2" y="2" width="10" height="8" rx="1"/><path d="M4 10l2 4 3-4"/>'), cur:'text', textdraw:true, callout:true },
+      { id:'brush',   label:'Freehand draw', icon:S('<path d="M2 13c3-3 5-7 8-9s4 2 2 4c-1 2-4 3-6 6c-1 1-2 2-3 2s-1-1-1-3z"/>'), cur:'crosshair', brush:true },
+      { id:'eraser2', label:'Brush eraser',  icon:S('<path d="M3 11l8-8 4 4-8 8z"/><line x1="3" y1="11" x2="11" y2="11"/>'), cur:'cell', erbrush:true },
     ]},
   'sep',
+  /* ── Measure & Zoom ── */
   { id:'measure', icon:S('<path d="M2 12l12-8"/><path d="M2 12l2-2"/><path d="M14 4l-2 2"/><line x1="2" y1="14" x2="14" y2="14"/>'), tooltip:'Measure', single:true, measuretool:true, cur:'crosshair' },
   { id:'zoom',    icon:S('<circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/><line x1="5" y1="7" x2="9" y2="7"/><line x1="7" y1="5" x2="7" y2="9"/>'), tooltip:'Zoom In', single:true, zoomtool:true, cur:'zoom-in' },
+  { id:'magnet',  icon:S('<path d="M5 3a4 4 0 0 1 6 0v4a1 1 0 0 1-2 0V5a2 2 0 0 0-2 0v2a1 1 0 0 1-2 0z"/><path d="M4 11h8"/>'), tooltip:'Magnet snap', single:true, magnettool:true, cur:'crosshair', toggle:true },
   'sep',
-  { id:'magnet', icon:S('<path d="M5 3a4 4 0 0 1 6 0v4a1 1 0 0 1-2 0V5a2 2 0 0 0-2 0v2a1 1 0 0 1-2 0z"/><path d="M4 11h8"/>'), tooltip:'Magnet', single:true, magnettool:true, cur:'crosshair', toggle:true },
-  { id:'lock',   icon:S('<rect x="4" y="8" width="8" height="6" rx="1"/><path d="M6 8V6a2 2 0 0 1 4 0v2"/>'), tooltip:'Lock All', single:true, locktool:true, cur:'default', toggle:true },
-  'sep',
-  { id:'brush_grp', icon:S('<path d="M2 13c3-3 5-7 8-9s4 2 2 4c-1 2-4 3-6 6c-1 1-2 2-3 2s-1-1-1-3z"/><path d="M10 6c1-2 3-2 4-1"/>'), tooltip:'Brush',
+  /* ── Undo / Redo / Erase — all in one group ── */
+  { id:'edit_grp', icon:S('<path d="M3 8a6 6 0 1 1 1 6"/><path d="M3 4v4h4"/>'), tooltip:'Edit / Undo / Erase',
     items:[
-      { id:'brush',   label:'Freehand Brush', icon:S('<path d="M2 13c3-3 5-7 8-9s4 2 2 4c-1 2-4 3-6 6c-1 1-2 2-3 2s-1-1-1-3z"/>'), cur:'crosshair', brush:true },
-      { id:'eraser2', label:'Eraser Brush',   icon:S('<path d="M3 11l8-8 4 4-8 8z"/><line x1="3" y1="11" x2="11" y2="11"/>'), cur:'cell', erbrush:true },
+      { id:'undo_i',     label:'Undo  (Ctrl+Z)',       icon:S('<path d="M3 8a6 6 0 1 1 1 6"/><path d="M3 4v4h4"/>'), cur:'default', undotool:true },
+      { id:'redo_i',     label:'Redo  (Ctrl+Y)',       icon:S('<path d="M13 8a6 6 0 1 0-1 6"/><path d="M13 4v4h-4"/>'), cur:'default', redotool:true },
+      { id:'ptreraser',  label:'Click to erase one',   icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/>'), cur:'crosshair', ptreraser:true },
+      { id:'eraser_all', label:'Clear all drawings',   icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/><path d="M9 3l4 4-7 7H2v-4z" fill="currentColor" opacity=".3"/>'), cur:'default', erasertool:true },
     ]},
-  'sep',
-  { id:'undo',   icon:S('<path d="M3 8a6 6 0 1 1 1 6"/><path d="M3 4v4h4"/>'),  tooltip:'Undo (Ctrl+Z)',  single:true, undotool:true,  cur:'default' },
-  { id:'redo',   icon:S('<path d="M13 8a6 6 0 1 0-1 6"/><path d="M13 4v4h-4"/>'), tooltip:'Redo (Ctrl+Y)', single:true, redotool:true,  cur:'default' },
-  { id:'ptreraser', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/><circle cx="12" cy="4" r="2" fill="currentColor" stroke="none"/>'), tooltip:'Click to delete drawing', single:false,
-    items:[
-      { id:'ptreraser', label:'Click Eraser', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/>'), cur:'crosshair', ptreraser:true },
-    ]},
-  { id:'eraser', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/><path d="M9 3l4 4-7 7H2v-4z" fill="currentColor" opacity=".3"/>'), tooltip:'Clear All', single:true, erasertool:true, cur:'default' },
 ];
 
 /* ── State ── */
@@ -4534,6 +4528,10 @@ function initDrawEvents(){
       renderChart();
       return;
     }
+    /* Handle non-drawing tool items immediately on click */
+    if(activeItem&&activeItem.undotool){ doUndo(); return; }
+    if(activeItem&&activeItem.redotool){ doRedo(); return; }
+    if(activeItem&&activeItem.erasertool){ saveUndo(); drawings=[]; renderChart(); return; }
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') return;
     if(activeItem.textdraw){
       var lbl=prompt(activeItem.callout?'Callout text:':'Label:');
