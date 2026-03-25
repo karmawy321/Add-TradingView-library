@@ -817,7 +817,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <!-- Canvas wrapper -->
             <div style="position:relative;flex:1">
               <!-- Current price badge — HTML overlay, always at exact right edge -->
-              <div id="priceBadgeEl" style="display:none;position:absolute;right:0;z-index:25;pointer-events:none;font-family:'DM Mono',monospace;font-size:11px;font-weight:bold;padding:3px 8px;border-radius:0;min-width:72px;text-align:center;white-space:nowrap"></div>
+              <div id="priceBadgeEl" style="display:none;position:absolute;right:0;z-index:25;pointer-events:none;font-family:'DM Mono',monospace;font-size:11px;font-weight:bold;padding:2px 6px 2px 6px;white-space:nowrap;border-radius:0 2px 2px 0"></div>
               <!-- Live price — floats above canvas, outside border -->
               <div class="live-price-bar" id="livePriceBar" style="position:absolute;top:-46px;right:0;z-index:50">
                 <div class="live-dot"></div>
@@ -3705,14 +3705,25 @@ function renderChart() {
     chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
     chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
     chartCtx.setLineDash([]); chartCtx.restore();
-    /* Position HTML badge element to exact pixel row */
+    /* Also draw on canvas as fallback in case HTML element misses */
+    chartCtx.save();
+    chartCtx.font='bold 11px DM Mono';
+    var priceStr2=formatPrice(lastC.c);
+    var bx2=W-PAD.r;
+    chartCtx.fillStyle=isUp?'#26a69a':'#ef5350';
+    chartCtx.fillRect(bx2,lastY-10,PAD.r,20);
+    chartCtx.fillStyle='#fff'; chartCtx.textAlign='center';
+    chartCtx.fillText(priceStr2,bx2+PAD.r/2,lastY+4);
+    chartCtx.restore();
+    /* HTML badge — pinned to exact price level */
     var badge=document.getElementById('priceBadgeEl');
     if(badge){
-      var cssTop=lastY-10; /* lastY is in CSS pixels (context has DPR transform) */
+      /* lastY is already CSS pixel coordinate (context has DPR transform applied) */
       badge.style.display='block';
-      badge.style.top=cssTop+'px';
+      badge.style.top=(lastY-10)+'px';
       badge.style.background=isUp?'#26a69a':'#ef5350';
       badge.style.color='#fff';
+      badge.style.width='';  /* auto width */
       badge.textContent=formatPrice(lastC.c);
     }
   }
@@ -3760,8 +3771,9 @@ if(chartCanvas){
     var r=chartCanvas.getBoundingClientRect();
     var dpr=window.devicePixelRatio||1;
     var cssX=e.clientX-r.left, cssY=e.clientY-r.top;
-    /* Don't repaint if image is uploaded — it would erase it */
-    if(typeof _uploadedMode==='undefined'||!_uploadedMode) renderChart();
+    /* Skip all drawing when photo is uploaded */
+    if(typeof _uploadedMode!=='undefined'&&_uploadedMode)return;
+    renderChart();
     var W=chartCanvas.width/dpr, H=chartCanvas.height/dpr;
     var PAD2={t:16,b:44,l:8,r:75,vol:40};
     var vis=Math.max(20,Math.floor((chartCandles.length||0)/chartView.zoom));
@@ -3824,6 +3836,7 @@ if(chartCanvas){
   chartCanvas.addEventListener('mouseleave',function(){
     if(typeof _uploadedMode==='undefined'||!_uploadedMode) renderChart();
     _ohlcTip.style.display='none';
+    var b2=document.getElementById('priceBadgeEl');if(b2)b2.style.display='none';
     var lbl=document.getElementById('crosshairLabel'); if(lbl)lbl.style.display='none';
   });
   chartCanvas.addEventListener('wheel',function(e){
