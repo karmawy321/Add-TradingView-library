@@ -1589,11 +1589,11 @@ if (dropZone) {
     if (f && f.type.startsWith('image/')) handleFile(f);
   });
 }
-if (fileIn) fileIn.addEventListener('change', function(){ if (fileIn.files[0]) handleFile(fileIn.files[0]); });
+if (fileIn) fileIn.addEventListener('change', function(){ if (fileIn.files[0]) handleChartUpload(fileIn.files[0]); });
 if (rmX)    rmX.addEventListener('click', resetUp);
 
 var _uploadedMode = false;
-function handleFile(f){
+function handleChartUpload(f){
   var r = new FileReader();
   r.onload = function(e){
     var cv = document.getElementById('chartCanvas');
@@ -1601,34 +1601,30 @@ function handleFile(f){
     if(!ctx){ return; }
     var img = new Image();
     img.onload = function(){
-      /* Stop any live data */
       if(chartSSE){ chartSSE.close(); chartSSE=null; }
       stopPricePolling();
-      /* Resize canvas to fill container, preserve aspect ratio */
       var dpr = window.devicePixelRatio || 1;
-      var cssW = (cv.parentElement ? cv.parentElement.clientWidth : 0) || 800;
+      var cssW = cv.parentElement ? cv.parentElement.clientWidth : 800;
+      if(!cssW || cssW < 100) cssW = 800;
       var aspect = img.naturalHeight / img.naturalWidth;
-      var cssH = Math.round(cssW * aspect);
-      cssH = Math.max(300, Math.min(680, cssH));
+      var cssH = Math.max(300, Math.min(680, Math.round(cssW * aspect)));
       cv.width  = Math.round(cssW * dpr);
       cv.height = Math.round(cssH * dpr);
       cv.style.width  = cssW + 'px';
       cv.style.height = cssH + 'px';
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.drawImage(img, 0, 0, cssW, cssH);
-      /* Hide all overlays */
+      /* Hide welcome overlay */
       var empty = document.getElementById('chartEmpty');
       if(empty) empty.style.display = 'none';
-      if(imgPv) imgPv.style.display = 'none';
-      /* Show clear button, hide upload label */
+      /* Show CLEAR, hide UPLOAD */
       var clrBtn = document.getElementById('clearUploadBtn');
       var uplLbl = document.getElementById('uploadLabel');
-      if(clrBtn) clrBtn.style.display = 'inline-flex';
+      if(clrBtn) clrBtn.style.display = 'inline-block';
       if(uplLbl) uplLbl.style.display = 'none';
-      /* Enable AI tools */
       dataUrl = e.target.result;
-      if(azBtn) azBtn.disabled = false;
-      /* Clear drawings */
+      var ab = document.getElementById('azBtn');
+      if(ab) ab.disabled = false;
       if(typeof drawings !== 'undefined') drawings = [];
       _uploadedMode = true;
     };
@@ -1640,33 +1636,29 @@ function handleFile(f){
 function clearUploadedChart(){
   _uploadedMode = false;
   dataUrl = null;
-  /* Restore canvas to default state */
-  var cv = document.getElementById('chartCanvas');
-  var ctx = cv ? cv.getContext('2d') : null;
-  if(ctx && cv){
-    var dpr = window.devicePixelRatio || 1;
-    var cssW = (cv.parentElement ? cv.parentElement.clientWidth : 0) || 800;
-    var cssH = 500;
-    cv.width  = Math.round(cssW * dpr);
-    cv.height = Math.round(cssH * dpr);
-    cv.style.width  = cssW + 'px';
-    cv.style.height = cssH + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  /* Reset UI */
   var clrBtn = document.getElementById('clearUploadBtn');
   var uplLbl = document.getElementById('uploadLabel');
   if(clrBtn) clrBtn.style.display = 'none';
   if(uplLbl) uplLbl.style.display = '';
   if(fileIn) fileIn.value = '';
-  /* Show welcome if no symbol loaded */
-  if(!currentSymbol){
+  if(typeof drawings !== 'undefined') drawings = [];
+  var ab = document.getElementById('azBtn');
+  if(ab) ab.disabled = true;
+  /* If a coin was loaded, reload it; else show welcome */
+  if(typeof currentSymbol !== 'undefined' && currentSymbol){
+    if(typeof chartCandles !== 'undefined') chartCandles = [];
+    if(typeof loadChart === 'function') loadChart(currentSymbol, currentInterval);
+  } else {
     var empty = document.getElementById('chartEmpty');
     if(empty) empty.style.display = 'flex';
-  } else {
-    /* Reload current chart */
-    chartCandles = [];
-    loadChart(currentSymbol, currentInterval);
+    /* Clear canvas */
+    var cv = document.getElementById('chartCanvas');
+    var ctx2 = cv ? cv.getContext('2d') : null;
+    if(ctx2 && cv){
+      var dpr2 = window.devicePixelRatio||1;
+      ctx2.fillStyle = '#06080d';
+      ctx2.fillRect(0,0,cv.width/dpr2,cv.height/dpr2);
+    }
   }
   if(azBtn) azBtn.disabled = true;
   if(typeof drawings !== 'undefined') drawings = [];
@@ -3665,13 +3657,15 @@ function renderChart() {
     chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
     chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
     chartCtx.setLineDash([]);
-    /* Price badge */
+    /* Price badge — fits within right axis area */
     var priceStr = formatPrice(lastC.c);
-    var bw = priceStr.length * 7 + 10;
+    chartCtx.font = 'bold 11px DM Mono';
+    var bw = chartCtx.measureText(priceStr).width + 12;
+    var bx = W - PAD.r + 1;
     chartCtx.fillStyle = isUp ? '#26a69a' : '#ef5350';
-    chartCtx.fillRect(W-PAD.r, lastY-9, bw, 18);
-    chartCtx.fillStyle='#fff'; chartCtx.font='bold 11px DM Mono'; chartCtx.textAlign='left';
-    chartCtx.fillText(priceStr, W-PAD.r+5, lastY+4);
+    chartCtx.fillRect(bx, lastY-9, Math.min(bw, PAD.r-2), 18);
+    chartCtx.fillStyle = '#fff'; chartCtx.textAlign = 'left';
+    chartCtx.fillText(priceStr, bx+4, lastY+4);
     chartCtx.restore();
   }
 
