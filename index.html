@@ -4317,11 +4317,20 @@ var GROUPS = [
       { id:'eraser2', label:'Eraser Brush',   icon:S('<path d="M3 11l8-8 4 4-8 8z"/><line x1="3" y1="11" x2="11" y2="11"/>'), cur:'cell', erbrush:true },
     ]},
   'sep',
-  { id:'eraser', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/>'), tooltip:'Clear All', single:true, erasertool:true, cur:'default' },
+  { id:'undo',   icon:S('<path d="M3 8a6 6 0 1 1 1 6"/><path d="M3 4v4h4"/>'),  tooltip:'Undo (Ctrl+Z)',  single:true, undotool:true,  cur:'default' },
+  { id:'redo',   icon:S('<path d="M13 8a6 6 0 1 0-1 6"/><path d="M13 4v4h-4"/>'), tooltip:'Redo (Ctrl+Y)', single:true, redotool:true,  cur:'default' },
+  { id:'ptreraser', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/><circle cx="12" cy="4" r="2" fill="currentColor" stroke="none"/>'), tooltip:'Click to delete drawing', single:false,
+    items:[
+      { id:'ptreraser', label:'Click Eraser', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/>'), cur:'crosshair', ptreraser:true },
+    ]},
+  { id:'eraser', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/><path d="M9 3l4 4-7 7H2v-4z" fill="currentColor" opacity=".3"/>'), tooltip:'Clear All', single:true, erasertool:true, cur:'default' },
 ];
 
 /* ── State ── */
 var drawings   = [];
+var undoStack  = []; /* snapshots for undo */
+var redoStack  = []; /* snapshots for redo */
+var eraserActive = false;
 var activeTool = 'cursor';
 var activeItem = GROUPS[0].items[0];
 var isDrawing  = false;
@@ -4413,7 +4422,9 @@ function pickItem(item) {
 }
 
 function handleSingle(g) {
-  if (g.erasertool) { drawings=[]; renderChart&&renderChart(); return; }
+  if (g.erasertool) { saveUndo(); drawings=[]; renderChart&&renderChart(); return; }
+  if (g.undotool)   { doUndo(); return; }
+  if (g.redotool)   { doRedo(); return; }
   if (g.zoomtool)   { chartView.zoom=Math.min(8,chartView.zoom*1.5); renderChart&&renderChart(); return; }
   if (g.magnettool) { magnetOn=!magnetOn; buildToolbar(); return; }
   if (g.locktool)   { lockedDraw=!lockedDraw; buildToolbar(); return; }
@@ -4460,16 +4471,60 @@ function cpY(price,co){return PAD.t+co.CH-((price-co.mn)/co.rng)*co.CH;}
 function cpX(bi,co){return PAD.l+(bi-co.si+0.5)*co.barW;}
 
 /* ── Mouse events ── */
+/* Save state for undo before every drawing action */
+function saveUndo(){
+  undoStack.push(JSON.stringify(drawings));
+  if(undoStack.length>50) undoStack.shift(); /* cap at 50 steps */
+  redoStack=[]; /* new action clears redo */
+}
+function doUndo(){
+  if(!undoStack.length)return;
+  redoStack.push(JSON.stringify(drawings));
+  drawings=JSON.parse(undoStack.pop());
+  renderChart();
+}
+function doRedo(){
+  if(!redoStack.length)return;
+  undoStack.push(JSON.stringify(drawings));
+  drawings=JSON.parse(redoStack.pop());
+  renderChart();
+}
+
 function initDrawEvents(){
   var cv=document.getElementById('chartCanvas');
   if(!cv)return;
 
   cv.addEventListener('mousedown',function(e){
+    if(e.button!==0)return; /* only left click triggers drawing tools */
     var co=getCoords(e); if(!co)return;
 
     /* Brush tool */
     if(activeItem&&(activeItem.brush||activeItem.erbrush)){
       isBrushing=true; brushPath=[{x:co.x,y:co.y}]; return;
+    }
+
+    /* Click eraser — find and delete nearest drawing */
+    if(activeItem&&activeItem.ptreraser){
+      var hit=-1, bestDist=20;
+      drawings.forEach(function(d,idx){
+        var dist=9999;
+        if(d.type==='hline'){ var ey=cpY(d.price,co); dist=Math.abs(co.y-ey); }
+        else if(d.type==='vline'){ var ex=cpX(d.bi,co); dist=Math.abs(co.x-ex); }
+        else if(d.p1&&d.p2){
+          var ex1=cpX(d.p1.bi,co),ey1=cpY(d.p1.price,co);
+          var ex2=cpX(d.p2.bi,co),ey2=cpY(d.p2.price,co);
+          var edx=ex2-ex1,edy=ey2-ey1,eLen=edx*edx+edy*edy;
+          var et=eLen?Math.max(0,Math.min(1,((co.x-ex1)*edx+(co.y-ey1)*edy)/eLen)):0;
+          dist=Math.sqrt(Math.pow(co.x-ex1-et*edx,2)+Math.pow(co.y-ey1-et*edy,2));
+        } else if(d.type==='brush'&&d.path){
+          dist=Math.min.apply(null,d.path.map(function(pt){
+            return Math.sqrt((co.x-pt.x)*(co.x-pt.x)+(co.y-pt.y)*(co.y-pt.y));
+          }));
+        }
+        if(dist<bestDist){bestDist=dist;hit=idx;}
+      });
+      if(hit>=0){saveUndo();drawings.splice(hit,1);renderChart();}
+      return;
     }
 
     /* Measure tool — 2 clicks = show, 3rd click resets */
@@ -4482,12 +4537,12 @@ function initDrawEvents(){
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') return;
     if(activeItem.textdraw){
       var lbl=prompt(activeItem.callout?'Callout text:':'Label:');
-      if(lbl){drawings.push({type:activeItem.id,price:co.price,bi:co.bi,label:lbl,callout:activeItem.callout});renderChart();}
+      if(lbl){saveUndo();drawings.push({type:activeItem.id,price:co.price,bi:co.bi,label:lbl,callout:activeItem.callout});renderChart();}
       return;
     }
-    if(activeItem.vline){drawings.push({type:'vline',bi:co.bi});renderChart();return;}
-    if(activeItem.hline){drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();return;}
-    if(activeItem.arrowmark){drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();return;}
+    if(activeItem.vline){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();return;}
+    if(activeItem.hline){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();return;}
+    if(activeItem.arrowmark){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();return;}
     isDrawing=true; drawStart=co;
   });
 
@@ -4527,7 +4582,7 @@ function initDrawEvents(){
           var first=smoothed[0], last=smoothed[smoothed.length-1];
           var dist=Math.sqrt((last.x-first.x)*(last.x-first.x)+(last.y-first.y)*(last.y-first.y));
           if(dist<80) smoothed.push({x:first.x,y:first.y}); /* close shape */
-          drawings.push({type:'brush',path:smoothed,closed:dist<80});
+          saveUndo();drawings.push({type:'brush',path:smoothed,closed:dist<80});
         }
       }
       brushPath=[]; renderChart(); return;
@@ -4536,10 +4591,10 @@ function initDrawEvents(){
     var co=getCoords(e); isDrawing=false;
     if(!co||(Math.abs(co.x-drawStart.x)<3&&Math.abs(co.y-drawStart.y)<3)){drawStart=null;return;}
     if(!lockedDraw){
-      drawings.push(makeDrawing(drawStart,co));
+      saveUndo();drawings.push(makeDrawing(drawStart,co));
       drawStart=null; renderChart();
     } else {
-      drawings.push(makeDrawing(drawStart,co));
+      saveUndo();drawings.push(makeDrawing(drawStart,co));
       drawStart=null; renderChart();
       /* Stay in tool for locked mode */
     }
@@ -4996,6 +5051,12 @@ function addFullscreen(){
 }
 
 /* ── Init ── */
+/* Keyboard shortcuts */
+document.addEventListener('keydown',function(e){
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();doUndo();}
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='z'))){e.preventDefault();doRedo();}
+});
+
 window.addEventListener('load',function(){
   chartCanvas=document.getElementById('chartCanvas');
   if(chartCanvas){chartCtx=chartCanvas.getContext('2d');resizeCanvas();}
