@@ -3760,15 +3760,14 @@ function detectCrossovers(candles) {
 }
 
 if(chartCanvas){
-  /* OHLC tooltip — floats near cursor like TradingView */
+  /* OHLC tooltip — fixed top-left of canvas, TradingView style */
   var _ohlcTip = document.createElement('div');
   _ohlcTip.id = 'ohlcTip';
   _ohlcTip.style.cssText =
-    'position:absolute;pointer-events:none;display:none;' +
-    'background:rgba(7,9,14,.96);border:1px solid rgba(201,168,76,.22);' +
-    'padding:5px 12px;font-family:"DM Mono",monospace;font-size:10px;' +
-    'line-height:1.9;z-index:50;border-radius:2px;white-space:nowrap;' +
-    'box-shadow:0 4px 20px rgba(0,0,0,.6)';
+    'position:absolute;top:6px;left:52px;pointer-events:none;display:none;' +
+    'background:rgba(7,9,14,.0);border:none;' +
+    'padding:0;font-family:"DM Mono",monospace;font-size:10px;' +
+    'line-height:1.9;z-index:50;white-space:nowrap';
   chartCanvas.parentElement.appendChild(_ohlcTip);
 
   chartCanvas.addEventListener('mousemove',function(e){
@@ -3805,7 +3804,7 @@ if(chartCanvas){
     chartCtx.fillStyle='rgba(201,168,76,.9)'; chartCtx.fillRect(W-PAD2.r,cssY-9,PAD2.r,18);
     chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 10px DM Mono'; chartCtx.textAlign='left';
     chartCtx.fillText(priceStr,W-PAD2.r+3,cssY+4);
-    /* Date badge on bottom axis — zoom-aware format */
+    /* ── Date + OHLCV badge below the hovered bar ── */
     var candle2=visible2[bi2];
     if(candle2){
       var d2=new Date(candle2.t);
@@ -3815,49 +3814,57 @@ if(chartCanvas){
       var hh=d2.getHours().toString().padStart(2,'0');
       var mm=d2.getMinutes().toString().padStart(2,'0');
       var ss=d2.getSeconds().toString().padStart(2,'0');
+      /* Smart date string: 2 fields contextual to zoom level */
       var dateStr;
       if(spanDay2>365)      dateStr=MO2[d2.getMonth()]+' '+d2.getFullYear();
-      else if(spanDay2>60)  dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+d2.getFullYear();
-      else if(spanDay2>7)   dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+d2.getFullYear();
-      else if(spanDay2>1)   dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+hh+':'+mm;
-      else if(spanDay2>0.1) dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+hh+':'+mm;
+      else if(spanDay2>60)  dateStr=d2.getDate()+' '+MO2[d2.getMonth()];
+      else if(spanDay2>7)   dateStr=d2.getDate()+' '+MO2[d2.getMonth()];
+      else if(spanDay2>1)   dateStr=hh+':'+mm+'  '+d2.getDate()+'/'+MO2[d2.getMonth()];
+      else if(spanDay2>0.1) dateStr=hh+':'+mm;
       else                  dateStr=hh+':'+mm+':'+ss;
       var barCenterX=PAD2.l+(bi2+0.5)*barW2;
-      var dw=dateStr.length*6.5+14;
+      /* OHLCV compact string to show beside date */
+      var isUpD=candle2.c>=candle2.o;
+      var colD=isUpD?'#26a69a':'#ef5350';
+      var chgPctD=candle2.o!==0?(((candle2.c-candle2.o)/candle2.o)*100).toFixed(2):'0.00';
+      var chgSignD=isUpD?'+':'';
+      /* Date badge on bottom axis */
+      var dw=dateStr.length*6.8+14;
       chartCtx.fillStyle='rgba(201,168,76,.9)';
       chartCtx.fillRect(Math.max(PAD2.l,Math.min(W-PAD2.r-dw,barCenterX-dw/2)),H-18,dw,17);
       chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 9px DM Mono'; chartCtx.textAlign='center';
       chartCtx.fillText(dateStr,Math.max(PAD2.l+dw/2,Math.min(W-PAD2.r-dw/2,barCenterX)),H-5);
+      /* OHLCV alongside the date — drawn just left of date badge */
+      var ohlcvStr='O:'+formatPrice(candle2.o)+'  H:'+formatPrice(candle2.h)+'  L:'+formatPrice(candle2.l)+'  C:'+formatPrice(candle2.c)+'  V:'+formatVol(candle2.v)+'  '+chgSignD+chgPctD+'%';
+      chartCtx.font='bold 9px DM Mono'; chartCtx.textAlign='center';
+      var ohlcvW=chartCtx.measureText(ohlcvStr).width+16;
+      var ohlcvX=Math.max(PAD2.l+ohlcvW/2, Math.min(W-PAD2.r-ohlcvW/2, barCenterX));
+      /* Pill background */
+      chartCtx.fillStyle='rgba(7,9,14,.88)';
+      chartCtx.fillRect(ohlcvX-ohlcvW/2, H-PAD2.b-PAD2.vol-18, ohlcvW, 16);
+      chartCtx.strokeStyle='rgba(201,168,76,.18)'; chartCtx.lineWidth=1;
+      chartCtx.strokeRect(ohlcvX-ohlcvW/2, H-PAD2.b-PAD2.vol-18, ohlcvW, 16);
+      chartCtx.fillStyle=colD;
+      chartCtx.fillText(ohlcvStr, ohlcvX, H-PAD2.b-PAD2.vol-6);
 
-      /* ── Floating OHLCVT tooltip — follows cursor ── */
+      /* ── Top-left fixed OHLCV HTML label ── */
       var isUp=candle2.c>=candle2.o;
       var col=isUp?'#26a69a':'#ef5350';
       var chgPct=candle2.o!==0?(((candle2.c-candle2.o)/candle2.o)*100).toFixed(2):'0.00';
       var chgAbs=(candle2.c-candle2.o).toFixed(candle2.c>=1?2:5);
       var chgSign=isUp?'+':'';
       _ohlcTip.innerHTML=
-        '<span style="color:rgba(201,168,76,.55);letter-spacing:.08em">O</span> <span style="color:'+col+'">'+formatPrice(candle2.o)+'</span>'
-       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+        '<span style="color:rgba(201,168,76,.55)">O</span> <span style="color:'+col+'">'+formatPrice(candle2.o)+'</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.12)">│</span>'
        +'<span style="color:rgba(201,168,76,.55)">H</span> <span style="color:#26a69a">'+formatPrice(candle2.h)+'</span>'
-       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.12)">│</span>'
        +'<span style="color:rgba(201,168,76,.55)">L</span> <span style="color:#ef5350">'+formatPrice(candle2.l)+'</span>'
-       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.12)">│</span>'
        +'<span style="color:rgba(201,168,76,.55)">C</span> <span style="color:'+col+'">'+formatPrice(candle2.c)+'</span>'
-       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
-       +'<span style="color:rgba(201,168,76,.55)">V</span> <span style="color:rgba(180,200,230,.85)">'+formatVol(candle2.v)+'</span>'
-       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.12)">│</span>'
+       +'<span style="color:rgba(201,168,76,.55)">V</span> <span style="color:rgba(180,200,230,.8)">'+formatVol(candle2.v)+'</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.12)">│</span>'
        +'<span style="color:'+col+'">'+chgSign+chgAbs+' ('+chgSign+chgPct+'%)</span>';
-
-      /* Position: right of cursor, flip left if near right edge; above center */
-      var tipGap = 14;
-      var tipW   = _ohlcTip.offsetWidth || 420;
-      var tipH   = _ohlcTip.offsetHeight || 28;
-      var tipLeft = cssX + tipGap;
-      if (tipLeft + tipW > W - PAD2.r - 4) tipLeft = cssX - tipW - tipGap;
-      tipLeft = Math.max(PAD2.l + 4, tipLeft);
-      var tipTop = Math.max(PAD2.t + 2, cssY - tipH - 8);
-      _ohlcTip.style.left = tipLeft + 'px';
-      _ohlcTip.style.top  = tipTop  + 'px';
       _ohlcTip.style.display='block';
     }
   });
@@ -4577,6 +4584,32 @@ var isBrushing = false;
 var brushPath  = [];
 var measuring  = false;
 var measurePts = [];
+var brushColor = '#c9a84c'; /* default gold — changed by color picker */
+var BRUSH_COLORS = ['#c9a84c','#ef5350','#26a69a','#ffffff'];
+
+/* ── Color picker swatch strip — injected below toolbar ── */
+function buildColorPicker(){
+  var tb=document.getElementById('drawToolbar');
+  if(!tb||document.getElementById('brushColorPicker'))return;
+  var strip=document.createElement('div');
+  strip.id='brushColorPicker';
+  strip.style.cssText='display:none;flex-direction:column;align-items:center;gap:4px;padding:6px 0;border-top:1px solid rgba(255,255,255,.07)';
+  BRUSH_COLORS.forEach(function(c){
+    var sw=document.createElement('button');
+    sw.dataset.color=c;
+    sw.style.cssText='width:18px;height:18px;border-radius:50%;background:'+c+';border:2px solid transparent;cursor:pointer;flex-shrink:0;transition:border-color .15s';
+    if(c===brushColor)sw.style.borderColor='rgba(255,255,255,.8)';
+    sw.title=c;
+    sw.onclick=function(e){
+      e.stopPropagation();
+      brushColor=c;
+      strip.querySelectorAll('button').forEach(function(b){b.style.borderColor='transparent';});
+      sw.style.borderColor='rgba(255,255,255,.8)';
+    };
+    strip.appendChild(sw);
+  });
+  tb.appendChild(strip);
+}
 
 /* ── Build toolbar ── */
 function buildToolbar() {
@@ -4655,6 +4688,9 @@ function pickItem(item) {
   activeTool=item.id; activeItem=item;
   measuring=false; measurePts=[];
   setCursor(item.cur||'crosshair');
+  /* Show color picker only for brush tool */
+  var picker=document.getElementById('brushColorPicker');
+  if(picker) picker.style.display=(item.brush)?'flex':'none';
   buildToolbar();
 }
 
@@ -4769,7 +4805,7 @@ function initDrawEvents(){
         var first=smoothed[0],last2=smoothed[smoothed.length-1];
         var dist=Math.sqrt(Math.pow(last2.x-first.x,2)+Math.pow(last2.y-first.y,2));
         if(dist<80) smoothed.push({x:first.x,y:first.y});
-        saveUndo();drawings.push({type:'brush',path:smoothed,closed:dist<80});
+        saveUndo();drawings.push({type:'brush',path:smoothed,closed:dist<80,color:brushColor});
       }
       brushPath=[]; renderChart(); return;
     }
@@ -4874,7 +4910,7 @@ function initDrawEvents(){
           var first=smoothed[0], last=smoothed[smoothed.length-1];
           var dist=Math.sqrt((last.x-first.x)*(last.x-first.x)+(last.y-first.y)*(last.y-first.y));
           if(dist<80) smoothed.push({x:first.x,y:first.y}); /* close shape */
-          saveUndo();drawings.push({type:'brush',path:smoothed,closed:dist<80});
+          saveUndo();drawings.push({type:'brush',path:smoothed,closed:dist<80,color:brushColor});
         }
       }
       brushPath=[]; renderChart(); return;
@@ -4921,7 +4957,7 @@ function drawAnnotations(ctx,co){
   /* Live brush stroke preview — same context transform as saved brush */
   if(isBrushing&&brushPath.length>1){
     ctx.save();
-    ctx.strokeStyle='rgba(201,168,76,.65)'; ctx.lineWidth=2;
+    ctx.strokeStyle=brushColor||'#c9a84c'; ctx.lineWidth=2;
     ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(brushPath[0].x,brushPath[0].y);
@@ -5094,7 +5130,8 @@ function drawOne(ctx,d,co,prev){
 
   /* Brush stroke — has no p1/p2, uses raw CSS pixel path */
   if(d.type==='brush'&&d.path&&d.path.length>1){
-    ctx.strokeStyle='#c9a84c'; ctx.lineWidth=2;
+    var bCol=d.color||'#c9a84c';
+    ctx.strokeStyle=bCol; ctx.lineWidth=2;
     ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(d.path[0].x,d.path[0].y);
@@ -5104,7 +5141,7 @@ function drawOne(ctx,d,co,prev){
       ctx.quadraticCurveTo(d.path[_bi].x,d.path[_bi].y,_cx,_cy);
     }
     ctx.lineTo(d.path[d.path.length-1].x,d.path[d.path.length-1].y);
-    if(d.closed){ctx.closePath();ctx.fillStyle='rgba(201,168,76,.07)';ctx.fill();}
+    if(d.closed){ctx.closePath();ctx.fillStyle=bCol.replace(')',',0.07)').replace('rgb','rgba');ctx.fill();}
     ctx.stroke(); ctx.restore(); return;
   }
 
@@ -5349,23 +5386,54 @@ function addFullscreen(){
   btn.title='Fullscreen';
   btn.style.cssText='margin-left:auto;background:transparent;border:1px solid rgba(201,168,76,.2);color:rgba(201,168,76,.6);cursor:pointer;padding:4px 8px;font-size:11px;border-radius:2px;letter-spacing:.04em;font-family:DM Mono,monospace';
   btn.innerHTML='⛶ FULLSCREEN';
+
+  function safeResize(){
+    var dpr=window.devicePixelRatio||1;
+    var cv=document.getElementById('chartCanvas');
+    if(!cv)return;
+    var area=document.getElementById('chartArea');
+    var p=cv.parentElement;
+    var cssW=p?p.clientWidth:800;
+    var cssH=(area&&area.clientHeight>100?area.clientHeight:0)||parseInt(cv.style.height)||560;
+    if(cssH<100)cssH=560;
+    cv.width=Math.round(cssW*dpr);
+    cv.height=Math.round(cssH*dpr);
+    cv.style.width=cssW+'px';
+    cv.style.height=cssH+'px';
+    if(chartCtx)chartCtx.setTransform(dpr,0,0,dpr,0,0);
+    /* If an image is uploaded, redraw it; otherwise redraw chart */
+    if(typeof _uploadedMode!=='undefined'&&_uploadedMode&&typeof dataUrl!=='undefined'&&dataUrl){
+      var img=new Image();
+      img.onload=function(){
+        chartCtx.drawImage(img,0,0,cssW,cssH);
+        /* Re-apply any drawings on top */
+        if(typeof drawAnnotations==='function'&&typeof PAD!=='undefined'){
+          drawAnnotations(chartCtx,{W:cssW,H:cssH,CW:cssW-PAD.l-PAD.r,CH:cssH-PAD.t-PAD.b-PAD.vol,
+            mn:0,rng:1,barW:10,si:0,visible:[]});
+        }
+      };
+      img.src=dataUrl;
+    } else {
+      if(typeof renderChart==='function') renderChart();
+    }
+  }
+
   btn.onclick=function(){
     var panel=document.getElementById('chartToolsPanel');
     if(!panel)return;
     if(!document.fullscreenElement){
       (panel.requestFullscreen||panel.webkitRequestFullscreen||panel.mozRequestFullScreen).call(panel);
       btn.innerHTML='✕ EXIT';
-      /* Resize canvas after fullscreen */
-      setTimeout(function(){ if(typeof resizeCanvas==='function') resizeCanvas(); },300);
+      setTimeout(safeResize,300);
     } else {
       (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen).call(document);
       btn.innerHTML='⛶ FULLSCREEN';
-      setTimeout(function(){ if(typeof resizeCanvas==='function') resizeCanvas(); },300);
+      setTimeout(safeResize,300);
     }
   };
   document.addEventListener('fullscreenchange',function(){
     if(!document.fullscreenElement)btn.innerHTML='⛶ FULLSCREEN';
-    setTimeout(function(){ if(typeof resizeCanvas==='function') resizeCanvas(); },100);
+    setTimeout(safeResize,100);
   });
   toolbar.appendChild(btn);
 }
@@ -5381,6 +5449,7 @@ window.addEventListener('load',function(){
   chartCanvas=document.getElementById('chartCanvas');
   if(chartCanvas){chartCtx=chartCanvas.getContext('2d');resizeCanvas();}
   buildToolbar();
+  buildColorPicker();
   initDrawEvents();
   patchRenderChart();
   patchNav();
