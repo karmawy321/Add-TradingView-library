@@ -801,7 +801,8 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               ↑ UPLOAD
               <input type="file" id="fileIn" accept="image/*" style="display:none">
             </label>
-            <button id="clearUploadBtn" onclick="clearUploadedChart()" style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕ CLEAR</button>
+            <button id="clearUploadBtn" onclick="clearUploadedChart()" style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕ CLEAR PHOTO</button>
+            <button id="terminateChartBtn" onclick="terminateChart()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em">⏹ STOP</button>
 
           </div>
 
@@ -815,6 +816,8 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <div id="drawToolbar" style="width:44px;flex-shrink:0;background:#07090e;border-right:1px solid rgba(201,168,76,.13);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;overflow:visible"></div>
             <!-- Canvas wrapper -->
             <div style="position:relative;flex:1">
+              <!-- Current price badge — HTML overlay, always at exact right edge -->
+              <div id="priceBadgeEl" style="display:none;position:absolute;right:0;z-index:25;pointer-events:none;font-family:'DM Mono',monospace;font-size:11px;font-weight:bold;padding:3px 8px;border-radius:0;min-width:72px;text-align:center;white-space:nowrap"></div>
               <!-- Live price — floats above canvas, outside border -->
               <div class="live-price-bar" id="livePriceBar" style="position:absolute;top:-46px;right:0;z-index:50">
                 <div class="live-dot"></div>
@@ -1634,6 +1637,42 @@ function handleChartUpload(f){
     img.src = e.target.result;
   };
   r.readAsDataURL(f);
+}
+
+function terminateChart(){
+  /* Stop all live data, clear canvas, show welcome */
+  if(chartSSE){ chartSSE.close(); chartSSE=null; }
+  if(typeof stopPricePolling==='function') stopPricePolling();
+  chartCandles=[];
+  currentSymbol='';
+  dataUrl=null;
+  _uploadedMode=false;
+  if(typeof drawings!=='undefined') drawings=[];
+  /* Re-enable inputs */
+  var pIn=document.getElementById('pairIn');
+  if(pIn){pIn.disabled=false;pIn.style.opacity='';pIn.value='';}
+  var clrBtn=document.getElementById('clearUploadBtn');
+  var uplLbl=document.getElementById('uploadLabel');
+  if(clrBtn)clrBtn.style.display='none';
+  if(uplLbl)uplLbl.style.display='';
+  if(fileIn)fileIn.value='';
+  var ab=document.getElementById('azBtn');
+  if(ab)ab.disabled=true;
+  /* Show welcome overlay */
+  var empty=document.getElementById('chartEmpty');
+  if(empty)empty.style.display='flex';
+  /* Clear canvas */
+  if(chartCtx&&chartCanvas){
+    var dpr=window.devicePixelRatio||1;
+    var W=chartCanvas.width/dpr, H=chartCanvas.height/dpr;
+    chartCtx.fillStyle='#06080d';
+    chartCtx.fillRect(0,0,W,H);
+  }
+  /* Hide live price */
+  var lb=document.getElementById('livePriceBar');
+  if(lb)lb.classList.remove('show');
+  var sa=document.getElementById('smaAlertBar');
+  if(sa){sa.style.display='none';sa.textContent='';}
 }
 
 function clearUploadedChart(){
@@ -3553,14 +3592,16 @@ function renderChart() {
   var candles = chartCandles;
   if (!candles || candles.length < 2) {
     chartCtx.fillStyle='rgba(201,168,76,.4)'; chartCtx.font='bold 12px DM Mono';
-    chartCtx.textAlign='center'; chartCtx.fillText('Connecting…', W/2, H/2); return;
+    chartCtx.textAlign='center'; chartCtx.fillText('Connecting…', W/2, H/2);
+    var b=document.getElementById('priceBadgeEl');if(b)b.style.display='none';
+    return;
   }
   var visibleBars = Math.max(20, Math.floor(candles.length / chartView.zoom));
   var startIdx = Math.max(0, candles.length - visibleBars - chartView.offset);
   var endIdx   = Math.min(candles.length, startIdx + visibleBars);
   var visible  = candles.slice(startIdx, endIdx);
   if (!visible.length) return;
-  var PAD = { l:8, r:90, t:16, b:56, vol:40 };
+  var PAD = { l:8, r:75, t:16, b:56, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
   var mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
   var mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
@@ -3653,28 +3694,27 @@ function renderChart() {
   /* Time axis — smart adaptive labels */
   renderTimeAxis(visible, px, W, H, PAD);
 
-  /* Current price line */
+  /* Current price line + HTML badge */
   if (visible.length > 0) {
     var lastC = visible[visible.length-1];
     var lastY = py(lastC.c);
     var isUp  = lastC.c >= lastC.o;
+    /* Dashed line across chart area */
     chartCtx.save();
-    chartCtx.strokeStyle = isUp ? 'rgba(38,166,154,0.6)' : 'rgba(239,83,80,0.6)';
+    chartCtx.strokeStyle = isUp ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
     chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
     chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
-    chartCtx.setLineDash([]);
-    /* Price badge — full width of right axis, left-aligned text */
-    var priceStr = formatPrice(lastC.c);
-    chartCtx.font = 'bold 11px DM Mono';
-    /* Badge fills entire PAD.r area so it touches both the line and right edge */
-    var bx = W - PAD.r;
-    var bw = PAD.r;
-    chartCtx.fillStyle = isUp ? '#26a69a' : '#ef5350';
-    chartCtx.fillRect(bx, lastY - 10, bw, 20);
-    chartCtx.fillStyle = '#fff';
-    chartCtx.textAlign = 'center';
-    chartCtx.fillText(priceStr, bx + bw/2, lastY + 4);
-    chartCtx.restore();
+    chartCtx.setLineDash([]); chartCtx.restore();
+    /* Position HTML badge element to exact pixel row */
+    var badge=document.getElementById('priceBadgeEl');
+    if(badge){
+      var cssTop=lastY-10; /* lastY is in CSS pixels (context has DPR transform) */
+      badge.style.display='block';
+      badge.style.top=cssTop+'px';
+      badge.style.background=isUp?'#26a69a':'#ef5350';
+      badge.style.color='#fff';
+      badge.textContent=formatPrice(lastC.c);
+    }
   }
 
   /* Watermark */
@@ -3723,7 +3763,7 @@ if(chartCanvas){
     /* Don't repaint if image is uploaded — it would erase it */
     if(typeof _uploadedMode==='undefined'||!_uploadedMode) renderChart();
     var W=chartCanvas.width/dpr, H=chartCanvas.height/dpr;
-    var PAD2={t:16,b:44,l:8,r:90,vol:40};
+    var PAD2={t:16,b:44,l:8,r:75,vol:40};
     var vis=Math.max(20,Math.floor((chartCandles.length||0)/chartView.zoom));
     var si2=Math.max(0,(chartCandles.length||0)-vis-chartView.offset);
     var visible2=chartCandles.slice(si2,Math.min(chartCandles.length,si2+vis));
@@ -3792,7 +3832,7 @@ if(chartCanvas){
     var r=chartCanvas.getBoundingClientRect();
     var cssX=e.clientX-r.left;
     var W=chartCanvas.width/dpr;
-    var PADl=8, PADr=90;
+    var PADl=8, PADr=75;
     var CW=W-PADl-PADr;
     /* How far along the chart is the cursor (0=left, 1=right) */
     var cursorRatio=Math.max(0,Math.min(1,(cssX-PADl)/CW));
@@ -3848,7 +3888,7 @@ if(chartCanvas){
       var dpr=window.devicePixelRatio||1;
       var W=chartCanvas.width/dpr;
       var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-      var barW=(W-8-90)/Math.max(vis,1);
+      var barW=(W-8-75)/Math.max(vis,1);
       var dx2=e.touches[0].clientX-_touchStartX;
       chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-20)||0,_touchStartOffset+Math.round(dx2/barW)));
       renderChart();
@@ -3856,7 +3896,7 @@ if(chartCanvas){
       var r2=chartCanvas.getBoundingClientRect();
       var tx=e.touches[0].clientX-r2.left;
       var ty=e.touches[0].clientY-r2.top;
-      var PAD2={t:16,b:44,l:8,r:90,vol:40};
+      var PAD2={t:16,b:44,l:8,r:75,vol:40};
       var CW2=W-PAD2.l-PAD2.r,CH2=(chartCanvas.height/dpr)-PAD2.t-PAD2.b-PAD2.vol;
       var si2=Math.max(0,(chartCandles.length||0)-vis-chartView.offset);
       var visible2=chartCandles.slice(si2,Math.min(chartCandles.length,si2+vis));
@@ -3893,7 +3933,7 @@ if(chartCanvas){
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-    var barW=(W-8-90)/Math.max(vis,1);
+    var barW=(W-8-75)/Math.max(vis,1);
     var dx=e.clientX-_panStart;
     /* Invert: drag right = go back in history (increase offset) */
     var bars=Math.round(dx/barW);
@@ -4393,7 +4433,7 @@ window.addEventListener('resize', function(){
 'use strict';
 
 /* ══ SHARED PAD — must match renderChart exactly ══ */
-var PAD = { l:8, r:90, t:16, b:56, vol:40 };
+var PAD = { l:8, r:75, t:16, b:56, vol:40 };
 
 /* ── SVG icons ── */
 function S(p,vb){ return '<svg width="16" height="16" viewBox="'+(vb||'0 0 16 16')+'" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
@@ -4838,10 +4878,13 @@ function drawAnnotations(ctx,co){
 }
 
 function drawCursorOverlay(ctx,co){
+  /* In upload mode without chart data, skip price/date overlays */
+  var hasChart = co && co.visible && co.visible.length > 0;
   var x=hoverPoint.x, y=hoverPoint.y;
   ctx.save();
 
-  /* Crosshair lines — always show */
+  /* Crosshair lines — only when chart loaded */
+  if(!hasChart){ctx.restore();return;}
   ctx.strokeStyle='rgba(201,168,76,.3)'; ctx.lineWidth=.6; ctx.setLineDash([4,4]);
   ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,co.H); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(co.W,y); ctx.stroke();
