@@ -3478,6 +3478,13 @@ function formatPrice(v) {
   if (v >= 1)    return v.toFixed(4);
   return v.toFixed(6);
 }
+function formatVol(v) {
+  if (!v && v !== 0) return '—';
+  if (v >= 1e9) return (v/1e9).toFixed(2)+'B';
+  if (v >= 1e6) return (v/1e6).toFixed(2)+'M';
+  if (v >= 1e3) return (v/1e3).toFixed(1)+'K';
+  return v.toFixed(2);
+}
 function formatTime(ts, tf) {
   /* Legacy — only used by hover tooltip now */
   var d = new Date(ts);
@@ -3611,7 +3618,9 @@ function renderChart() {
   var range = mx-mn||mn*0.001||0.0001;
   mn -= range*0.05; mx += range*0.05; range = mx-mn;
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
-  var n = visible.length, barW = CW/n, candleW = Math.max(1.5, barW*0.72);
+  /* ── TradingView-style right gap: reserve ~8% of visible bars as empty space ── */
+  var rightGapBars = Math.max(4, Math.round(visible.length * 0.08));
+  var n = visible.length, barW = CW/(n + rightGapBars), candleW = Math.max(1.5, barW*0.72);
   function px(i)  { return PAD.l+(i+0.5)*barW; }
   function py(v)  { return PAD.t+CH-((v-mn)/range)*CH; }
 
@@ -3751,13 +3760,15 @@ function detectCrossovers(candles) {
 }
 
 if(chartCanvas){
-  /* OHLC tooltip div — created once */
+  /* OHLC tooltip — floats near cursor like TradingView */
   var _ohlcTip = document.createElement('div');
   _ohlcTip.id = 'ohlcTip';
-  _ohlcTip.style.cssText = 'position:absolute;top:6px;left:52px;pointer-events:none;display:none;' +
-    'background:rgba(7,9,14,.92);border:1px solid rgba(201,168,76,.2);padding:5px 10px;' +
-    'font-family:"DM Mono",monospace;font-size:10px;line-height:1.8;z-index:50;border-radius:2px;white-space:nowrap';
-  /* Insert into canvas wrapper */
+  _ohlcTip.style.cssText =
+    'position:absolute;pointer-events:none;display:none;' +
+    'background:rgba(7,9,14,.96);border:1px solid rgba(201,168,76,.22);' +
+    'padding:5px 12px;font-family:"DM Mono",monospace;font-size:10px;' +
+    'line-height:1.9;z-index:50;border-radius:2px;white-space:nowrap;' +
+    'box-shadow:0 4px 20px rgba(0,0,0,.6)';
   chartCanvas.parentElement.appendChild(_ohlcTip);
 
   chartCanvas.addEventListener('mousemove',function(e){
@@ -3769,7 +3780,7 @@ if(chartCanvas){
     if(typeof _uploadedMode!=='undefined'&&_uploadedMode)return;
     renderChart();
     var W=chartCanvas.width/dpr, H=chartCanvas.height/dpr;
-    var PAD2={t:16,b:44,l:8,r:75,vol:40};
+    var PAD2={t:16,b:56,l:8,r:75,vol:40};
     var vis=Math.max(20,Math.floor((chartCandles.length||0)/chartView.zoom));
     var si2=Math.max(0,(chartCandles.length||0)-vis-chartView.offset);
     var visible2=chartCandles.slice(si2,Math.min(chartCandles.length,si2+vis));
@@ -3779,8 +3790,10 @@ if(chartCanvas){
     var mx2=Math.max.apply(null,visible2.map(function(c){return c.h;}));
     var rng2=mx2-mn2||mn2*.001||.0001;
     mn2-=rng2*.05; mx2+=rng2*.05; rng2=mx2-mn2;
-    var barW2=CW2/Math.max(visible2.length,1);
-    var bi2=Math.max(0,Math.min(visible2.length-1,Math.round((cssX-PAD2.l)/barW2)));
+    /* Match renderChart rightGapBars so hover snaps to the same bar positions */
+    var rightGapBars2 = Math.max(4, Math.round(visible2.length * 0.08));
+    var barW2=CW2/Math.max(visible2.length + rightGapBars2, 1);
+    var bi2=Math.max(0,Math.min(visible2.length-1,Math.round((cssX-PAD2.l)/barW2 - 0.5)));
     var price2=mx2-((cssY-PAD2.t)/CH2)*rng2;
     /* Draw crosshair */
     chartCtx.strokeStyle='rgba(201,168,76,.25)'; chartCtx.lineWidth=0.6; chartCtx.setLineDash([4,4]);
@@ -3789,7 +3802,6 @@ if(chartCanvas){
     chartCtx.setLineDash([]);
     /* Price badge on right axis */
     var priceStr=formatPrice(price2);
-    var bw=priceStr.length*7+12;
     chartCtx.fillStyle='rgba(201,168,76,.9)'; chartCtx.fillRect(W-PAD2.r,cssY-9,PAD2.r,18);
     chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 10px DM Mono'; chartCtx.textAlign='left';
     chartCtx.fillText(priceStr,W-PAD2.r+3,cssY+4);
@@ -3810,20 +3822,42 @@ if(chartCanvas){
       else if(spanDay2>1)   dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+hh+':'+mm;
       else if(spanDay2>0.1) dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+hh+':'+mm;
       else                  dateStr=hh+':'+mm+':'+ss;
-      var bx=PAD2.l+(bi2+0.5)*barW2;
+      var barCenterX=PAD2.l+(bi2+0.5)*barW2;
       var dw=dateStr.length*6.5+14;
       chartCtx.fillStyle='rgba(201,168,76,.9)';
-      chartCtx.fillRect(Math.max(PAD2.l,Math.min(W-PAD2.r-dw,bx-dw/2)),H-18,dw,17);
+      chartCtx.fillRect(Math.max(PAD2.l,Math.min(W-PAD2.r-dw,barCenterX-dw/2)),H-18,dw,17);
       chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 9px DM Mono'; chartCtx.textAlign='center';
-      chartCtx.fillText(dateStr,Math.max(PAD2.l+dw/2,Math.min(W-PAD2.r-dw/2,bx)),H-5);
-      /* OHLC panel top-left */
+      chartCtx.fillText(dateStr,Math.max(PAD2.l+dw/2,Math.min(W-PAD2.r-dw/2,barCenterX)),H-5);
+
+      /* ── Floating OHLCVT tooltip — follows cursor ── */
       var isUp=candle2.c>=candle2.o;
       var col=isUp?'#26a69a':'#ef5350';
+      var chgPct=candle2.o!==0?(((candle2.c-candle2.o)/candle2.o)*100).toFixed(2):'0.00';
+      var chgAbs=(candle2.c-candle2.o).toFixed(candle2.c>=1?2:5);
+      var chgSign=isUp?'+':'';
       _ohlcTip.innerHTML=
-        '<span style="color:rgba(201,168,76,.6);margin-right:8px">O</span><span style="color:'+col+'">'+formatPrice(candle2.o)+'</span>  '+
-        '<span style="color:rgba(201,168,76,.6);margin-right:4px">H</span><span style="color:'+col+'">'+formatPrice(candle2.h)+'</span>  '+
-        '<span style="color:rgba(201,168,76,.6);margin-right:4px">L</span><span style="color:'+col+'">'+formatPrice(candle2.l)+'</span>  '+
-        '<span style="color:rgba(201,168,76,.6);margin-right:4px">C</span><span style="color:'+col+'">'+formatPrice(candle2.c)+'</span>';
+        '<span style="color:rgba(201,168,76,.55);letter-spacing:.08em">O</span> <span style="color:'+col+'">'+formatPrice(candle2.o)+'</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+       +'<span style="color:rgba(201,168,76,.55)">H</span> <span style="color:#26a69a">'+formatPrice(candle2.h)+'</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+       +'<span style="color:rgba(201,168,76,.55)">L</span> <span style="color:#ef5350">'+formatPrice(candle2.l)+'</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+       +'<span style="color:rgba(201,168,76,.55)">C</span> <span style="color:'+col+'">'+formatPrice(candle2.c)+'</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+       +'<span style="color:rgba(201,168,76,.55)">V</span> <span style="color:rgba(180,200,230,.85)">'+formatVol(candle2.v)+'</span>'
+       +'<span style="margin:0 8px;color:rgba(255,255,255,.1)">│</span>'
+       +'<span style="color:'+col+'">'+chgSign+chgAbs+' ('+chgSign+chgPct+'%)</span>';
+
+      /* Position: right of cursor, flip left if near right edge; above center */
+      var tipGap = 14;
+      var tipW   = _ohlcTip.offsetWidth || 420;
+      var tipH   = _ohlcTip.offsetHeight || 28;
+      var tipLeft = cssX + tipGap;
+      if (tipLeft + tipW > W - PAD2.r - 4) tipLeft = cssX - tipW - tipGap;
+      tipLeft = Math.max(PAD2.l + 4, tipLeft);
+      var tipTop = Math.max(PAD2.t + 2, cssY - tipH - 8);
+      _ohlcTip.style.left = tipLeft + 'px';
+      _ohlcTip.style.top  = tipTop  + 'px';
       _ohlcTip.style.display='block';
     }
   });
@@ -3914,7 +3948,23 @@ if(chartCanvas){
         var tip=document.getElementById('ohlcTip');
         if(tip&&candle2){
           var isUp=candle2.c>=candle2.o,col=isUp?'#26a69a':'#ef5350';
-          tip.innerHTML='<span style="color:rgba(201,168,76,.6);margin-right:6px">O</span><span style="color:'+col+'">'+formatPrice(candle2.o)+'</span> <span style="color:rgba(201,168,76,.6);margin-right:4px">H</span><span style="color:'+col+'">'+formatPrice(candle2.h)+'</span> <span style="color:rgba(201,168,76,.6);margin-right:4px">L</span><span style="color:'+col+'">'+formatPrice(candle2.l)+'</span> <span style="color:rgba(201,168,76,.6);margin-right:4px">C</span><span style="color:'+col+'">'+formatPrice(candle2.c)+'</span>';
+          var chgPctT=candle2.o!==0?(((candle2.c-candle2.o)/candle2.o)*100).toFixed(2):'0.00';
+          var chgAbsT=(candle2.c-candle2.o).toFixed(candle2.c>=1?2:5);
+          var chgSignT=isUp?'+':'';
+          tip.innerHTML=
+            '<span style="color:rgba(201,168,76,.55)">O</span> <span style="color:'+col+'">'+formatPrice(candle2.o)+'</span>'
+           +'<span style="margin:0 6px;color:rgba(255,255,255,.1)">│</span>'
+           +'<span style="color:rgba(201,168,76,.55)">H</span> <span style="color:#26a69a">'+formatPrice(candle2.h)+'</span>'
+           +'<span style="margin:0 6px;color:rgba(255,255,255,.1)">│</span>'
+           +'<span style="color:rgba(201,168,76,.55)">L</span> <span style="color:#ef5350">'+formatPrice(candle2.l)+'</span>'
+           +'<span style="margin:0 6px;color:rgba(255,255,255,.1)">│</span>'
+           +'<span style="color:rgba(201,168,76,.55)">C</span> <span style="color:'+col+'">'+formatPrice(candle2.c)+'</span>'
+           +'<span style="margin:0 6px;color:rgba(255,255,255,.1)">│</span>'
+           +'<span style="color:rgba(201,168,76,.55)">V</span> <span style="color:rgba(180,200,230,.85)">'+formatVol(candle2.v)+'</span>'
+           +'<span style="margin:0 6px;color:rgba(255,255,255,.1)">│</span>'
+           +'<span style="color:'+col+'">'+chgSignT+chgAbsT+' ('+chgSignT+chgPctT+'%)</span>';
+          tip.style.left = '52px';
+          tip.style.top  = '6px';
           tip.style.display='block';
         }
       }
