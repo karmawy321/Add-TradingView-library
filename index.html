@@ -797,10 +797,11 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               <option value="line">Line</option>
             </select>
             <!-- Upload fallback -->
-            <label style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
+            <label id="uploadLabel" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
               ↑ UPLOAD
               <input type="file" id="fileIn" accept="image/*" style="display:none">
             </label>
+            <button id="clearUploadBtn" onclick="clearUploadedChart()" style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕ CLEAR</button>
 
           </div>
 
@@ -1591,48 +1592,84 @@ if (dropZone) {
 if (fileIn) fileIn.addEventListener('change', function(){ if (fileIn.files[0]) handleFile(fileIn.files[0]); });
 if (rmX)    rmX.addEventListener('click', resetUp);
 
+var _uploadedMode = false;
 function handleFile(f){
   var r = new FileReader();
   r.onload = function(e){
-    dataUrl = e.target.result;
-    /* Draw uploaded image directly onto chartCanvas so drawing tools work on it */
     var cv = document.getElementById('chartCanvas');
     var ctx = cv ? cv.getContext('2d') : null;
-    if(ctx){
-      var img = new Image();
-      img.onload = function(){
-        var dpr = window.devicePixelRatio || 1;
-        /* Resize canvas to image aspect, keep CSS width */
-        var cssW = cv.offsetWidth || 800;
-        var aspect = img.naturalHeight / img.naturalWidth;
-        var cssH = Math.round(cssW * aspect);
-        cssH = Math.max(300, Math.min(700, cssH));
-        cv.width = Math.round(cssW * dpr);
-        cv.height = Math.round(cssH * dpr);
-        cv.style.width = cssW + 'px';
-        cv.style.height = cssH + 'px';
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.drawImage(img, 0, 0, cssW, cssH);
-        /* Hide welcome overlay */
-        var empty = document.getElementById('chartEmpty');
-        if(empty) empty.style.display = 'none';
-        /* Enable AI button */
-        if(azBtn) azBtn.disabled = false;
-        /* Store snapshot for AI */
-        dataUrl = e.target.result;
-        /* Reset drawings for fresh canvas */
-        if(typeof drawings !== 'undefined') drawings = [];
-      };
-      img.src = e.target.result;
-    } else {
-      /* Fallback: old overlay method */
+    if(!ctx){ return; }
+    var img = new Image();
+    img.onload = function(){
+      /* Stop any live data */
+      if(chartSSE){ chartSSE.close(); chartSSE=null; }
+      stopPricePolling();
+      /* Resize canvas to fill container, preserve aspect ratio */
+      var dpr = window.devicePixelRatio || 1;
+      var cssW = (cv.parentElement ? cv.parentElement.clientWidth : 0) || 800;
+      var aspect = img.naturalHeight / img.naturalWidth;
+      var cssH = Math.round(cssW * aspect);
+      cssH = Math.max(300, Math.min(680, cssH));
+      cv.width  = Math.round(cssW * dpr);
+      cv.height = Math.round(cssH * dpr);
+      cv.style.width  = cssW + 'px';
+      cv.style.height = cssH + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.drawImage(img, 0, 0, cssW, cssH);
+      /* Hide all overlays */
+      var empty = document.getElementById('chartEmpty');
+      if(empty) empty.style.display = 'none';
+      if(imgPv) imgPv.style.display = 'none';
+      /* Show clear button, hide upload label */
+      var clrBtn = document.getElementById('clearUploadBtn');
+      var uplLbl = document.getElementById('uploadLabel');
+      if(clrBtn) clrBtn.style.display = 'inline-flex';
+      if(uplLbl) uplLbl.style.display = 'none';
+      /* Enable AI tools */
       dataUrl = e.target.result;
-      if (prevImg) prevImg.src = dataUrl;
-      if (imgPv)    imgPv.style.display = 'block';
-      if (azBtn)    azBtn.disabled = false;
-    }
+      if(azBtn) azBtn.disabled = false;
+      /* Clear drawings */
+      if(typeof drawings !== 'undefined') drawings = [];
+      _uploadedMode = true;
+    };
+    img.src = e.target.result;
   };
   r.readAsDataURL(f);
+}
+
+function clearUploadedChart(){
+  _uploadedMode = false;
+  dataUrl = null;
+  /* Restore canvas to default state */
+  var cv = document.getElementById('chartCanvas');
+  var ctx = cv ? cv.getContext('2d') : null;
+  if(ctx && cv){
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = (cv.parentElement ? cv.parentElement.clientWidth : 0) || 800;
+    var cssH = 500;
+    cv.width  = Math.round(cssW * dpr);
+    cv.height = Math.round(cssH * dpr);
+    cv.style.width  = cssW + 'px';
+    cv.style.height = cssH + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  /* Reset UI */
+  var clrBtn = document.getElementById('clearUploadBtn');
+  var uplLbl = document.getElementById('uploadLabel');
+  if(clrBtn) clrBtn.style.display = 'none';
+  if(uplLbl) uplLbl.style.display = '';
+  if(fileIn) fileIn.value = '';
+  /* Show welcome if no symbol loaded */
+  if(!currentSymbol){
+    var empty = document.getElementById('chartEmpty');
+    if(empty) empty.style.display = 'flex';
+  } else {
+    /* Reload current chart */
+    chartCandles = [];
+    loadChart(currentSymbol, currentInterval);
+  }
+  if(azBtn) azBtn.disabled = true;
+  if(typeof drawings !== 'undefined') drawings = [];
 }
 
 function resetUp(){
@@ -3525,7 +3562,7 @@ function renderChart() {
   var endIdx   = Math.min(candles.length, startIdx + visibleBars);
   var visible  = candles.slice(startIdx, endIdx);
   if (!visible.length) return;
-  var PAD = { l:8, r:72, t:16, b:56, vol:40 };
+  var PAD = { l:8, r:90, t:16, b:56, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
   var mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
   var mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
@@ -3683,7 +3720,7 @@ if(chartCanvas){
     var cssX=e.clientX-r.left, cssY=e.clientY-r.top;
     renderChart();
     var W=chartCanvas.width/dpr, H=chartCanvas.height/dpr;
-    var PAD2={t:16,b:44,l:8,r:72,vol:40};
+    var PAD2={t:16,b:44,l:8,r:90,vol:40};
     var vis=Math.max(20,Math.floor((chartCandles.length||0)/chartView.zoom));
     var si2=Math.max(0,(chartCandles.length||0)-vis-chartView.offset);
     var visible2=chartCandles.slice(si2,Math.min(chartCandles.length,si2+vis));
@@ -3752,7 +3789,7 @@ if(chartCanvas){
     var r=chartCanvas.getBoundingClientRect();
     var cssX=e.clientX-r.left;
     var W=chartCanvas.width/dpr;
-    var PADl=8, PADr=72;
+    var PADl=8, PADr=90;
     var CW=W-PADl-PADr;
     /* How far along the chart is the cursor (0=left, 1=right) */
     var cursorRatio=Math.max(0,Math.min(1,(cssX-PADl)/CW));
@@ -3808,7 +3845,7 @@ if(chartCanvas){
       var dpr=window.devicePixelRatio||1;
       var W=chartCanvas.width/dpr;
       var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-      var barW=(W-8-72)/Math.max(vis,1);
+      var barW=(W-8-90)/Math.max(vis,1);
       var dx2=e.touches[0].clientX-_touchStartX;
       chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-20)||0,_touchStartOffset+Math.round(dx2/barW)));
       renderChart();
@@ -3816,7 +3853,7 @@ if(chartCanvas){
       var r2=chartCanvas.getBoundingClientRect();
       var tx=e.touches[0].clientX-r2.left;
       var ty=e.touches[0].clientY-r2.top;
-      var PAD2={t:16,b:44,l:8,r:72,vol:40};
+      var PAD2={t:16,b:44,l:8,r:90,vol:40};
       var CW2=W-PAD2.l-PAD2.r,CH2=(chartCanvas.height/dpr)-PAD2.t-PAD2.b-PAD2.vol;
       var si2=Math.max(0,(chartCandles.length||0)-vis-chartView.offset);
       var visible2=chartCandles.slice(si2,Math.min(chartCandles.length,si2+vis));
@@ -3853,7 +3890,7 @@ if(chartCanvas){
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-    var barW=(W-8-72)/Math.max(vis,1);
+    var barW=(W-8-90)/Math.max(vis,1);
     var dx=e.clientX-_panStart;
     /* Invert: drag right = go back in history (increase offset) */
     var bars=Math.round(dx/barW);
@@ -4353,7 +4390,7 @@ window.addEventListener('resize', function(){
 'use strict';
 
 /* ══ SHARED PAD — must match renderChart exactly ══ */
-var PAD = { l:8, r:72, t:16, b:56, vol:40 };
+var PAD = { l:8, r:90, t:16, b:56, vol:40 };
 
 /* ── SVG icons ── */
 function S(p,vb){ return '<svg width="16" height="16" viewBox="'+(vb||'0 0 16 16')+'" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
@@ -4591,6 +4628,52 @@ function doRedo(){
 function initDrawEvents(){
   var cv=document.getElementById('chartCanvas');
   if(!cv)return;
+
+  /* Touch → drawing tools (convert touch to mouse-like events) */
+  cv.addEventListener('touchstart',function(e){
+    if(e.touches.length!==1)return; /* single touch only for tools */
+    var t=e.touches[0];
+    var fake={clientX:t.clientX,clientY:t.clientY,button:0,preventDefault:function(){}};
+    var co=getCoords(fake); if(!co)return;
+    /* Only activate tool if a drawing tool is selected */
+    if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot')return;
+    e.stopPropagation(); /* prevent pan from firing */
+    if(activeItem.vline){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();return;}
+    if(activeItem.hline){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();return;}
+    if(activeItem.arrowmark){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();return;}
+    if(activeItem.brush||activeItem.erbrush){isBrushing=true;brushPath=[{x:co.x,y:co.y}];return;}
+    isDrawing=true; drawStart=co;
+  },{passive:false});
+  cv.addEventListener('touchmove',function(e){
+    if(!isDrawing&&!isBrushing)return;
+    if(e.touches.length!==1)return;
+    e.stopPropagation();
+    var t=e.touches[0];
+    var fake={clientX:t.clientX,clientY:t.clientY};
+    hoverPoint=getCoords(fake);
+    if(isBrushing&&hoverPoint) brushPath.push({x:hoverPoint.x,y:hoverPoint.y});
+    renderChart();
+  },{passive:false});
+  cv.addEventListener('touchend',function(e){
+    if(isBrushing){
+      isBrushing=false;
+      if(brushPath.length>1){
+        var smoothed=brushPath.slice();
+        var first=smoothed[0],last2=smoothed[smoothed.length-1];
+        var dist=Math.sqrt(Math.pow(last2.x-first.x,2)+Math.pow(last2.y-first.y,2));
+        if(dist<80) smoothed.push({x:first.x,y:first.y});
+        saveUndo();drawings.push({type:'brush',path:smoothed,closed:dist<80});
+      }
+      brushPath=[]; renderChart(); return;
+    }
+    if(!isDrawing||!drawStart)return;
+    var t2=e.changedTouches[0];
+    var fake2={clientX:t2.clientX,clientY:t2.clientY};
+    var co2=getCoords(fake2); isDrawing=false;
+    if(!co2||(Math.abs(co2.x-drawStart.x)<5&&Math.abs(co2.y-drawStart.y)<5)){drawStart=null;return;}
+    saveUndo();drawings.push(makeDrawing(drawStart,co2));
+    drawStart=null; renderChart();
+  },{passive:false});
 
   cv.addEventListener('mousedown',function(e){
     if(e.button!==0)return; /* only left click triggers drawing tools */
