@@ -414,6 +414,57 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 .reveal{opacity:0;transform:translateY(20px);transition:opacity .7s,transform .7s}
 .reveal.v{opacity:1;transform:none}
 
+/* ══ CHART AREA — TradingView-style fixed-height container ══ */
+#chartArea{
+  position:relative;
+  display:flex;
+  flex-direction:row;
+  height:560px;
+  overflow:hidden;
+  flex-shrink:0;
+  background:var(--dark);
+  width:100%;
+}
+/* Canvas wrapper fills remaining width beside the draw toolbar */
+#chartCanvasWrap{
+  position:relative;
+  flex:1;
+  min-width:0;
+  overflow:hidden;
+  height:100%;
+}
+#chartCanvasWrap canvas#chartCanvas{
+  display:block;
+  width:100% !important;
+  height:100% !important;
+  cursor:crosshair;
+}
+/* Drawing toolbar stays full chart height */
+#drawToolbar{
+  height:100%;
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+/* Upload preview fills the wrapper */
+#chartCanvasWrap .img-pv{
+  position:absolute;
+  inset:0;
+  z-index:100;
+}
+/* Welcome overlay fills wrapper */
+#chartEmpty{
+  position:absolute;
+  inset:0;
+  overflow-y:auto;
+}
+/* Toolbar row never wraps by default */
+#chartToolsPanel > div:first-child > div:first-child{
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+#chartToolsPanel > div:first-child > div:first-child::-webkit-scrollbar{display:none}
+
 /* MOBILE */
 @media(max-width:900px){
   nav{padding:14px 20px}.nav-links{display:none}
@@ -428,18 +479,15 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   .levels{grid-template-columns:1fr 1fr}
   #analyzer{padding:60px 20px}
 
-  /* ── Analyzer panel — stack chart over tools ── */
+  /* ── Analyzer panel — stack chart over results ── */
   .nd-main{
     grid-template-columns: 1fr !important;
     grid-template-rows: auto auto;
   }
-  /* Chart full width, fixed height for phone */
-  #chartCanvas{
-    height: calc(100vw * 0.65) !important;
-    min-height: 260px !important;
-    max-height: 380px !important;
+  /* Chart area fixed height on tablet */
+  #chartArea{
+    height: clamp(260px, 55vw, 380px) !important;
   }
-  /* wrapper */
   /* Right panel below chart — full width */
   .nd-side{
     width: 100% !important;
@@ -447,66 +495,44 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
     border-left: none !important;
     border-top: 1px solid rgba(255,255,255,.06) !important;
   }
-  /* Chart toolbar wraps */
-  .nd-chart-top{
+  /* Chart toolbar wraps on tablet */
+  #chartToolsPanel > div:first-child > div:first-child{
     flex-wrap: wrap !important;
     gap: 6px !important;
     padding: 6px 8px !important;
   }
-  /* Snapshot + Run buttons full width stacked */
-  #snapBtn, #azBtn{
-    font-size: 11px !important;
-  }
-  /* Tool grid scrollable */
-  #toolGrid{
-    max-height: 280px;
-    overflow-y: auto;
-  }
-  /* Hero grid — stack */
+  #snapBtn, #azBtn{ font-size: 11px !important; }
+  #toolGrid{ max-height: 280px; overflow-y: auto; }
   .hero-in{
     display: flex !important;
     flex-direction: column !important;
     gap: 24px !important;
   }
-  /* Metrics 2 cols */
-  .nd-metrics{
-    grid-template-columns: 1fr 1fr !important;
-  }
+  .nd-metrics{ grid-template-columns: 1fr 1fr !important; }
   .res-4col{grid-template-columns:1fr 1fr !important}
   .res-3col{grid-template-columns:1fr 1fr !important}
-  /* Toolbar pair input full width */
   #pairIn{ width: 100% !important; }
-  /* Padding adjustments */
   #analyzer{ padding: 20px 0 !important; }
   .az-wrap{ padding: 0 !important; }
 }
 
-/* ── Mobile chart layout — stack chart over tools ── */
+/* ── Mobile chart layout ── */
 @media(max-width:768px){
-  /* Main chart+tools panel: single column */
   #chartToolsPanel{ min-height:unset !important; }
-  /* TV chart: proportional height */
-
-  /* Right tools panel: full width, reasonable height */
-  #chartToolsPanel > div:last-child{
-    width: 100% !important;
-    max-height: 420px !important;
-    overflow-y: auto !important;
+  /* Chart area proportional height on phone */
+  #chartArea{
+    height: clamp(220px, 56vw, 320px) !important;
   }
-  /* Toolbar: wrap and compress */
-  #chartToolsPanel input, #chartToolsPanel select{
-    font-size: 12px !important;
-  }
-  #pairIn{ width: 90px !important; }
-  /* Snapshot + Run buttons */
+  /* Toolbar row: compress + scroll */
+  #chartToolsPanel input, #chartToolsPanel select{ font-size:12px !important; }
+  #pairIn{ width:90px !important; }
   #snapBtn, #azBtn{ padding:6px !important; font-size:10px !important; }
   #aiToolsStrip{ flex-wrap:wrap !important; }
   #toolGrid{ overflow-x:auto; overflow-y:hidden; flex-wrap:nowrap; }
-  /* Flyout — stays right of toolbar, scrollable if tall */
+  /* Flyout — anchored to toolbar right edge */
   .tb-flyout{ left:44px !important; max-height:70vh !important; overflow-y:auto !important; }
   .tb-tooltip{ left:48px !important; }
-  #chartCanvas{ height:56vw !important; min-height:280px !important; }
-  /* Live price on mobile — below toolbar row */
+  /* Live price compact */
   #livePriceBar{ font-size:10px !important; }
 }
 /* ══ DRAWING TOOLBAR ══ */
@@ -808,11 +834,11 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
 
           <!-- Custom Fractal Chart -->
-          <div style="position:relative;flex:1;display:flex">
+          <div id="chartArea">
             <!-- Drawing toolbar — left strip -->
             <div id="drawToolbar" style="width:44px;flex-shrink:0;background:#07090e;border-right:1px solid rgba(201,168,76,.13);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;overflow:visible"></div>
             <!-- Canvas wrapper -->
-            <div style="position:relative;flex:1;overflow:hidden;min-width:0">
+            <div id="chartCanvasWrap">
 
 
               <canvas id="chartCanvas" style="display:block;width:100%;height:560px;cursor:crosshair"></canvas>
@@ -3424,10 +3450,14 @@ function resizeCanvas() {
   if (!chartCanvas) return;
   var dpr = window.devicePixelRatio || 1;
   var p = chartCanvas.parentElement;
-  var cssW = p ? p.clientWidth  : 800;
-  /* Use explicit CSS height — don't rely on clientHeight which can be 0 on mobile */
-  var cssH = parseInt(chartCanvas.style.height) || (p ? p.clientHeight : 460) || 460;
-  if (cssH < 100) cssH = 460; /* safety floor */
+  var area = document.getElementById('chartArea');
+  var cssW = p ? p.clientWidth : 800;
+  /* Read height from #chartArea (controlled by CSS) so media queries apply */
+  var cssH = (area && area.clientHeight > 100 ? area.clientHeight : 0)
+             || parseInt(chartCanvas.style.height)
+             || (p ? p.clientHeight : 560)
+             || 560;
+  if (cssH < 100) cssH = 560;
   /* Backing store = CSS size × DPR for crispness */
   chartCanvas.width  = Math.round(cssW * dpr);
   chartCanvas.height = Math.round(cssH * dpr);
