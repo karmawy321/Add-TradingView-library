@@ -3363,65 +3363,106 @@ function formatPrice(v) {
   return v.toFixed(6);
 }
 function formatTime(ts, tf) {
+  /* Legacy — only used by hover tooltip now */
   var d = new Date(ts);
   var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
-  if (tf === '1w' || tf === '1M') return mo + ' ' + d.getFullYear();
-  if (tf === '1d')  return d.getDate() + ' ' + mo;
-  /* Intraday — return full object so axis can decide what to show */
-  return { h: d.getHours(), mi: d.getMinutes(), day: d.getDate(), mo: mo, yr: d.getFullYear(), ts: ts };
+  var hh = d.getHours().toString().padStart(2,'0');
+  var mm = d.getMinutes().toString().padStart(2,'0');
+  var ss = d.getSeconds().toString().padStart(2,'0');
+  return d.getDate()+' '+mo+' '+d.getFullYear().toString().slice(2)+' '+hh+':'+mm+':'+ss;
 }
 
-/* Smart axis: shows time, and upgrades to date/month when crossing boundaries */
-function renderTimeAxis(visible, px, W, H, PAD, tf) {
+/* ── Smart time axis — purely zoom-driven, not tf-driven ── */
+function renderTimeAxis(visible, px, W, H, PAD) {
+  if (!visible || visible.length < 2) return;
   var n = visible.length;
-  if (!n) return;
-  var step = Math.max(1, Math.floor(n / 8));
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  /* Calculate total visible time span in milliseconds */
+  var spanMs = visible[n-1].t - visible[0].t;
+  var spanSec = spanMs / 1000;
+  var spanMin = spanSec / 60;
+  var spanHr  = spanMin / 60;
+  var spanDay = spanHr  / 24;
+
+  /* Choose the primary label unit based on visible span */
+  /* Also choose grid spacing: aim for ~6-8 labels across width */
+  var labelFn, tickUnit, boundaryFn;
+
+  if (spanDay > 365) {
+    /* Years visible — show year, mark month boundaries */
+    tickUnit = 'month';
+    labelFn = function(d) { return MO[d.getMonth()] + ' ' + d.getFullYear(); };
+    boundaryFn = function(d, prev) { return d.getFullYear() !== prev.getFullYear(); };
+  } else if (spanDay > 60) {
+    /* Months visible — show month+year, mark year boundaries */
+    tickUnit = 'month';
+    labelFn = function(d) { return MO[d.getMonth()]; };
+    boundaryFn = function(d, prev) { return d.getMonth() !== prev.getMonth() || d.getFullYear() !== prev.getFullYear(); };
+  } else if (spanDay > 7) {
+    /* Weeks visible — show day+month */
+    tickUnit = 'day';
+    labelFn = function(d) { return d.getDate()+' '+MO[d.getMonth()]; };
+    boundaryFn = function(d, prev) { return d.getMonth() !== prev.getMonth(); };
+  } else if (spanDay > 1) {
+    /* Days visible — show day or HH:MM, mark day boundaries */
+    tickUnit = 'day';
+    labelFn = function(d, isB) {
+      if (isB) return d.getDate()+' '+MO[d.getMonth()];
+      return d.getHours().toString().padStart(2,'0')+':00';
+    };
+    boundaryFn = function(d, prev) { return d.getDate() !== prev.getDate(); };
+  } else if (spanHr > 4) {
+    /* Hours visible — show HH:MM, mark day boundary */
+    tickUnit = 'hour';
+    labelFn = function(d, isB) {
+      if (isB) return d.getDate()+' '+MO[d.getMonth()];
+      return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
+    };
+    boundaryFn = function(d, prev) { return d.getDate() !== prev.getDate(); };
+  } else if (spanMin > 30) {
+    /* Sub-hour — show HH:MM */
+    tickUnit = 'minute';
+    labelFn = function(d) { return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'); };
+    boundaryFn = function(d, prev) { return d.getHours() !== prev.getHours(); };
+  } else {
+    /* Very zoomed in — show MM:SS */
+    tickUnit = 'second';
+    labelFn = function(d) { return d.getMinutes().toString().padStart(2,'0')+':'+d.getSeconds().toString().padStart(2,'0'); };
+    boundaryFn = function(d, prev) { return d.getMinutes() !== prev.getMinutes(); };
+  }
+
+  /* Step: space labels ~80px apart */
+  var barW = (W - PAD.l - PAD.r) / n;
+  var targetGap = 80; /* px between labels */
+  var step = Math.max(1, Math.round(targetGap / barW));
+
   chartCtx.font = 'bold 10px "DM Mono","Courier New",monospace';
   chartCtx.textAlign = 'center';
 
-  var prevDay = -1, prevMo = -1, prevYr = -1;
+  var prevD = null;
 
   visible.forEach(function(c, i) {
     if (i % step !== 0) return;
     var d = new Date(c.t);
-    var h = d.getHours(), mi = d.getMinutes();
-    var day = d.getDate(), mo = d.getMonth(), yr = d.getFullYear();
     var x = px(i);
-    var label, isBoundary = false;
+    var isB = prevD ? boundaryFn(d, prevD) : false;
+    var label = typeof labelFn === 'function' ? labelFn(d, isB) : '';
+    prevD = d;
 
-    if (tf === '1w' || tf === '1M') {
-      /* Show year when year changes, else month */
-      if (yr !== prevYr) { label = months[mo] + ' ' + yr; isBoundary = true; }
-      else               { label = months[mo]; }
-    } else if (tf === '1d') {
-      /* Show month+year when month changes, else day+month */
-      if (mo !== prevMo || yr !== prevYr) { label = months[mo] + (yr !== prevYr ? ' ' + yr : ''); isBoundary = true; }
-      else                                { label = day + ' ' + months[mo]; }
-    } else {
-      /* Intraday — show date when day changes, else HH:MM */
-      if (day !== prevDay) {
-        /* New day — show date prominently */
-        label = day + ' ' + months[mo] + (yr !== prevYr ? ' ' + yr : '');
-        isBoundary = true;
-      } else {
-        label = h.toString().padStart(2,'0') + ':' + mi.toString().padStart(2,'0');
-      }
-    }
-
-    prevDay = day; prevMo = mo; prevYr = yr;
-
-    /* Draw tick mark */
-    chartCtx.strokeStyle = isBoundary ? 'rgba(201,168,76,.35)' : 'rgba(255,255,255,.12)';
-    chartCtx.lineWidth = isBoundary ? 1 : 0.5;
+    /* Tick */
+    chartCtx.strokeStyle = isB ? 'rgba(201,168,76,.4)' : 'rgba(255,255,255,.1)';
+    chartCtx.lineWidth = isB ? 1 : 0.5;
+    chartCtx.setLineDash([]);
     chartCtx.beginPath();
     chartCtx.moveTo(x, H - PAD.b + 1);
-    chartCtx.lineTo(x, H - PAD.b + (isBoundary ? 6 : 4));
+    chartCtx.lineTo(x, H - PAD.b + (isB ? 7 : 4));
     chartCtx.stroke();
 
-    /* Label color */
-    chartCtx.fillStyle = isBoundary ? 'rgba(201,168,76,.85)' : 'rgba(180,200,230,0.75)';
-    chartCtx.fillText(label, Math.max(30, Math.min(W - PAD.r - 20, x)), H - PAD.b + 16);
+    /* Label */
+    var clampedX = Math.max(PAD.l + 24, Math.min(W - PAD.r - 24, x));
+    chartCtx.fillStyle = isB ? 'rgba(201,168,76,.9)' : 'rgba(180,200,230,0.7)';
+    chartCtx.fillText(label, clampedX, H - PAD.b + 17);
   });
 }
 
@@ -3536,7 +3577,7 @@ function renderChart() {
   }
 
   /* Time axis — smart adaptive labels */
-  renderTimeAxis(visible, px, W, H, PAD, currentInterval);
+  renderTimeAxis(visible, px, W, H, PAD);
 
   /* Current price line */
   if (visible.length > 0) {
@@ -3627,16 +3668,26 @@ if(chartCanvas){
     chartCtx.fillStyle='rgba(201,168,76,.9)'; chartCtx.fillRect(W-PAD2.r,cssY-9,PAD2.r,18);
     chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 10px DM Mono'; chartCtx.textAlign='left';
     chartCtx.fillText(priceStr,W-PAD2.r+3,cssY+4);
-    /* Date badge on bottom axis */
+    /* Date badge on bottom axis — zoom-aware format */
     var candle2=visible2[bi2];
     if(candle2){
       var d2=new Date(candle2.t);
-      var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d2.getMonth()];
-      var dateStr=d2.getDate()+' '+mo+" '"+String(d2.getFullYear()).slice(2)+
-        (currentInterval!=='1d'&&currentInterval!=='1w'?' '+d2.getHours().toString().padStart(2,'0')+':'+d2.getMinutes().toString().padStart(2,'0'):'');
+      var MO2=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var spanMs2=visible2.length>1?visible2[visible2.length-1].t-visible2[0].t:0;
+      var spanDay2=spanMs2/86400000;
+      var hh=d2.getHours().toString().padStart(2,'0');
+      var mm=d2.getMinutes().toString().padStart(2,'0');
+      var ss=d2.getSeconds().toString().padStart(2,'0');
+      var dateStr;
+      if(spanDay2>365)      dateStr=MO2[d2.getMonth()]+' '+d2.getFullYear();
+      else if(spanDay2>60)  dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+d2.getFullYear();
+      else if(spanDay2>7)   dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+d2.getFullYear();
+      else if(spanDay2>1)   dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+hh+':'+mm;
+      else if(spanDay2>0.1) dateStr=d2.getDate()+' '+MO2[d2.getMonth()]+' '+hh+':'+mm;
+      else                  dateStr=hh+':'+mm+':'+ss;
       var bx=PAD2.l+(bi2+0.5)*barW2;
-      var dw=dateStr.length*6.5+12;
-      chartCtx.fillStyle='rgba(201,168,76,.85)';
+      var dw=dateStr.length*6.5+14;
+      chartCtx.fillStyle='rgba(201,168,76,.9)';
       chartCtx.fillRect(Math.max(PAD2.l,Math.min(W-PAD2.r-dw,bx-dw/2)),H-18,dw,17);
       chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 9px DM Mono'; chartCtx.textAlign='center';
       chartCtx.fillText(dateStr,Math.max(PAD2.l+dw/2,Math.min(W-PAD2.r-dw/2,bx)),H-5);
