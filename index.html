@@ -3705,15 +3705,16 @@ function renderChart() {
     chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
     chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
     chartCtx.setLineDash([]); chartCtx.restore();
-    /* Also draw on canvas as fallback in case HTML element misses */
+    /* Price badge — drawn in right axis zone, with 4px gap from canvas edge */
     chartCtx.save();
     chartCtx.font='bold 11px DM Mono';
     var priceStr2=formatPrice(lastC.c);
-    var bx2=W-PAD.r;
+    var bdgW=chartCtx.measureText(priceStr2).width+16;
+    var bdgX=W-4-bdgW;  /* 4px gap from right edge */
     chartCtx.fillStyle=isUp?'#26a69a':'#ef5350';
-    chartCtx.fillRect(bx2,lastY-10,PAD.r,20);
+    chartCtx.fillRect(bdgX,lastY-10,bdgW,20);
     chartCtx.fillStyle='#fff'; chartCtx.textAlign='center';
-    chartCtx.fillText(priceStr2,bx2+PAD.r/2,lastY+4);
+    chartCtx.fillText(priceStr2,bdgX+bdgW/2,lastY+4);
     chartCtx.restore();
     /* HTML badge — pinned to exact price level */
     var badge=document.getElementById('priceBadgeEl');
@@ -4630,14 +4631,19 @@ function setCursor(cur) {
 /* ── Shared coord helper — PAD MUST match renderChart ── */
 function getCoords(e) {
   var cv=document.getElementById('chartCanvas');
-  if(!cv||!chartCandles||chartCandles.length<2) return null;
+  if(!cv) return null;
   var r=cv.getBoundingClientRect();
-  /* DPR-aware: getBoundingClientRect gives CSS coords, canvas is DPR scaled */
   var dpr=window.devicePixelRatio||1;
   var scX=(cv.width/dpr)/r.width, scY=(cv.height/dpr)/r.height;
   var mx=(e.clientX-r.left)*scX, my=(e.clientY-r.top)*scY;
-  /* CSS pixel dims — canvas.width is DPR-scaled, context works in CSS pixels */
   var W=cv.width/dpr, H=cv.height/dpr;
+  /* Pixel-only mode when no chart data (uploaded photo) */
+  if(!chartCandles||chartCandles.length<2){
+    return {x:mx,y:my,price:0,bi:0,W:W,H:H,
+      CW:W-PAD.l-PAD.r,CH:H-PAD.t-PAD.b-PAD.vol,
+      mn:0,rng:1,barW:10,si:0,visible:[],pixelOnly:true};
+  }
+  /* CSS pixel dims */
   var CW=W-PAD.l-PAD.r, CH=H-PAD.t-PAD.b-PAD.vol;
   var vis=Math.max(20,Math.floor(chartCandles.length/chartView.zoom));
   var si=Math.max(0,chartCandles.length-vis-chartView.offset);
@@ -4694,9 +4700,9 @@ function initDrawEvents(){
     /* Only activate tool if a drawing tool is selected */
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot')return;
     e.stopPropagation(); /* prevent pan from firing */
-    if(activeItem.vline){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();return;}
-    if(activeItem.hline){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();return;}
-    if(activeItem.arrowmark){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();return;}
+    if(activeItem.vline){if(!co.pixelOnly){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();}return;}
+    if(activeItem.hline){if(!co.pixelOnly){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();}return;}
+    if(activeItem.arrowmark){if(!co.pixelOnly){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();}return;}
     if(activeItem.brush||activeItem.erbrush){isBrushing=true;brushPath=[{x:co.x,y:co.y}];return;}
     isDrawing=true; drawStart=co;
   },{passive:false});
@@ -4781,9 +4787,9 @@ function initDrawEvents(){
       if(lbl){saveUndo();drawings.push({type:activeItem.id,price:co.price,bi:co.bi,label:lbl,callout:activeItem.callout});renderChart();}
       return;
     }
-    if(activeItem.vline){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();return;}
-    if(activeItem.hline){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();return;}
-    if(activeItem.arrowmark){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();return;}
+    if(activeItem.vline){if(!co.pixelOnly){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();}return;}
+    if(activeItem.hline){if(!co.pixelOnly){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();}return;}
+    if(activeItem.arrowmark){if(!co.pixelOnly){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();}return;}
     isDrawing=true; drawStart=co;
   });
 
@@ -4848,7 +4854,10 @@ function initDrawEvents(){
 
 function makeDrawing(p1,p2){
   return {
-    type:activeTool, p1:{price:p1.price,bi:p1.bi}, p2:{price:p2.price,bi:p2.bi},
+    type:activeTool,
+    p1:{price:p1.price,bi:p1.bi,x:p1.x,y:p1.y},
+    p2:{price:p2.price,bi:p2.bi,x:p2.x,y:p2.y},
+    pixelOnly:p1.pixelOnly||false,
     ray:activeItem.ray, extended:activeItem.extended, angle:activeItem.angle,
     shape:activeItem.shape, fibtype:activeItem.fibtype,
     channel:activeItem.channel, arrowline:activeItem.arrowline
@@ -5056,8 +5065,14 @@ function drawOne(ctx,d,co,prev){
 
   /* ── Two-point types ── */
   if(!d.p1||!d.p2){ctx.restore();return;}
-  var x1=cpX(d.p1.bi,co),y1=cpY(d.p1.price,co);
-  var x2=cpX(d.p2.bi,co),y2=cpY(d.p2.price,co);
+  var x1,y1,x2,y2;
+  if(d.pixelOnly){
+    /* Uploaded photo — use stored pixel coords directly */
+    x1=d.p1.x||0; y1=d.p1.y||0; x2=d.p2.x||0; y2=d.p2.y||0;
+  } else {
+    x1=cpX(d.p1.bi,co); y1=cpY(d.p1.price,co);
+    x2=cpX(d.p2.bi,co); y2=cpY(d.p2.price,co);
+  }
   ctx.setLineDash(prev?[5,3]:[]);
 
   /* Rectangle */
