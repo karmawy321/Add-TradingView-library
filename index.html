@@ -95,9 +95,9 @@
 
 
 /* ══ LIVE PRICE BADGE ══ */
-.live-price-bar{display:none;align-items:center;gap:8px;padding:6px 14px;
-  background:rgba(6,8,13,.95);border:1px solid rgba(39,174,96,.35);
-  border-radius:3px;box-shadow:0 3px 16px rgba(0,0,0,.6);white-space:nowrap}
+.live-price-bar{display:none;align-items:center;gap:6px;padding:4px 10px;
+  background:rgba(39,174,96,.08);border:1px solid rgba(39,174,96,.25);
+  border-radius:2px;white-space:nowrap;flex-shrink:0}
 .live-price-bar.show{display:flex}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#27ae60;animation:pulse 2s infinite;flex-shrink:0}
 .live-price-val{font-family:'Cinzel',serif;font-size:14px;font-weight:600;color:#f0f4fa}
@@ -518,7 +518,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   .tb-tooltip{ left:48px !important; }
   #chartCanvas{ height:56vw !important; min-height:280px !important; }
   /* Live price on mobile — below toolbar row */
-  #livePriceBar{ top:auto !important; bottom:calc(100% + 4px) !important; right:4px !important; font-size:11px !important; }
+  #livePriceBar{ font-size:10px !important; }
 }
 /* ══ DRAWING TOOLBAR ══ */
 #drawToolbar{width:44px;background:#07090e;border-right:1px solid rgba(201,168,76,.15);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;flex-shrink:0;user-select:none}
@@ -772,7 +772,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
       </div>
 
       <!-- ══ LIVE CHART PANEL ══ -->
-      <div id="chartToolsPanel" style="display:grid;grid-template-columns:1fr 260px;min-height:520px;border-bottom:1px solid var(--border2)">
+      <div id="chartToolsPanel" style="display:grid;grid-template-columns:1fr 260px;min-height:520px;border-bottom:1px solid var(--border2);overflow:hidden">
 
         <!-- LEFT: Lightweight Charts -->
         <div style="position:relative;border-right:1px solid var(--border2)">
@@ -803,6 +803,14 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             </label>
             <button id="clearUploadBtn" onclick="clearUploadedChart()" style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕ CLEAR PHOTO</button>
             <button id="terminateChartBtn" onclick="terminateChart()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em">⏹ STOP</button>
+            <!-- Live price — sits in toolbar row, right-aligned -->
+            <div class="live-price-bar" id="livePriceBar" style="margin-left:auto">
+              <div class="live-dot"></div>
+              <div class="live-price-val" id="livePriceVal">—</div>
+              <div class="live-price-change" id="livePriceChange"></div>
+              <div class="live-price-hl" id="livePriceHL" style="display:none"></div>
+              <div class="live-price-meta" id="livePriceMeta">LIVE</div>
+            </div>
 
           </div>
 
@@ -815,17 +823,9 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <!-- Drawing toolbar — left strip -->
             <div id="drawToolbar" style="width:44px;flex-shrink:0;background:#07090e;border-right:1px solid rgba(201,168,76,.13);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;overflow:visible"></div>
             <!-- Canvas wrapper -->
-            <div style="position:relative;flex:1">
-              <!-- Current price badge — HTML overlay, always at exact right edge -->
-              <div id="priceBadgeEl" style="display:none;position:absolute;right:0;z-index:25;pointer-events:none;font-family:'DM Mono',monospace;font-size:11px;font-weight:bold;padding:2px 6px 2px 6px;white-space:nowrap;border-radius:0 2px 2px 0"></div>
-              <!-- Live price — floats above canvas, outside border -->
-              <div class="live-price-bar" id="livePriceBar" style="position:absolute;top:-46px;right:0;z-index:50">
-                <div class="live-dot"></div>
-                <div class="live-price-val" id="livePriceVal">—</div>
-                <div class="live-price-change" id="livePriceChange"></div>
-                <div class="live-price-hl" id="livePriceHL" style="display:none"></div>
-                <div class="live-price-meta" id="livePriceMeta">LIVE</div>
-              </div>
+            <div style="position:relative;flex:1;overflow:hidden;min-width:0">
+
+
               <canvas id="chartCanvas" style="display:block;width:100%;height:500px;cursor:crosshair"></canvas>
               <!-- Upload preview overlay -->
               <div class="img-pv" id="imgPv" style="display:none;position:absolute;inset:0;z-index:100">
@@ -3593,7 +3593,7 @@ function renderChart() {
   if (!candles || candles.length < 2) {
     chartCtx.fillStyle='rgba(201,168,76,.4)'; chartCtx.font='bold 12px DM Mono';
     chartCtx.textAlign='center'; chartCtx.fillText('Connecting…', W/2, H/2);
-    var b=document.getElementById('priceBadgeEl');if(b)b.style.display='none';
+
     return;
   }
   var visibleBars = Math.max(20, Math.floor(candles.length / chartView.zoom));
@@ -3716,17 +3716,7 @@ function renderChart() {
     chartCtx.fillStyle='#fff'; chartCtx.textAlign='center';
     chartCtx.fillText(priceStr2,bdgX+bdgW/2,lastY+4);
     chartCtx.restore();
-    /* HTML badge — pinned to exact price level */
-    var badge=document.getElementById('priceBadgeEl');
-    if(badge){
-      /* lastY is already CSS pixel coordinate (context has DPR transform applied) */
-      badge.style.display='block';
-      badge.style.top=(lastY-10)+'px';
-      badge.style.background=isUp?'#26a69a':'#ef5350';
-      badge.style.color='#fff';
-      badge.style.width='';  /* auto width */
-      badge.textContent=formatPrice(lastC.c);
-    }
+
   }
 
   /* Watermark */
@@ -3837,7 +3827,7 @@ if(chartCanvas){
   chartCanvas.addEventListener('mouseleave',function(){
     if(typeof _uploadedMode==='undefined'||!_uploadedMode) renderChart();
     _ohlcTip.style.display='none';
-    var b2=document.getElementById('priceBadgeEl');if(b2)b2.style.display='none';
+
     var lbl=document.getElementById('crosshairLabel'); if(lbl)lbl.style.display='none';
   });
   chartCanvas.addEventListener('wheel',function(e){
