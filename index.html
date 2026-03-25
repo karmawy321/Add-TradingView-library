@@ -484,15 +484,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 /* ── Mobile chart layout — stack chart over tools ── */
 @media(max-width:768px){
   /* Main chart+tools panel: single column */
-  #chartToolsPanel{
-    grid-template-columns: 1fr !important;
-    min-height: unset !important;
-  }
-  /* Left chart column: full width */
-  #chartToolsPanel > div:first-child{
-    border-right: none !important;
-    border-bottom: 1px solid rgba(255,255,255,.06) !important;
-  }
+  #chartToolsPanel{ min-height:unset !important; }
   /* TV chart: proportional height */
 
   /* Right tools panel: full width, reasonable height */
@@ -507,12 +499,9 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   }
   #pairIn{ width: 90px !important; }
   /* Snapshot + Run buttons */
-  #snapBtn, #azBtn{
-    padding: 8px !important;
-    font-size: 11px !important;
-  }
-  /* Tool grid */
-  #toolGrid{ max-height: 200px; overflow-y: auto; }
+  #snapBtn, #azBtn{ padding:6px !important; font-size:10px !important; }
+  #aiToolsStrip{ flex-wrap:wrap !important; }
+  #toolGrid{ overflow-x:auto; overflow-y:hidden; flex-wrap:nowrap; }
   /* Flyout — stays right of toolbar, scrollable if tall */
   .tb-flyout{ left:44px !important; max-height:70vh !important; overflow-y:auto !important; }
   .tb-tooltip{ left:48px !important; }
@@ -772,10 +761,10 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
       </div>
 
       <!-- ══ LIVE CHART PANEL ══ -->
-      <div id="chartToolsPanel" style="display:grid;grid-template-columns:1fr 260px;min-height:520px;border-bottom:1px solid var(--border2);overflow:hidden">
+      <div id="chartToolsPanel" style="display:flex;flex-direction:column;border-bottom:1px solid var(--border2)">
 
-        <!-- LEFT: Lightweight Charts -->
-        <div style="position:relative;border-right:1px solid var(--border2)">
+        <!-- CHART AREA: full width -->
+        <div style="position:relative">
           <!-- Chart toolbar — always visible -->
           <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
             <input type="text" id="pairIn" placeholder="BTC/USDT…" oninput="onPairInput(this.value)"
@@ -826,7 +815,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <div style="position:relative;flex:1;overflow:hidden;min-width:0">
 
 
-              <canvas id="chartCanvas" style="display:block;width:100%;height:500px;cursor:crosshair"></canvas>
+              <canvas id="chartCanvas" style="display:block;width:100%;height:560px;cursor:crosshair"></canvas>
               <!-- Upload preview overlay -->
               <div class="img-pv" id="imgPv" style="display:none;position:absolute;inset:0;z-index:100">
                 <img id="prevImg" src="" alt="" style="width:100%;height:100%;object-fit:contain">
@@ -862,47 +851,31 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
         </div>
 
-        <!-- RIGHT: Controls panel -->
-        <div style="display:flex;flex-direction:column;gap:0">
-
-          <!-- Fields -->
-          <div style="padding:12px;border-bottom:1px solid var(--border2);display:flex;flex-direction:column;gap:8px">
-            <div class="fld"><label id="t-lfocus">Focus</label>
-              <select id="focusIn" style="width:100%">
-                <option value="fractal">Fractal patterns</option>
-                <option value="fibonacci">Fibonacci</option>
-                <option value="wave">Elliott waves</option>
-                <option value="full">Full analysis</option>
-              </select>
-            </div>
-            <div class="fld"><label id="t-lmatch">Matches</label>
-              <select id="matchIn" style="width:100%">
-                <option value="2">2</option><option value="3" selected>3</option><option value="4">4</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Screenshot + Run buttons -->
-          <div style="padding:12px;border-bottom:1px solid var(--border2);display:flex;flex-direction:column;gap:8px">
-            <!-- Screenshot button — free, captures chart -->
-            <button id="snapBtn" style="width:100%;font-family:'DM Mono',monospace;font-size:10px;padding:8px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#8a95a8;cursor:pointer;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:8px" onclick="takeSnapshot()">
-              <span>📷</span><span id="snapTxt">Capture Chart</span>
-            </button>
-            <!-- Run 3 Tools button -->
-            <button class="az-btn" id="azBtn" disabled style="width:100%">
-              <div class="az-spin" id="azSpin"></div>
-              <span id="azTxt">Fractal · Bar Pattern · Weierstrass</span>
-              <span class="cost-badge" id="main-cost-badge">11 cr</span>
-            </button>
-          </div>
-          <!-- 10 individual tools -->
-          <div style="padding:10px;flex:1;overflow-y:auto">
-            <div style="font-family:'DM Mono',monospace;font-size:8px;color:rgba(201,168,76,.4);letter-spacing:.12em;margin-bottom:8px">ALL TOOLS</div>
-            <div id="toolGrid" style="display:flex;flex-direction:column;gap:4px"></div>
-          </div>
-
-          <!-- Tool status badges -->
-          <div id="toolStatus" style="display:none;padding:8px 12px;border-top:1px solid var(--border2);display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
+        <!-- BOTTOM STRIP: AI tools — horizontal row below canvas -->
+        <div id="aiToolsStrip" style="border-top:1px solid var(--border2);background:#080a10;display:flex;align-items:center;gap:8px;padding:8px 12px;flex-wrap:wrap">
+          <!-- Fields inline -->
+          <select id="focusIn" style="font-family:'DM Mono',monospace;font-size:9px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:4px 7px;outline:none">
+            <option value="fractal">Fractal</option>
+            <option value="fibonacci">Fibonacci</option>
+            <option value="wave">Elliott waves</option>
+            <option value="full">Full analysis</option>
+          </select>
+          <select id="matchIn" style="font-family:'DM Mono',monospace;font-size:9px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:4px 7px;outline:none">
+            <option value="2">2 matches</option><option value="3" selected>3 matches</option><option value="4">4 matches</option>
+          </select>
+          <!-- Capture + Run -->
+          <button id="snapBtn" style="font-family:'DM Mono',monospace;font-size:9px;padding:5px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#8a95a8;cursor:pointer;letter-spacing:.06em;display:flex;align-items:center;gap:6px" onclick="takeSnapshot()">
+            <span>📷</span><span id="snapTxt">Capture</span>
+          </button>
+          <button class="az-btn" id="azBtn" disabled style="flex-shrink:0">
+            <div class="az-spin" id="azSpin"></div>
+            <span id="azTxt">Fractal · Bar · Weierstrass</span>
+            <span class="cost-badge" id="main-cost-badge">11 cr</span>
+          </button>
+          <!-- Individual tools — horizontal scrollable -->
+          <div id="toolGrid" style="display:flex;gap:4px;flex:1;overflow-x:auto;min-width:0"></div>
+          <!-- Status -->
+          <div id="toolStatus" style="display:none;gap:4px">
             <div class="tool-badge" id="ts-fractal"><div class="tb-dot" id="tsd-fractal"></div><div class="tb-label">Fractal</div><div class="tb-state" id="tss-fractal">—</div></div>
             <div class="tool-badge" id="ts-bar"><div class="tb-dot" id="tsd-bar"></div><div class="tb-label">Bar</div><div class="tb-state" id="tss-bar">—</div></div>
             <div class="tool-badge" id="ts-ww"><div class="tb-dot" id="tsd-ww"></div><div class="tb-label">WW</div><div class="tb-state" id="tss-ww">—</div></div>
@@ -4568,8 +4541,10 @@ function buildToolbar() {
         var rect=wrap.getBoundingClientRect();
         var flyH=g.items.length*32+8;
         var topPos=Math.min(rect.top, window.innerHeight-flyH-8);
+        /* Calculate left based on toolbar's actual screen position */
+        var tbRect=document.getElementById('drawToolbar').getBoundingClientRect();
         fly.style.top=topPos+'px';
-        fly.style.left='46px'; /* right next to toolbar, no gap */
+        fly.style.left=(tbRect.right+2)+'px';
         fly.style.display='flex';
       }
       function hideFly(){ _flyTimer=setTimeout(function(){ fly.style.display='none'; },220); }
@@ -5298,15 +5273,19 @@ function addFullscreen(){
     var panel=document.getElementById('chartToolsPanel');
     if(!panel)return;
     if(!document.fullscreenElement){
-      panel.requestFullscreen&&panel.requestFullscreen();
+      (panel.requestFullscreen||panel.webkitRequestFullscreen||panel.mozRequestFullScreen).call(panel);
       btn.innerHTML='✕ EXIT';
+      /* Resize canvas after fullscreen */
+      setTimeout(function(){ if(typeof resizeCanvas==='function') resizeCanvas(); },300);
     } else {
-      document.exitFullscreen&&document.exitFullscreen();
+      (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen).call(document);
       btn.innerHTML='⛶ FULLSCREEN';
+      setTimeout(function(){ if(typeof resizeCanvas==='function') resizeCanvas(); },300);
     }
   };
   document.addEventListener('fullscreenchange',function(){
     if(!document.fullscreenElement)btn.innerHTML='⛶ FULLSCREEN';
+    setTimeout(function(){ if(typeof resizeCanvas==='function') resizeCanvas(); },100);
   });
   toolbar.appendChild(btn);
 }
