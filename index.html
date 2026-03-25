@@ -1603,6 +1603,9 @@ function handleChartUpload(f){
     img.onload = function(){
       if(chartSSE){ chartSSE.close(); chartSSE=null; }
       stopPricePolling();
+      /* Disable coin input while image is on canvas */
+      var pIn=document.getElementById('pairIn');
+      if(pIn){ pIn.disabled=true; pIn.style.opacity='0.4'; }
       var dpr = window.devicePixelRatio || 1;
       var cssW = cv.parentElement ? cv.parentElement.clientWidth : 800;
       if(!cssW || cssW < 100) cssW = 800;
@@ -1644,6 +1647,9 @@ function clearUploadedChart(){
   if(typeof drawings !== 'undefined') drawings = [];
   var ab = document.getElementById('azBtn');
   if(ab) ab.disabled = true;
+  /* Re-enable coin input */
+  var pIn2=document.getElementById('pairIn');
+  if(pIn2){ pIn2.disabled=false; pIn2.style.opacity=''; }
   /* If a coin was loaded, reload it; else show welcome */
   if(typeof currentSymbol !== 'undefined' && currentSymbol){
     if(typeof chartCandles !== 'undefined') chartCandles = [];
@@ -3657,15 +3663,17 @@ function renderChart() {
     chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
     chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
     chartCtx.setLineDash([]);
-    /* Price badge — fits within right axis area */
+    /* Price badge — full width of right axis, left-aligned text */
     var priceStr = formatPrice(lastC.c);
     chartCtx.font = 'bold 11px DM Mono';
-    var bw = chartCtx.measureText(priceStr).width + 12;
-    var bx = W - PAD.r + 1;
+    /* Badge fills entire PAD.r area so it touches both the line and right edge */
+    var bx = W - PAD.r;
+    var bw = PAD.r;
     chartCtx.fillStyle = isUp ? '#26a69a' : '#ef5350';
-    chartCtx.fillRect(bx, lastY-9, Math.min(bw, PAD.r-2), 18);
-    chartCtx.fillStyle = '#fff'; chartCtx.textAlign = 'left';
-    chartCtx.fillText(priceStr, bx+4, lastY+4);
+    chartCtx.fillRect(bx, lastY - 10, bw, 20);
+    chartCtx.fillStyle = '#fff';
+    chartCtx.textAlign = 'center';
+    chartCtx.fillText(priceStr, bx + bw/2, lastY + 4);
     chartCtx.restore();
   }
 
@@ -3708,11 +3716,12 @@ if(chartCanvas){
   chartCanvas.parentElement.appendChild(_ohlcTip);
 
   chartCanvas.addEventListener('mousemove',function(e){
-    if(typeof isBrushing !== 'undefined' && isBrushing) return; /* let toolbar handle brush */
+    if(typeof isBrushing !== 'undefined' && isBrushing) return;
     var r=chartCanvas.getBoundingClientRect();
     var dpr=window.devicePixelRatio||1;
     var cssX=e.clientX-r.left, cssY=e.clientY-r.top;
-    renderChart();
+    /* Don't repaint if image is uploaded — it would erase it */
+    if(typeof _uploadedMode==='undefined'||!_uploadedMode) renderChart();
     var W=chartCanvas.width/dpr, H=chartCanvas.height/dpr;
     var PAD2={t:16,b:44,l:8,r:90,vol:40};
     var vis=Math.max(20,Math.floor((chartCandles.length||0)/chartView.zoom));
@@ -3773,7 +3782,7 @@ if(chartCanvas){
     }
   });
   chartCanvas.addEventListener('mouseleave',function(){
-    renderChart();
+    if(typeof _uploadedMode==='undefined'||!_uploadedMode) renderChart();
     _ohlcTip.style.display='none';
     var lbl=document.getElementById('crosshairLabel'); if(lbl)lbl.style.display='none';
   });
@@ -5160,6 +5169,18 @@ function patchRenderChart(){
   if(typeof renderChart!=='function'||renderChart._fractalPatched)return;
   var orig=renderChart;
   renderChart=function(){
+    /* Skip full repaint when an uploaded image is on canvas */
+    if(typeof _uploadedMode!=='undefined'&&_uploadedMode){
+      var cv2=document.getElementById('chartCanvas');
+      if(cv2&&cv2.getContext){
+        var ctx2=cv2.getContext('2d');
+        var dpr3=window.devicePixelRatio||1;
+        var W3=cv2.width/dpr3,H3=cv2.height/dpr3;
+        drawAnnotations(ctx2,{W:W3,H:H3,CW:W3-PAD.l-PAD.r,CH:H3-PAD.t-PAD.b-PAD.vol,
+          mn:0,rng:1,barW:10,si:0,visible:[]});
+      }
+      return;
+    }
     orig();
     var cv=document.getElementById('chartCanvas');
     if(!cv||!chartCandles||chartCandles.length<2)return;
