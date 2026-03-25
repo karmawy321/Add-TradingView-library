@@ -3364,8 +3364,65 @@ function formatPrice(v) {
 }
 function formatTime(ts, tf) {
   var d = new Date(ts);
-  if (tf === '1d') return d.toLocaleDateString('en',{month:'short',day:'numeric'});
-  return d.getHours().toString().padStart(2,'0')+':'+ d.getMinutes().toString().padStart(2,'0');
+  var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  if (tf === '1w' || tf === '1M') return mo + ' ' + d.getFullYear();
+  if (tf === '1d')  return d.getDate() + ' ' + mo;
+  /* Intraday — return full object so axis can decide what to show */
+  return { h: d.getHours(), mi: d.getMinutes(), day: d.getDate(), mo: mo, yr: d.getFullYear(), ts: ts };
+}
+
+/* Smart axis: shows time, and upgrades to date/month when crossing boundaries */
+function renderTimeAxis(visible, px, W, H, PAD, tf) {
+  var n = visible.length;
+  if (!n) return;
+  var step = Math.max(1, Math.floor(n / 8));
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  chartCtx.font = 'bold 10px "DM Mono","Courier New",monospace';
+  chartCtx.textAlign = 'center';
+
+  var prevDay = -1, prevMo = -1, prevYr = -1;
+
+  visible.forEach(function(c, i) {
+    if (i % step !== 0) return;
+    var d = new Date(c.t);
+    var h = d.getHours(), mi = d.getMinutes();
+    var day = d.getDate(), mo = d.getMonth(), yr = d.getFullYear();
+    var x = px(i);
+    var label, isBoundary = false;
+
+    if (tf === '1w' || tf === '1M') {
+      /* Show year when year changes, else month */
+      if (yr !== prevYr) { label = months[mo] + ' ' + yr; isBoundary = true; }
+      else               { label = months[mo]; }
+    } else if (tf === '1d') {
+      /* Show month+year when month changes, else day+month */
+      if (mo !== prevMo || yr !== prevYr) { label = months[mo] + (yr !== prevYr ? ' ' + yr : ''); isBoundary = true; }
+      else                                { label = day + ' ' + months[mo]; }
+    } else {
+      /* Intraday — show date when day changes, else HH:MM */
+      if (day !== prevDay) {
+        /* New day — show date prominently */
+        label = day + ' ' + months[mo] + (yr !== prevYr ? ' ' + yr : '');
+        isBoundary = true;
+      } else {
+        label = h.toString().padStart(2,'0') + ':' + mi.toString().padStart(2,'0');
+      }
+    }
+
+    prevDay = day; prevMo = mo; prevYr = yr;
+
+    /* Draw tick mark */
+    chartCtx.strokeStyle = isBoundary ? 'rgba(201,168,76,.35)' : 'rgba(255,255,255,.12)';
+    chartCtx.lineWidth = isBoundary ? 1 : 0.5;
+    chartCtx.beginPath();
+    chartCtx.moveTo(x, H - PAD.b + 1);
+    chartCtx.lineTo(x, H - PAD.b + (isBoundary ? 6 : 4));
+    chartCtx.stroke();
+
+    /* Label color */
+    chartCtx.fillStyle = isBoundary ? 'rgba(201,168,76,.85)' : 'rgba(180,200,230,0.75)';
+    chartCtx.fillText(label, Math.max(30, Math.min(W - PAD.r - 20, x)), H - PAD.b + 16);
+  });
 }
 
 var chartType = 'candles'; /* candles | bars | hollow | area | line */
@@ -3478,10 +3535,8 @@ function renderChart() {
     });
   }
 
-  /* Time axis — brighter, bigger */
-  chartCtx.fillStyle='rgba(180,200,230,0.95)'; chartCtx.font='bold 10px "DM Mono","Courier New",monospace'; chartCtx.textAlign='center';
-  var step=Math.max(1,Math.floor(n/8));
-  visible.forEach(function(c,i){ if(i%step===0) chartCtx.fillText(formatTime(c.t,currentInterval),px(i),H-PAD.b+16); });
+  /* Time axis — smart adaptive labels */
+  renderTimeAxis(visible, px, W, H, PAD, currentInterval);
 
   /* Current price line */
   if (visible.length > 0) {
