@@ -6027,26 +6027,31 @@ window.addEventListener('load',function(){
 
 /* ── Plan checkout ── */
 async function startCheckout(plan, btn) {
-  /* Get a fresh token from the correct Supabase client (sb) initialized in this page */
+  /* Step 1: try to get a fresh token from Supabase if sb is ready */
   var token = null;
   try {
     if (sb && sbReady) {
-      var { data } = await sb.auth.getSession();
-      if (data && data.session) {
-        token = data.session.access_token;
-        /* Keep localStorage in sync */
+      var sessionRes = await sb.auth.getSession();
+      if (sessionRes && sessionRes.data && sessionRes.data.session) {
+        token = sessionRes.data.session.access_token;
         localStorage.setItem('fractal_token', token);
       }
     }
-  } catch(e) {}
-  /* Fallback to stored token if Supabase session unavailable */
-  if (!token) token = localStorage.getItem('fractal_token');
+  } catch(e) { /* sb not ready — fall through */ }
+
+  /* Step 2: fall back to stored token */
+  if (!token) {
+    token = localStorage.getItem('fractal_token');
+  }
+
   if (!token) {
     alert('Please sign in first to subscribe.');
     window.location.href = '/auth';
     return;
   }
+
   if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+
   try {
     var res = await fetch('/create-checkout', {
       method: 'POST',
@@ -6057,6 +6062,12 @@ async function startCheckout(plan, btn) {
     if (data.url) {
       window.location.href = data.url;
     } else {
+      if (res.status === 401) {
+        localStorage.removeItem('fractal_token');
+        alert('Your session has expired. Please sign in again.');
+        window.location.href = '/auth';
+        return;
+      }
       alert('Error: ' + (data.error || 'Could not create checkout session'));
       if (btn) { btn.disabled = false; btn.textContent = 'Get Started'; }
     }
