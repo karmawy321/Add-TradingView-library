@@ -4793,7 +4793,7 @@ function getCoords(e) {
   var mx2=Math.max.apply(null,visible.map(function(c){return c.h;}));
   var rng=mx2-mn||mn*.001||.0001;
   mn-=rng*.05; mx2+=rng*.05; rng=mx2-mn;
-  var barW=CW/Math.max(visible.length,1);
+  var barW=CW/Math.max(visible.length+Math.max(4,Math.round(visible.length*0.08)),1);
   var bi=Math.max(0,Math.min(visible.length-1,Math.round((mx-PAD.l)/barW)));
   var price=mx2-((my-PAD.t)/CH)*rng;
   /* Magnet snap */
@@ -5780,7 +5780,7 @@ function patchRenderChart(){
     var mx=Math.max.apply(null,visible.map(function(c){return c.h;}));
     var rng=mx-mn||mn*.001||.0001;
     mn-=rng*.05; mx+=rng*.05; rng=mx-mn;
-    var barW=CW/Math.max(visible.length,1);
+    var barW=CW/Math.max(visible.length+Math.max(4,Math.round(visible.length*0.08)),1);
     drawAnnotations(ctx,{W:W,H:H,CW:CW,CH:CH,mn:mn,rng:rng,barW:barW,si:si,visible:visible});
   };
   renderChart._fractalPatched=true;
