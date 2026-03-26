@@ -1,10 +1,15 @@
+require('dotenv').config();
 const express   = require('express');
 const cors      = require('cors');
 const https     = require('https');
 const WebSocket = require('ws');
 const path      = require('path');
 const fs        = require('fs');
+const crypto    = require('crypto');
 
+/* ═══════════════════════════════════════════════════
+   SUPABASE
+   ═══════════════════════════════════════════════════ */
 const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL     = process.env.SUPABASE_URL      || '';
 const SUPABASE_SERVICE = process.env.SUPABASE_SERVICE_KEY || '';
@@ -16,13 +21,10 @@ const sbAdmin = SUPABASE_URL && SUPABASE_SERVICE
    STRIPE
    ═══════════════════════════════════════════════════ */
 const Stripe = require('stripe');
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? Stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
+const stripe = process.env.STRIPE_SECRET_KEY ? Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const SITE_URL = process.env.SITE_URL || 'https://fractalaiagent.com';
 
-/* Plan definitions — price IDs must match your Stripe dashboard */
 const PLANS = {
   starter:       { name: 'Starter',       credits: 500,   priceId: process.env.STRIPE_PRICE_STARTER       || '' },
   pro:           { name: 'Pro',           credits: 1500,  priceId: process.env.STRIPE_PRICE_PRO           || '' },
@@ -30,12 +32,15 @@ const PLANS = {
   institutional: { name: 'Institutional', credits: 15000, priceId: process.env.STRIPE_PRICE_INSTITUTIONAL || '' },
 };
 
-/* One-time Fib Spiral price: $1 */
-const FIB_SPIRAL_PRICE_CENTS = 100;
+const FIB_SPIRAL_PRICE_CENTS = 100; /* $1.00 */
 
+/* ═══════════════════════════════════════════════════
+   AUTH HELPERS
+   ═══════════════════════════════════════════════════ */
 async function verifyAndDeduct(token, cost) {
   if (!sbAdmin) return { userId: 'dev' };
   if (!token)   throw new Error('Not authenticated');
+
   const { data: { user }, error } = await sbAdmin.auth.getUser(token);
   if (error || !user) throw new Error('Invalid token');
 
@@ -46,10 +51,7 @@ async function verifyAndDeduct(token, cost) {
     .single();
 
   if (!profile) {
-    await sbAdmin.from('profiles').insert({
-      id: user.id, credits: 50, plan: 'free',
-      username: user.email.split('@')[0]
-    });
+    await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username: user.email.split('@')[0] });
     if (50 < cost) throw new Error('Insufficient credits');
   } else if (profile.credits === null || profile.credits === undefined) {
     await sbAdmin.from('profiles').update({ credits: 50 }).eq('id', user.id);
@@ -68,7 +70,7 @@ async function verifyAndDeduct(token, cost) {
 }
 
 async function getUserProfile(token) {
-  if (!sbAdmin) return { credits: 9999, plan: 'dev' };
+  if (!sbAdmin) return { credits: 9999, plan: 'dev', userId: 'dev' };
   if (!token)   return null;
   const { data: { user }, error } = await sbAdmin.auth.getUser(token);
   if (error || !user) return null;
@@ -82,20 +84,14 @@ async function getUserProfile(token) {
 
 /* ═══════════════════════════════════════════════════
    CANDLE BUILDER
-   Aggregates raw price ticks into OHLCV candles
-   Supports: 1m 5m 15m 1h 4h 1d
    ═══════════════════════════════════════════════════ */
-const TF_MS = { '1m':60000, '5m':300000, '15m':900000, '1h':3600000, '4h':14400000, '1d':86400000 };
+const TF_MS = { '1m':60000,'5m':300000,'15m':900000,'1h':3600000,'4h':14400000,'1d':86400000 };
 const TIMEFRAMES = Object.keys(TF_MS);
-
-const candles    = {};   /* candles[symbol][tf] = [{t,o,h,l,c,v}, ...] */
-const sseClients = {};   /* sseClients[symbol]  = Set<res> */
+const candles    = {};
+const sseClients = {};
 
 function ensureSymbol(sym) {
-  if (!candles[sym]) {
-    candles[sym] = {};
-    TIMEFRAMES.forEach(tf => { candles[sym][tf] = []; });
-  }
+  if (!candles[sym]) { candles[sym] = {}; TIMEFRAMES.forEach(tf => { candles[sym][tf] = []; }); }
   if (!sseClients[sym]) sseClients[sym] = new Set();
 }
 
@@ -111,9 +107,9 @@ function processTick(sym, price, volume, tsMs) {
       arr.push({ t: bucketTs, o: price, h: price, l: price, c: price, v: volume || 0 });
       if (arr.length > 500) arr.shift();
     } else {
-      cur.c  = price;
-      cur.h  = Math.max(cur.h, price);
-      cur.l  = Math.min(cur.l, price);
+      cur.c = price;
+      cur.h = Math.max(cur.h, price);
+      cur.l = Math.min(cur.l, price);
       cur.v += (volume || 0);
     }
   });
@@ -124,34 +120,16 @@ function pushSSE(sym) {
   const clients = sseClients[sym];
   if (!clients || clients.size === 0) return;
   const msg = `data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`;
-  clients.forEach(res => {
-    try { res.write(msg); } catch(e) { clients.delete(res); }
-  });
+  clients.forEach(res => { try { res.write(msg); } catch(e) { clients.delete(res); } });
 }
 
-const TWELVEDATA_KEY = ''; /* disabled */
-const FOREX_SYMBOLS  = [];
-const METAL_SYMBOLS  = [];
-const FOREX_KEYS     = [];
-
-
-function disconnectBinanceIfUnused(symbol) {
-  const lower = symbol.toLowerCase();
-  const key   = symbol.toUpperCase();
-  if (!sseClients[key] || sseClients[key].size === 0) {
-    if (binanceWs[lower]) { binanceWs[lower].terminate(); delete binanceWs[lower]; }
-    stopBinancePolling(key);
-  }
-}
-
-const binanceWs = {};
+const binanceWs      = {};
 const binancePollers = {};
 
 function connectBinance(symbol) {
   const lower = symbol.toLowerCase();
   if (binanceWs[lower]) return;
   fetchBinanceHistory(symbol.toUpperCase());
-
   const wsUrls = [
     `wss://stream.binance.com:9443/ws/${lower}@aggTrade`,
     `wss://stream.binance.com:443/ws/${lower}@aggTrade`,
@@ -159,26 +137,15 @@ function connectBinance(symbol) {
     `wss://stream.binance.us:9443/ws/${lower}@aggTrade`
   ];
   let urlIdx = 0;
-
   function tryConnect() {
-    if (urlIdx >= wsUrls.length) {
-      console.log(`[Binance] All WS blocked for ${symbol} — using REST polling`);
-      startBinancePolling(symbol.toUpperCase());
-      return;
-    }
+    if (urlIdx >= wsUrls.length) { startBinancePolling(symbol.toUpperCase()); return; }
     const ws = new WebSocket(wsUrls[urlIdx]);
-    ws.on('open',    ()  => console.log(`[Binance] Connected: ${symbol}`));
+    ws.on('open',    () => console.log(`[Binance] Connected: ${symbol}`));
     ws.on('message', raw => {
-      try {
-        const m = JSON.parse(raw);
-        processTick(symbol.toUpperCase(), parseFloat(m.p), parseFloat(m.q), m.T || Date.now());
-      } catch(e) {}
+      try { const m = JSON.parse(raw); processTick(symbol.toUpperCase(), parseFloat(m.p), parseFloat(m.q), m.T || Date.now()); } catch(e) {}
     });
-    ws.on('close',  ()  => { delete binanceWs[lower]; });
-    ws.on('error',  err => {
-      ws.terminate(); urlIdx++;
-      setTimeout(tryConnect, 1000);
-    });
+    ws.on('close', () => { delete binanceWs[lower]; });
+    ws.on('error', err => { ws.terminate(); urlIdx++; setTimeout(tryConnect, 1000); });
     binanceWs[lower] = ws;
   }
   tryConnect();
@@ -186,20 +153,13 @@ function connectBinance(symbol) {
 
 function startBinancePolling(symbol) {
   if (binancePollers[symbol]) return;
-  console.log(`[Binance] REST polling: ${symbol}`);
   binancePollers[symbol] = setInterval(() => {
     const req = https.request({ hostname: 'api.binance.com', path: `/api/v3/ticker/24hr?symbol=${symbol}`, method: 'GET' }, res => {
       let data = '';
       res.on('data', c => { data += c; });
-      res.on('end', () => {
-        try {
-          const d = JSON.parse(data);
-          if (d.lastPrice) processTick(symbol, parseFloat(d.lastPrice), parseFloat(d.lastQty||0), Date.now());
-        } catch(e) {}
-      });
+      res.on('end', () => { try { const d = JSON.parse(data); if (d.lastPrice) processTick(symbol, parseFloat(d.lastPrice), parseFloat(d.lastQty||0), Date.now()); } catch(e) {} });
     });
-    req.on('error', () => {});
-    req.end();
+    req.on('error', () => {}); req.end();
   }, 3000);
 }
 
@@ -216,11 +176,10 @@ function disconnectBinanceIfUnused(symbol) {
   }
 }
 
-
 function fetchBinanceHistory(symbol) {
   TIMEFRAMES.forEach(tf => {
-    const path = `/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
-    const req  = https.request({ hostname: 'api.binance.com', path, method: 'GET' }, res => {
+    const p = `/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
+    const req = https.request({ hostname: 'api.binance.com', path: p, method: 'GET' }, res => {
       let data = '';
       res.on('data', c => { data += c; });
       res.on('end', () => {
@@ -234,19 +193,14 @@ function fetchBinanceHistory(symbol) {
             const arr = candles[symbol][tf];
             const lst = arr[arr.length - 1];
             const [o,h,l,c,v] = [bar[1],bar[2],bar[3],bar[4],bar[5]].map(parseFloat);
-            if (!lst || lst.t !== bkt) {
-              arr.push({ t: bkt, o, h, l, c, v });
-              if (arr.length > 500) arr.shift();
-            } else {
-              lst.h = Math.max(lst.h,h); lst.l = Math.min(lst.l,l); lst.c = c; lst.v += v;
-            }
+            if (!lst || lst.t !== bkt) { arr.push({ t: bkt, o, h, l, c, v }); if (arr.length > 500) arr.shift(); }
+            else { lst.h = Math.max(lst.h,h); lst.l = Math.min(lst.l,l); lst.c = c; lst.v += v; }
           });
           console.log(`[Binance] History loaded: ${symbol} ${tf} (${bars.length} bars)`);
         } catch(e) {}
       });
     });
-    req.on('error', () => {});
-    req.end();
+    req.on('error', () => {}); req.end();
   });
 }
 
@@ -254,14 +208,11 @@ function fetchBinanceHistory(symbol) {
    SYMBOL CLASSIFIER
    ═══════════════════════════════════════════════════ */
 const CRYPTO_SUFFIXES = ['USDT','USDC','BUSD','BTC','ETH','BNB','XRP','SOL','ADA','DOGE'];
-
 function classifySymbol(sym) {
   const s = sym.toUpperCase().replace('/','').replace('-','');
   if (CRYPTO_SUFFIXES.some(q => s.endsWith(q))) return 'crypto';
   return 'unknown';
 }
-
-/* ── hasAnyCandles — check if any timeframe has data ── */
 function hasAnyCandles(sym) {
   return candles[sym] && TIMEFRAMES.some(tf => candles[sym][tf] && candles[sym][tf].length > 0);
 }
@@ -319,10 +270,18 @@ function rl(l) { return l==='ar'?'Arabic':l==='pt'?'Portuguese':'English'; }
    ═══════════════════════════════════════════════════ */
 const app  = express();
 const PORT = process.env.PORT || 3000;
-app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'] }));
-app.use(express.json({ limit: '20mb' }));
 
-/* Explicit CORS headers for all responses including SSE */
+app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'] }));
+
+/* Stripe webhook needs raw body — everything else gets JSON */
+app.use((req, res, next) => {
+  if (req.originalUrl === '/stripe-webhook') {
+    express.raw({ type: 'application/json' })(req, res, next);
+  } else {
+    express.json({ limit: '20mb' })(req, res, next);
+  }
+});
+
 app.use(function(req, res, next) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -331,64 +290,29 @@ app.use(function(req, res, next) {
   next();
 });
 
-/* ── Serve static assets ── */
-app.use('/charting_library', express.static(path.join(__dirname, 'charting_library'), {
-  maxAge: '1d',
-  setHeaders: (res) => res.setHeader('Access-Control-Allow-Origin', '*')
-}));
+/* ── Static assets ── */
+app.use('/charting_library', express.static(path.join(__dirname, 'charting_library'), { maxAge: '1d', setHeaders: (res) => res.setHeader('Access-Control-Allow-Origin', '*') }));
+app.get('/logo.svg',          (req, res) => { fs.readFile(path.resolve(__dirname, 'logo.svg'),          (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','image/svg+xml'); res.send(d); }); });
+app.get('/logo-animated.svg', (req, res) => { fs.readFile(path.resolve(__dirname, 'logo-animated.svg'), (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','image/svg+xml'); res.send(d); }); });
+app.get('/favicon.svg',       (req, res) => { fs.readFile(path.resolve(__dirname, 'favicon.svg'),       (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','image/svg+xml'); res.send(d); }); });
+app.get('/favicon.ico',       (req, res) => { fs.readFile(path.resolve(__dirname, 'favicon.svg'),       (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','image/svg+xml'); res.send(d); }); });
+app.get('/datafeed.js',       (req, res) => { fs.readFile(path.resolve(__dirname, 'datafeed.js'),       (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','application/javascript'); res.send(d); }); });
 
-/* ── Serve SVG and image files explicitly ── */
-app.get('/logo.svg',    (req, res) => {
-  fs.readFile(path.resolve(__dirname, 'logo.svg'), (err, data) => {
-    if (err) return res.status(500).json({ error: err.message, cwd: __dirname });
-    res.setHeader('Content-Type', 'image/svg+xml');
-    res.send(data);
-  });
-});
-app.get('/logo-animated.svg', (req, res) => {
-  fs.readFile(path.resolve(__dirname, 'logo-animated.svg'), (err, data) => {
-    if (err) return res.status(404).end();
-    res.setHeader('Content-Type', 'image/svg+xml');
-    res.send(data);
-  });
-});
-app.get('/favicon.svg', (req, res) => {
-  fs.readFile(path.resolve(__dirname, 'favicon.svg'), (err, data) => {
-    if (err) return res.status(404).end();
-    res.setHeader('Content-Type', 'image/svg+xml');
-    res.send(data);
-  });
-});
-app.get('/favicon.ico', (req, res) => {
-  fs.readFile(path.resolve(__dirname, 'favicon.svg'), (err, data) => {
-    if (err) return res.status(404).end();
-    res.setHeader('Content-Type', 'image/svg+xml');
-    res.send(data);
-  });
-});
-app.get('/datafeed.js', (req, res) => {
-  fs.readFile(path.resolve(__dirname, 'datafeed.js'), (err, data) => {
-    if (err) return res.status(404).json({ error: 'datafeed.js not found' });
-    res.setHeader('Content-Type', 'application/javascript');
-    res.send(data);
-  });
-});
-
-/* ── Serve HTML pages ── */
+/* ── HTML pages ── */
 function sendPage(file, res) {
   const p = path.join(__dirname, file);
-  if (fs.existsSync(p)) res.sendFile(p);
-  else res.status(404).send('Page not found: ' + file);
+  if (fs.existsSync(p)) res.sendFile(p); else res.status(404).send('Page not found: ' + file);
 }
-
 app.get('/',        (req, res) => sendPage('index.html',   res));
 app.get('/auth',    (req, res) => sendPage('auth.html',    res));
 app.get('/profile', (req, res) => sendPage('profile.html', res));
 app.get('/terms',   (req, res) => sendPage('terms.html',   res));
 app.get('/privacy', (req, res) => sendPage('privacy.html', res));
-app.get('/health',  (req, res) => res.json({ status: 'ok', version: 'has-logo-route' }));
+app.get('/health',  (req, res) => res.json({ status: 'ok', version: '3.1.0' }));
+app.get('/status',  (req, res) => res.json({ status: 'ok', hasKey: !!process.env.ANTHROPIC_API_KEY, cryptoActive: Object.keys(binanceWs), polling: Object.keys(binancePollers) }));
+app.get('/debug-files', (req, res) => { const files = fs.readdirSync(__dirname).filter(f => !f.startsWith('.')); res.json({ cwd: __dirname, files }); });
 
-/* ── /init-profile — called after signup to create profile with credits ── */
+/* ── Init profile ── */
 app.post('/init-profile', async (req, res) => {
   const { token, username } = req.body;
   if (!token) return res.status(400).json({ error: 'No token' });
@@ -397,149 +321,74 @@ app.post('/init-profile', async (req, res) => {
     if (error || !user) return res.status(401).json({ error: 'Invalid token' });
     const { data: existing } = await sbAdmin.from('profiles').select('id').eq('id', user.id).single();
     if (!existing) {
-      await sbAdmin.from('profiles').insert({
-        id: user.id,
-        credits: 50,
-        username: username || user.email.split('@')[0]
-      });
+      await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username: username || user.email.split('@')[0] });
     }
     res.json({ ok: true, credits: 50 });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.get('/debug-files', (req, res) => {
-  const files = fs.readdirSync(__dirname).filter(f => !f.startsWith('.'));
-  res.json({ cwd: __dirname, files, hasSvg: files.filter(f => f.endsWith('.svg')) });
-});
-app.get('/status',  (req, res) => res.json({
-  status: 'ok', service: 'Fractal AI Agent', version: '3.0.0',
-  hasKey: !!process.env.ANTHROPIC_API_KEY,
-  cryptoActive: Object.keys(binanceWs),
-  polling: Object.keys(binancePollers)
-}));
-
-/* ── /symbols — available symbols ── */
-app.get('/symbols', (req, res) => {
-  res.json({
-    crypto: Object.keys(binanceWs).map(s => ({ symbol: s.toUpperCase(), type: 'crypto', live: true })),
-    polling: Object.keys(binancePollers)
-  });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── /candles/:symbol — REST history ── */
+/* ── /me ── */
+app.get('/me', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const profile = await getUserProfile(token);
+  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
+  res.json({ credits: profile.credits, plan: profile.plan || 'free', username: profile.username });
+});
+
+/* ── Candles / Price / SSE ── */
+app.get('/symbols', (req, res) => res.json({ crypto: Object.keys(binanceWs).map(s => ({ symbol: s.toUpperCase(), type: 'crypto', live: true })), polling: Object.keys(binancePollers) }));
+
 app.get('/candles/:symbol', (req, res) => {
   const sym = req.params.symbol.toUpperCase().replace('/','').replace('-','');
   const tf  = req.query.tf || '1h';
-
-  /* If we have data, return immediately */
-  if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) {
+  if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0)
     return res.json({ symbol: sym, tf, candles: candles[sym][tf] });
-  }
-
-  /* No data yet — trigger fetch and wait up to 4s */
   ensureSymbol(sym);
-  const type = classifySymbol(sym);
-  fetchBinanceHistory(sym); /* Binance only */
-
-  const maxAttempts = type === 'forex' ? 20 : 10; /* forex needs more time */
+  fetchBinanceHistory(sym);
   let attempts = 0;
   const wait = setInterval(() => {
     attempts++;
-    if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) {
+    if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) { clearInterval(wait); return res.json({ symbol: sym, tf, candles: candles[sym][tf] }); }
+    if (attempts >= 10) {
       clearInterval(wait);
-      return res.json({ symbol: sym, tf, candles: candles[sym][tf] });
-    }
-    if (attempts >= maxAttempts) {
-      clearInterval(wait);
-      /* Return best available timeframe if requested one isn't ready */
       const tfs = ['1h','4h','1d','15m','5m','1m'];
-      for (const t of tfs) {
-        if (candles[sym] && candles[sym][t] && candles[sym][t].length > 0) {
-          return res.json({ symbol: sym, tf: t, candles: candles[sym][t], note: 'fallback_tf' });
-        }
-      }
-      return res.status(404).json({ error: `No candles yet for ${sym} ${tf} — still loading` });
+      for (const t of tfs) { if (candles[sym] && candles[sym][t] && candles[sym][t].length > 0) return res.json({ symbol: sym, tf: t, candles: candles[sym][t], note: 'fallback_tf' }); }
+      return res.status(404).json({ error: `No candles yet for ${sym} ${tf}` });
     }
   }, 500);
 });
 
-/* ── /subscribe/:symbol — SSE live candle stream ── */
 app.get('/subscribe/:symbol', (req, res) => {
   const sym  = req.params.symbol.toUpperCase().replace('/','').replace('-','');
   const type = classifySymbol(sym);
-
-  res.setHeader('Content-Type',  'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection',    'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.flushHeaders();
-
-  ensureSymbol(sym);
-  sseClients[sym].add(res);
-
-  /* Binance only */
-  if (type === 'crypto' || type === 'unknown') {
-    connectBinance(sym);
-  }
-
-  /* hasAnyCandles is defined at top level */
-
-  /* Send current snapshot immediately if available */
-  if (hasAnyCandles(sym)) {
-    res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
-  } else {
-    /* Send a waiting event so client knows we're working on it */
+  res.setHeader('Content-Type','text/event-stream'); res.setHeader('Cache-Control','no-cache'); res.setHeader('Connection','keep-alive'); res.setHeader('Access-Control-Allow-Origin','*'); res.flushHeaders();
+  ensureSymbol(sym); sseClients[sym].add(res);
+  if (type === 'crypto' || type === 'unknown') connectBinance(sym);
+  if (hasAnyCandles(sym)) { res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`); }
+  else {
     res.write(`data: ${JSON.stringify({ symbol: sym, status: 'loading' })}\n\n`);
-    /* Push data once it arrives — poll up to 20s (forex needs time in queue) */
     let attempts = 0;
-    const waitTimer = setInterval(() => {
-      attempts++;
-      if (hasAnyCandles(sym)) {
-        clearInterval(waitTimer);
-        try { res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`); } catch(e){}
-      } else if (attempts >= 20) {
-        clearInterval(waitTimer);
-      }
-    }, 1000);
+    const waitTimer = setInterval(() => { attempts++; if (hasAnyCandles(sym)) { clearInterval(waitTimer); try { res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`); } catch(e){} } else if (attempts >= 20) clearInterval(waitTimer); }, 1000);
   }
-
-  /* Heartbeat */
-  const hb = setInterval(() => {
-    try { res.write(': ping\n\n'); } catch(e) { clearInterval(hb); }
-  }, 20000);
-
-  req.on('close', () => {
-    clearInterval(hb);
-    sseClients[sym].delete(res);
-    if (type === 'crypto') setTimeout(() => disconnectBinanceIfUnused(sym), 15000);
-  });
+  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) { clearInterval(hb); } }, 20000);
+  req.on('close', () => { clearInterval(hb); sseClients[sym].delete(res); if (type === 'crypto') setTimeout(() => disconnectBinanceIfUnused(sym), 15000); });
 });
 
-/* ── /price/:symbol — latest tick ── */
 app.get('/price/:symbol', (req, res) => {
   const sym = req.params.symbol.toUpperCase().replace('/','').replace('-','');
-  /* Try timeframes in order: 1m → 5m → 15m → 1h → 4h → 1d */
   const tfs = ['1m','5m','15m','1h','4h','1d'];
   let arr = null;
-  for (const tf of tfs) {
-    if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) {
-      arr = candles[sym][tf]; break;
-    }
-  }
-  if (!arr) {
-    /* Trigger fetch and return 202 so client retries */
-    fetchBinanceHistory(sym);
-    return res.status(202).json({ error: 'Loading data for ' + sym + ' — retry in 3s' });
-  }
+  for (const tf of tfs) { if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) { arr = candles[sym][tf]; break; } }
+  if (!arr) { fetchBinanceHistory(sym); return res.status(202).json({ error: 'Loading data for ' + sym + ' — retry in 3s' }); }
   const last = arr[arr.length - 1];
   const prev = arr.length > 1 ? arr[arr.length - 2].c : last.o;
-  res.json({ symbol: sym, price: last.c, open: last.o, high: last.h, low: last.l,
-             change_pct: ((last.c - prev) / prev * 100).toFixed(4), ts: last.t });
+  res.json({ symbol: sym, price: last.c, open: last.o, high: last.h, low: last.l, change_pct: ((last.c - prev) / prev * 100).toFixed(4), ts: last.t });
 });
 
 /* ═══════════════════════════════════════════════════
    AI ENDPOINTS
+   Credits: analyze=15, fib=5, smc=8, vol=5,
+            mtf=25, age=25, liq=8, journal=20, proj=25
    ═══════════════════════════════════════════════════ */
 
 app.post('/analyze', async (req, res) => {
@@ -547,13 +396,13 @@ app.post('/analyze', async (req, res) => {
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, focus, matches, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 15); // Main button: 3 tools x 5cr each } catch(e) { return res.status(402).json({ error: e.message }); }
+  try { await verifyAndDeduct(_token, 15); } catch(e) { return res.status(402).json({ error: e.message }); }
   const nM = matches || 3;
   const p = `Fractal analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Focus: ${focus||'fractal'}. Find ${nM} historical fractal matches. Reply in ${rl(l)}. JSON only, no markdown, single-line strings.\n{"signal":"bullish|bearish|neutral","pair":"str","timeframe":"str","pattern":"str","wave":"str","analysis":"5 sentences","entry":"price","stop_loss":"price","target_1":"price","target_2":"price","rr":"1:2.5","confidence":"high|medium|low","annotations":[{"type":"hline|arrow|zone|tline","label":"str","y":0.6,"color":"#hex","dashed":true,"x":0.5,"dir":"up|down","y1":0.6,"y2":0.7,"x1":0.1,"x2":0.9}],"matches":[{"id":1,"date":"str","pair":"str","timeframe":"str","similarity":88,"pattern_name":"str","setup_description":"2 sentences","outcome":"win|loss","outcome_detail":"str","price_path":[20 floats 0-1],"after_path":[10 floats 0-1]}],"win_rate":67,"avg_rr":"str","wins":2,"losses":1,"prediction_summary":"2 sentences","predicted_path":[20 floats 0-1]}\nRules: exactly ${nM} matches. y:0=top,1=bottom. x:0=left,1=right.`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2500, res);
 });
 
-app.post('/bar-pattern', (req, res) => {
+app.post('/bar-pattern', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l } = req.body;
@@ -562,7 +411,7 @@ app.post('/bar-pattern', (req, res) => {
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
 });
 
-app.post('/weierstrass', (req, res) => {
+app.post('/weierstrass', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l } = req.body;
@@ -571,74 +420,82 @@ app.post('/weierstrass', (req, res) => {
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
 });
 
-app.post('/fibonacci', (req, res) => {
+app.post('/fibonacci', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 5); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Fibonacci analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. All Fib levels. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","swing_high":{"price":"str","x":0.85,"y":0.15},"swing_low":{"price":"str","x":0.2,"y":0.82},"trend":"uptrend|downtrend","retracements":[{"level":"0.236","price":"str","y":0.28,"strength":"weak|moderate|strong","color":"#3498db"},{"level":"0.382","price":"str","y":0.38,"strength":"weak|moderate|strong","color":"#2980b9"},{"level":"0.5","price":"str","y":0.48,"strength":"weak|moderate|strong","color":"#c9a84c"},{"level":"0.618","price":"str","y":0.57,"strength":"weak|moderate|strong","color":"#e67e22"},{"level":"0.786","price":"str","y":0.67,"strength":"weak|moderate|strong","color":"#e74c3c"}],"extensions":[{"level":"1.272","price":"str","y":0.05,"color":"#27ae60"},{"level":"1.618","price":"str","y":-0.05,"color":"#1abc9c"},{"level":"2.618","price":"str","y":-0.15,"color":"#16a085"}],"key_level":{"level":"str","price":"str","reason":"1 sentence"},"current_position":{"between_levels":"str","bias":"bullish|bearish|neutral","next_target":"str"},"analysis":"3 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
 });
 
-app.post('/smc', (req, res) => {
+app.post('/smc', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 8); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `SMC analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. BOS/CHoCH, order blocks, FVGs, liquidity. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","market_structure":"bullish|bearish|ranging","last_bos":{"type":"BOS|CHOCH","direction":"bullish|bearish","x":0.6,"y":0.4,"label":"str","description":"1 sentence"},"order_blocks":[{"type":"bullish|bearish","x1":0.1,"x2":0.25,"y1":0.6,"y2":0.7,"strength":"strong|medium|weak","description":"1 sentence","color":"#27ae60","mitigated":false}],"fvg":[{"type":"bullish|bearish","x1":0.3,"x2":0.5,"y1":0.35,"y2":0.42,"filled":false,"color":"#3498db"}],"liquidity_pools":[{"type":"buy-side|sell-side","y":0.2,"x1":0.0,"x2":1.0,"label":"str","color":"#c9a84c","swept":false}],"premium_discount":{"current_zone":"premium|discount|equilibrium","equilibrium_y":0.5},"bias":"bullish|bearish|neutral","poi":{"type":"str","x1":0.4,"x2":0.55,"y1":0.55,"y2":0.65,"label":"str","reason":"1 sentence"},"analysis":"4 sentences","entry_model":{"trigger":"str","entry":"str","sl":"str","tp1":"str","tp2":"str","rr":"1:3"},"signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2500, res);
 });
 
-app.post('/volatility', (req, res) => {
+app.post('/volatility', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 5); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Volatility analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Regime + position sizing. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","regime":"low|medium|high|extreme","regime_score":65,"atr_estimate":"str","volatility_percentile":72,"fractal_variance":0.34,"vol_path":[10 floats 0-1],"position_sizing":{"suggested_stop_pct":"str","max_position_size":"str","leverage_warning":"str"},"regime_characteristics":{"mean_reversion_probability":0.6,"trend_continuation_probability":0.4,"expected_daily_range":"str","breakout_likelihood":"low|medium|high"},"strategy_adaptation":{"recommended_approach":"str","avoid":"str"},"analysis":"3 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
 });
 
-app.post('/mtf', (req, res) => {
+app.post('/mtf', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 25); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `MTF fractal analyst. Chart: ${pair||'asset'}. Infer Weekly/Daily/H4. Reply in ${rl(l)}. JSON only.\n{"pair":"str","detected_timeframe":"str","timeframes":[{"tf":"Weekly","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.4,"path":[10 floats 0-1]},{"tf":"Daily","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.35,"path":[10 floats 0-1]},{"tf":"H4","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.25,"path":[10 floats 0-1]}],"confluence_score":78,"aligned":true,"confluence_zones":[{"price":"str","y":0.45,"strength":"high|medium|low","timeframes_aligned":["Weekly","Daily"],"color":"#c9a84c","label":"str"}],"dominant_bias":"bullish|bearish|neutral","fractal_alignment":"all-aligned|partially-aligned|divergent","analysis":"4 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low","entry":"str","stop_loss":"str","target":"str"}`;
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2500, res);
 });
 
-app.post('/fractal-age', (req, res) => {
+app.post('/fractal-age', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 25); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Fractal cycle timing analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Maturity + urgency. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","fractal_age":{"bars_into_pattern":34,"estimated_total_bars":55,"completion_pct":62,"age_label":"Mature|Young|Aging|Early","phase":"impulse|correction|distribution|accumulation"},"cycle_position":{"current_phase":"str","phases_completed":["str"],"phases_remaining":["str"],"cycle_path":[20 floats 0-1]},"time_projections":[{"scenario":"Base","bars_to_resolution":21,"direction":"bullish|bearish","probability":0.55,"target_price":"str"},{"scenario":"Bear","bars_to_resolution":13,"direction":"bearish","probability":0.3,"target_price":"str"},{"scenario":"Extended","bars_to_resolution":34,"direction":"bullish","probability":0.15,"target_price":"str"}],"urgency":"now|soon|wait|early","best_entry_window":"str","analysis":"4 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2500, res);
 });
 
-app.post('/liquidity', (req, res) => {
+app.post('/liquidity', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 8); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Liquidity analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Stop clusters, pools, hunt targets. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","liquidity_pools":[{"type":"buy-stops|sell-stops|equal-highs|equal-lows","price":"str","y":0.15,"size":"large|medium|small","swept":false,"x_position":0.8,"label":"str","color":"#e74c3c","description":"1 sentence"}],"stop_clusters":[{"type":"retail-longs|retail-shorts","price":"str","y":0.72,"concentration":"high|medium|low","x1":0.0,"x2":1.0,"color":"rgba(231,76,60,0.15)"}],"hunt_targets":[{"label":"str","price":"str","y":0.1,"probability":"high|medium|low","color":"#c9a84c","direction":"up|down","bars_estimate":8}],"smart_money_direction":"bullish|bearish|neutral","analysis":"4 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low","next_likely_sweep":"str"}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2500, res);
 });
 
-app.post('/journal', (req, res) => {
+app.post('/journal', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, trade_notes, outcome, pnl } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, trade_notes, outcome, pnl, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 20); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Trading coach. Chart: ${pair||'asset'} ${timeframe||'auto'}. Notes:"${trade_notes||'none'}". Outcome:${outcome||'unknown'}. P&L:${pnl||'unknown'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","overall_grade":"A|B|C|D|F","grade_score":72,"categories":{"entry_quality":{"score":80,"comment":"1 sentence","improvement":"1 sentence"},"fractal_alignment":{"score":65,"comment":"1 sentence","improvement":"1 sentence"},"risk_management":{"score":70,"comment":"1 sentence","improvement":"1 sentence"},"timing":{"score":60,"comment":"1 sentence","improvement":"1 sentence"},"patience":{"score":75,"comment":"1 sentence","improvement":"1 sentence"}},"what_went_right":["str","str"],"what_went_wrong":["str","str"],"missed_fractal_signals":["str","str"],"coach_message":"3 sentences","key_lesson":"1 sentence","next_focus":"str"}`;
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res);
 });
 
-app.post('/projection', (req, res) => {
+app.post('/projection', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 25); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Price projection analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. 3 forward scenarios. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","current_price":"str","last_candle_y":0.45,"signal":"bullish|bearish|neutral","confidence":"high|medium|low","fractal_basis":"1 sentence","scenarios":[{"label":"Base Case","probability":0.55,"direction":"bullish|bearish","color":"#27ae60","bars":30,"target_price":"str","target_y":0.3,"path":[30 floats],"invalidation_price":"str","invalidation_y":0.55},{"label":"Bear Case","probability":0.30,"direction":"bearish","color":"#e74c3c","bars":20,"target_price":"str","target_y":0.65,"path":[20 floats],"invalidation_price":"str","invalidation_y":0.35},{"label":"Extended","probability":0.15,"direction":"bullish","color":"#9b8fe8","bars":40,"target_price":"str","target_y":0.05,"path":[40 floats],"invalidation_price":"str","invalidation_y":0.55}],"analysis":"4 sentences","entry_zone":{"price_from":"str","price_to":"str","y1":0.42,"y2":0.48},"stop_loss":{"price":"str","y":0.55},"chart_context":{"trend":"uptrend|downtrend|sideways","last_pattern":"str","wave_position":"str"}}`;
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 3000, res);
 });
@@ -647,27 +504,14 @@ app.post('/projection', (req, res) => {
    STRIPE — PLAN SUBSCRIPTIONS
    ═══════════════════════════════════════════════════ */
 
-/* GET /me — returns current user credits + plan */
-app.get('/me', async (req, res) => {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
-  const profile = await getUserProfile(token);
-  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
-  res.json({ credits: profile.credits, plan: profile.plan || 'free', username: profile.username });
-});
-
-/* POST /create-checkout — create Stripe Checkout session for a plan */
 app.post('/create-checkout', async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
   const { plan, token } = req.body;
   if (!plan || !PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
-
-  /* Verify user */
   const profile = await getUserProfile(token);
-  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
-
+  if (!profile) return res.status(401).json({ error: 'Please sign in first to subscribe' });
   const priceId = PLANS[plan].priceId;
   if (!priceId) return res.status(500).json({ error: `Stripe price not configured for ${plan}` });
-
   try {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -679,50 +523,31 @@ app.post('/create-checkout', async (req, res) => {
       cancel_url:  `${SITE_URL}/?checkout=cancelled`,
     });
     res.json({ url: session.url });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* POST /manage-billing — portal link for existing subscribers */
 app.post('/manage-billing', async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
   const { token } = req.body;
   const profile = await getUserProfile(token);
   if (!profile) return res.status(401).json({ error: 'Not authenticated' });
-
-  /* Look up Stripe customer ID from Supabase */
-  const { data: sub } = await sbAdmin
-    .from('subscriptions')
-    .select('stripe_customer_id')
-    .eq('user_id', profile.userId)
-    .single();
-
-  if (!sub || !sub.stripe_customer_id)
-    return res.status(404).json({ error: 'No active subscription found' });
-
+  if (!sbAdmin) return res.status(500).json({ error: 'Database not configured' });
+  const { data: sub } = await sbAdmin.from('subscriptions').select('stripe_customer_id').eq('user_id', profile.userId).single();
+  if (!sub || !sub.stripe_customer_id) return res.status(404).json({ error: 'No active subscription found' });
   try {
-    const portal = await stripe.billingPortal.sessions.create({
-      customer: sub.stripe_customer_id,
-      return_url: `${SITE_URL}/profile`,
-    });
+    const portal = await stripe.billingPortal.sessions.create({ customer: sub.stripe_customer_id, return_url: `${SITE_URL}/profile` });
     res.json({ url: portal.url });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ═══════════════════════════════════════════════════
    STRIPE — FIB SPIRAL ($1 ONE-TIME)
    ═══════════════════════════════════════════════════ */
 
-/* POST /fib-spiral-checkout — create $1 one-time payment session */
 app.post('/fib-spiral-checkout', async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
   const { token } = req.body;
   const profile = await getUserProfile(token);
-  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
-
   try {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -735,131 +560,89 @@ app.post('/fib-spiral-checkout', async (req, res) => {
         },
         quantity: 1,
       }],
-      metadata: { userId: profile.userId, type: 'fib_spiral' },
-      customer_email: profile.email,
+      metadata: { userId: profile ? profile.userId : 'guest', type: 'fib_spiral' },
+      customer_email: profile ? profile.email : undefined,
       success_url: `${SITE_URL}/?fib_paid={CHECKOUT_SESSION_ID}`,
       cancel_url:  `${SITE_URL}/`,
     });
     res.json({ url: session.url });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* POST /fib-spiral-verify — verify $1 payment and grant session token */
 app.post('/fib-spiral-verify', async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
-  const { sessionId, token } = req.body;
+  const { sessionId } = req.body;
   if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
-
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
-    if (session.payment_status !== 'paid')
-      return res.status(402).json({ error: 'Payment not completed' });
-    if (session.metadata.type !== 'fib_spiral')
-      return res.status(400).json({ error: 'Wrong payment type' });
-
-    /* Issue a signed session grant stored in Supabase — valid 24h */
-    const grantToken = require('crypto').randomBytes(32).toString('hex');
+    if (session.payment_status !== 'paid') return res.status(402).json({ error: 'Payment not completed' });
+    if (session.metadata.type !== 'fib_spiral') return res.status(400).json({ error: 'Wrong payment type' });
+    const grantToken = crypto.randomBytes(32).toString('hex');
     const expiresAt  = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
     if (sbAdmin) {
-      await sbAdmin.from('fib_spiral_grants').upsert({
-        session_id:  sessionId,
-        grant_token: grantToken,
-        expires_at:  expiresAt,
-        used:        false,
-      });
+      await sbAdmin.from('fib_spiral_grants').upsert({ session_id: sessionId, grant_token: grantToken, expires_at: expiresAt, used: false });
     }
-
     res.json({ ok: true, grantToken, expiresAt });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ═══════════════════════════════════════════════════
    STRIPE WEBHOOK
-   Handles: subscription created/updated/deleted + one-time payments
    ═══════════════════════════════════════════════════ */
 
-/* Raw body needed for webhook signature verification */
-app.post('/stripe-webhook',
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    if (!stripe) return res.status(500).send('Stripe not configured');
-
-    let event;
-    try {
-      event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
-    } catch (e) {
-      console.error('[Stripe webhook] Signature error:', e.message);
-      return res.status(400).send(`Webhook Error: ${e.message}`);
-    }
-
-    const data = event.data.object;
-
-    /* ── Subscription activated or renewed ── */
-    if (event.type === 'checkout.session.completed' && data.mode === 'subscription') {
-      const userId  = data.metadata.userId;
-      const plan    = data.metadata.plan;
-      const credits = PLANS[plan] ? PLANS[plan].credits : 0;
-      const custId  = data.customer;
-
-      if (sbAdmin && userId && credits) {
-        await sbAdmin.from('profiles').update({ credits, plan }).eq('id', userId);
-        await sbAdmin.from('subscriptions').upsert({
-          user_id:            userId,
-          plan,
-          stripe_customer_id: custId,
-          stripe_sub_id:      data.subscription,
-          status:             'active',
-          updated_at:         new Date().toISOString(),
-        }, { onConflict: 'user_id' });
-        console.log(`[Stripe] Plan activated: ${plan} → user ${userId} → ${credits} cr`);
-      }
-    }
-
-    /* ── Monthly renewal — reset credits ── */
-    if (event.type === 'invoice.paid') {
-      const subId = data.subscription;
-      if (!subId) return res.json({ received: true });
-
-      const { data: sub } = await sbAdmin
-        .from('subscriptions')
-        .select('user_id, plan')
-        .eq('stripe_sub_id', subId)
-        .single();
-
-      if (sub && PLANS[sub.plan]) {
-        const credits = PLANS[sub.plan].credits;
-        await sbAdmin.from('profiles').update({ credits }).eq('id', sub.user_id);
-        console.log(`[Stripe] Renewal: ${sub.plan} → user ${sub.user_id} → ${credits} cr reset`);
-      }
-    }
-
-    /* ── Subscription cancelled ── */
-    if (event.type === 'customer.subscription.deleted') {
-      const { data: sub } = await sbAdmin
-        .from('subscriptions')
-        .select('user_id')
-        .eq('stripe_sub_id', data.id)
-        .single();
-
-      if (sub) {
-        await sbAdmin.from('profiles').update({ plan: 'free', credits: 0 }).eq('id', sub.user_id);
-        await sbAdmin.from('subscriptions').update({ status: 'cancelled' }).eq('stripe_sub_id', data.id);
-        console.log(`[Stripe] Cancelled: sub ${data.id}`);
-      }
-    }
-
-    res.json({ received: true });
+app.post('/stripe-webhook', async (req, res) => {
+  if (!stripe) return res.status(500).send('Stripe not configured');
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
+  } catch (e) {
+    console.error('[Stripe webhook] Signature error:', e.message);
+    return res.status(400).send(`Webhook Error: ${e.message}`);
   }
-);
 
-/* ── START ── */
+  const data = event.data.object;
+
+  if (event.type === 'checkout.session.completed' && data.mode === 'subscription') {
+    const userId  = data.metadata.userId;
+    const plan    = data.metadata.plan;
+    const credits = PLANS[plan] ? PLANS[plan].credits : 0;
+    const custId  = data.customer;
+    if (sbAdmin && userId && credits) {
+      await sbAdmin.from('profiles').update({ credits, plan }).eq('id', userId);
+      await sbAdmin.from('subscriptions').upsert({ user_id: userId, plan, stripe_customer_id: custId, stripe_sub_id: data.subscription, status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      console.log(`[Stripe] Plan activated: ${plan} → user ${userId} → ${credits} cr`);
+    }
+  }
+
+  if (event.type === 'invoice.paid') {
+    const subId = data.subscription;
+    if (!subId || !sbAdmin) return res.json({ received: true });
+    const { data: sub } = await sbAdmin.from('subscriptions').select('user_id, plan').eq('stripe_sub_id', subId).single();
+    if (sub && PLANS[sub.plan]) {
+      const credits = PLANS[sub.plan].credits;
+      await sbAdmin.from('profiles').update({ credits }).eq('id', sub.user_id);
+      console.log(`[Stripe] Renewal: ${sub.plan} → user ${sub.user_id} → ${credits} cr reset`);
+    }
+  }
+
+  if (event.type === 'customer.subscription.deleted') {
+    if (!sbAdmin) return res.json({ received: true });
+    const { data: sub } = await sbAdmin.from('subscriptions').select('user_id').eq('stripe_sub_id', data.id).single();
+    if (sub) {
+      await sbAdmin.from('profiles').update({ plan: 'free', credits: 0 }).eq('id', sub.user_id);
+      await sbAdmin.from('subscriptions').update({ status: 'cancelled' }).eq('stripe_sub_id', data.id);
+      console.log(`[Stripe] Cancelled: sub ${data.id}`);
+    }
+  }
+
+  res.json({ received: true });
+});
+
+/* ═══════════════════════════════════════════════════
+   START
+   ═══════════════════════════════════════════════════ */
 app.listen(PORT, () => {
-  console.log(`\n=== Fractal AI Agent v3.0 — port ${PORT} ===`);
+  console.log(`\n=== Fractal AI Agent v3.1 — port ${PORT} ===`);
   console.log('Anthropic key:', !!process.env.ANTHROPIC_API_KEY);
   console.log('Stripe:',        !!stripe);
   console.log('Supabase:',      !!sbAdmin);
