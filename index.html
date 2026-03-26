@@ -5661,8 +5661,11 @@ function drawOne(ctx,d,co,prev){
     var gby=cpY(ghostTopPrice,co);
 
     var gw=co.barW;
+    var gh=prng/pricePerPx; /* pattern height in pixels, independent of chart axis */
 
-    function gSY(v){return gby+((ghostTopPrice-v)/pricePerPx);}
+    /* Maps a pattern price to its pixel Y — anchored at gby (ghost top),
+       scaled by the pattern's own price range so vertical drag actually moves it */
+    function gSY(v){return gby+((pmx-v)/prng)*gh;}
 
     ctx.setLineDash([]);
     patternBars.forEach(function(c,ii){
