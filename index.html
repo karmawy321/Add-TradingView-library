@@ -6027,8 +6027,20 @@ window.addEventListener('load',function(){
 
 /* ── Plan checkout ── */
 async function startCheckout(plan, btn) {
-  const { data: { session } } = await supabase.auth.getSession();
-  var token = session?.access_token;
+  /* Get a fresh token from the correct Supabase client (sb) initialized in this page */
+  var token = null;
+  try {
+    if (sb && sbReady) {
+      var { data } = await sb.auth.getSession();
+      if (data && data.session) {
+        token = data.session.access_token;
+        /* Keep localStorage in sync */
+        localStorage.setItem('fractal_token', token);
+      }
+    }
+  } catch(e) {}
+  /* Fallback to stored token if Supabase session unavailable */
+  if (!token) token = localStorage.getItem('fractal_token');
   if (!token) {
     alert('Please sign in first to subscribe.');
     window.location.href = '/auth';
