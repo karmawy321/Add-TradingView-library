@@ -3798,22 +3798,21 @@ function renderChart() {
 /* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
 function autoBarPattern(){
   if(!chartCandles||chartCandles.length<10)return;
-  /* Remove any previous auto bar pattern */
+  /* Sync with IIFE drawings array */
   if(window.drawings) drawings=window.drawings;
+  /* Remove any previous auto bar pattern */
   drawings=drawings.filter(function(d){return !d._auto;});
   window.drawings=drawings;
-  var n=Math.min(50,chartCandles.length);
+  var n=Math.min(100,chartCandles.length);
   var caps=chartCandles.slice(0,n);
   drawings.unshift({
-    type:'barpattern',
-    barpattern:true,
-    _auto:true,
-    pixelOnly:false,
-    p1:{price:caps[0].h,    bi:0,   x:0, y:0},
-    p2:{price:caps[n-1].l,  bi:n-1, x:0, y:0},
+    type:'barpattern', barpattern:true, _auto:true, pixelOnly:false,
+    p1:{price:caps[0].h,         bi:0,   x:0, y:0},
+    p2:{price:caps[n-1].l,       bi:n-1, x:0, y:0},
     candles:caps,
     ghostDX:0, ghostDY:-90
   });
+  window.drawings=drawings;
   renderChart();
 }
 
