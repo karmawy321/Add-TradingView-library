@@ -4805,7 +4805,15 @@ function buildToolbar() {
       fly.addEventListener('click', function(){ clearTimeout(_flyTimer); });
       g.items.forEach(function(item){
         var row=document.createElement('button'); row.className='tb-item'+(activeItem&&activeItem.id===item.id?' active':'');
-        row.innerHTML=item.icon+'<span>'+item.label+'</span>';
+        /* Fib Spiral — show $1 lock badge if not yet paid */
+        var lockBadge='';
+        if(item.id==='fibspiral'){
+          var unlocked=typeof fibSpiralIsUnlocked==='function'&&fibSpiralIsUnlocked();
+          lockBadge=unlocked
+            ? '<span style="font-family:DM Mono,monospace;font-size:7px;color:#27ae60;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.3);padding:1px 5px;border-radius:1px;margin-left:auto">✓ UNLOCKED</span>'
+            : '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--gold);background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);padding:1px 5px;border-radius:1px;margin-left:auto">$1</span>';
+        }
+        row.innerHTML=item.icon+'<span>'+item.label+'</span>'+lockBadge;
         row.onclick=function(e){ e.stopPropagation(); g._last=item; btn.innerHTML=item.icon+'<span class="tb-arr"></span>'; pickItem(item); };
         fly.appendChild(row);
       });

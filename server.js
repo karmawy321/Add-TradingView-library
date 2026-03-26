@@ -12,42 +12,72 @@ const sbAdmin = SUPABASE_URL && SUPABASE_SERVICE
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
 
+/* ═══════════════════════════════════════════════════
+   STRIPE
+   ═══════════════════════════════════════════════════ */
+const Stripe = require('stripe');
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+const SITE_URL = process.env.SITE_URL || 'https://fractalaiagent.com';
+
+/* Plan definitions — price IDs must match your Stripe dashboard */
+const PLANS = {
+  starter:       { name: 'Starter',       credits: 500,   priceId: process.env.STRIPE_PRICE_STARTER       || '' },
+  pro:           { name: 'Pro',           credits: 1500,  priceId: process.env.STRIPE_PRICE_PRO           || '' },
+  elite:         { name: 'Elite',         credits: 4000,  priceId: process.env.STRIPE_PRICE_ELITE         || '' },
+  institutional: { name: 'Institutional', credits: 15000, priceId: process.env.STRIPE_PRICE_INSTITUTIONAL || '' },
+};
+
+/* One-time Fib Spiral price: $1 */
+const FIB_SPIRAL_PRICE_CENTS = 100;
+
 async function verifyAndDeduct(token, cost) {
   if (!sbAdmin) return { userId: 'dev' };
   if (!token)   throw new Error('Not authenticated');
   const { data: { user }, error } = await sbAdmin.auth.getUser(token);
   if (error || !user) throw new Error('Invalid token');
 
-  /* Ensure profile row exists — new users may not have one yet */
   const { data: profile } = await sbAdmin
     .from('profiles')
-    .select('credits')
+    .select('credits, plan')
     .eq('id', user.id)
     .single();
 
   if (!profile) {
-    /* Create profile with 50 starter credits */
     await sbAdmin.from('profiles').insert({
-      id: user.id,
-      credits: 50,
+      id: user.id, credits: 50, plan: 'free',
       username: user.email.split('@')[0]
     });
+    if (50 < cost) throw new Error('Insufficient credits');
   } else if (profile.credits === null || profile.credits === undefined) {
-    /* Fix null credits */
     await sbAdmin.from('profiles').update({ credits: 50 }).eq('id', user.id);
+    if (50 < cost) throw new Error('Insufficient credits');
   } else if (profile.credits < cost) {
     throw new Error('Insufficient credits');
   }
 
-  /* Deduct credits */
   const { error: deductErr } = await sbAdmin.rpc('deduct_credits', { user_id: user.id, amount: cost });
   if (deductErr) {
-    /* Fallback: manual deduct if RPC fails */
     const current = profile ? (profile.credits || 50) : 50;
     if (current < cost) throw new Error('Insufficient credits');
     await sbAdmin.from('profiles').update({ credits: current - cost }).eq('id', user.id);
   }
   return { userId: user.id };
+}
+
+async function getUserProfile(token) {
+  if (!sbAdmin) return { credits: 9999, plan: 'dev' };
+  if (!token)   return null;
+  const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+  if (error || !user) return null;
+  const { data: profile } = await sbAdmin
+    .from('profiles')
+    .select('credits, plan, username')
+    .eq('id', user.id)
+    .single();
+  return profile ? { ...profile, userId: user.id, email: user.email } : null;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -517,7 +547,7 @@ app.post('/analyze', async (req, res) => {
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, focus, matches, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 3); } catch(e) { return res.status(402).json({ error: e.message }); }
+  try { await verifyAndDeduct(_token, 15); // Main button: 3 tools x 5cr each } catch(e) { return res.status(402).json({ error: e.message }); }
   const nM = matches || 3;
   const p = `Fractal analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Focus: ${focus||'fractal'}. Find ${nM} historical fractal matches. Reply in ${rl(l)}. JSON only, no markdown, single-line strings.\n{"signal":"bullish|bearish|neutral","pair":"str","timeframe":"str","pattern":"str","wave":"str","analysis":"5 sentences","entry":"price","stop_loss":"price","target_1":"price","target_2":"price","rr":"1:2.5","confidence":"high|medium|low","annotations":[{"type":"hline|arrow|zone|tline","label":"str","y":0.6,"color":"#hex","dashed":true,"x":0.5,"dir":"up|down","y1":0.6,"y2":0.7,"x1":0.1,"x2":0.9}],"matches":[{"id":1,"date":"str","pair":"str","timeframe":"str","similarity":88,"pattern_name":"str","setup_description":"2 sentences","outcome":"win|loss","outcome_detail":"str","price_path":[20 floats 0-1],"after_path":[10 floats 0-1]}],"win_rate":67,"avg_rr":"str","wins":2,"losses":1,"prediction_summary":"2 sentences","predicted_path":[20 floats 0-1]}\nRules: exactly ${nM} matches. y:0=top,1=bottom. x:0=left,1=right.`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2500, res);
@@ -613,9 +643,224 @@ app.post('/projection', (req, res) => {
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 3000, res);
 });
 
+/* ═══════════════════════════════════════════════════
+   STRIPE — PLAN SUBSCRIPTIONS
+   ═══════════════════════════════════════════════════ */
+
+/* GET /me — returns current user credits + plan */
+app.get('/me', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const profile = await getUserProfile(token);
+  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
+  res.json({ credits: profile.credits, plan: profile.plan || 'free', username: profile.username });
+});
+
+/* POST /create-checkout — create Stripe Checkout session for a plan */
+app.post('/create-checkout', async (req, res) => {
+  if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+  const { plan, token } = req.body;
+  if (!plan || !PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
+
+  /* Verify user */
+  const profile = await getUserProfile(token);
+  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
+
+  const priceId = PLANS[plan].priceId;
+  if (!priceId) return res.status(500).json({ error: `Stripe price not configured for ${plan}` });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      metadata: { userId: profile.userId, plan },
+      customer_email: profile.email,
+      success_url: `${SITE_URL}/?checkout=success&plan=${plan}`,
+      cancel_url:  `${SITE_URL}/?checkout=cancelled`,
+    });
+    res.json({ url: session.url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* POST /manage-billing — portal link for existing subscribers */
+app.post('/manage-billing', async (req, res) => {
+  if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+  const { token } = req.body;
+  const profile = await getUserProfile(token);
+  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
+
+  /* Look up Stripe customer ID from Supabase */
+  const { data: sub } = await sbAdmin
+    .from('subscriptions')
+    .select('stripe_customer_id')
+    .eq('user_id', profile.userId)
+    .single();
+
+  if (!sub || !sub.stripe_customer_id)
+    return res.status(404).json({ error: 'No active subscription found' });
+
+  try {
+    const portal = await stripe.billingPortal.sessions.create({
+      customer: sub.stripe_customer_id,
+      return_url: `${SITE_URL}/profile`,
+    });
+    res.json({ url: portal.url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════
+   STRIPE — FIB SPIRAL ($1 ONE-TIME)
+   ═══════════════════════════════════════════════════ */
+
+/* POST /fib-spiral-checkout — create $1 one-time payment session */
+app.post('/fib-spiral-checkout', async (req, res) => {
+  if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+  const { token } = req.body;
+  const profile = await getUserProfile(token);
+  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          unit_amount: FIB_SPIRAL_PRICE_CENTS,
+          product_data: { name: 'Fibonacci Spiral — Session Unlock', description: 'Unlimited Fibonacci Spiral draws for this browser session' },
+        },
+        quantity: 1,
+      }],
+      metadata: { userId: profile.userId, type: 'fib_spiral' },
+      customer_email: profile.email,
+      success_url: `${SITE_URL}/?fib_paid={CHECKOUT_SESSION_ID}`,
+      cancel_url:  `${SITE_URL}/`,
+    });
+    res.json({ url: session.url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* POST /fib-spiral-verify — verify $1 payment and grant session token */
+app.post('/fib-spiral-verify', async (req, res) => {
+  if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+  const { sessionId, token } = req.body;
+  if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== 'paid')
+      return res.status(402).json({ error: 'Payment not completed' });
+    if (session.metadata.type !== 'fib_spiral')
+      return res.status(400).json({ error: 'Wrong payment type' });
+
+    /* Issue a signed session grant stored in Supabase — valid 24h */
+    const grantToken = require('crypto').randomBytes(32).toString('hex');
+    const expiresAt  = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    if (sbAdmin) {
+      await sbAdmin.from('fib_spiral_grants').upsert({
+        session_id:  sessionId,
+        grant_token: grantToken,
+        expires_at:  expiresAt,
+        used:        false,
+      });
+    }
+
+    res.json({ ok: true, grantToken, expiresAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════
+   STRIPE WEBHOOK
+   Handles: subscription created/updated/deleted + one-time payments
+   ═══════════════════════════════════════════════════ */
+
+/* Raw body needed for webhook signature verification */
+app.post('/stripe-webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    if (!stripe) return res.status(500).send('Stripe not configured');
+
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
+    } catch (e) {
+      console.error('[Stripe webhook] Signature error:', e.message);
+      return res.status(400).send(`Webhook Error: ${e.message}`);
+    }
+
+    const data = event.data.object;
+
+    /* ── Subscription activated or renewed ── */
+    if (event.type === 'checkout.session.completed' && data.mode === 'subscription') {
+      const userId  = data.metadata.userId;
+      const plan    = data.metadata.plan;
+      const credits = PLANS[plan] ? PLANS[plan].credits : 0;
+      const custId  = data.customer;
+
+      if (sbAdmin && userId && credits) {
+        await sbAdmin.from('profiles').update({ credits, plan }).eq('id', userId);
+        await sbAdmin.from('subscriptions').upsert({
+          user_id:            userId,
+          plan,
+          stripe_customer_id: custId,
+          stripe_sub_id:      data.subscription,
+          status:             'active',
+          updated_at:         new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+        console.log(`[Stripe] Plan activated: ${plan} → user ${userId} → ${credits} cr`);
+      }
+    }
+
+    /* ── Monthly renewal — reset credits ── */
+    if (event.type === 'invoice.paid') {
+      const subId = data.subscription;
+      if (!subId) return res.json({ received: true });
+
+      const { data: sub } = await sbAdmin
+        .from('subscriptions')
+        .select('user_id, plan')
+        .eq('stripe_sub_id', subId)
+        .single();
+
+      if (sub && PLANS[sub.plan]) {
+        const credits = PLANS[sub.plan].credits;
+        await sbAdmin.from('profiles').update({ credits }).eq('id', sub.user_id);
+        console.log(`[Stripe] Renewal: ${sub.plan} → user ${sub.user_id} → ${credits} cr reset`);
+      }
+    }
+
+    /* ── Subscription cancelled ── */
+    if (event.type === 'customer.subscription.deleted') {
+      const { data: sub } = await sbAdmin
+        .from('subscriptions')
+        .select('user_id')
+        .eq('stripe_sub_id', data.id)
+        .single();
+
+      if (sub) {
+        await sbAdmin.from('profiles').update({ plan: 'free', credits: 0 }).eq('id', sub.user_id);
+        await sbAdmin.from('subscriptions').update({ status: 'cancelled' }).eq('stripe_sub_id', data.id);
+        console.log(`[Stripe] Cancelled: sub ${data.id}`);
+      }
+    }
+
+    res.json({ received: true });
+  }
+);
+
 /* ── START ── */
 app.listen(PORT, () => {
   console.log(`\n=== Fractal AI Agent v3.0 — port ${PORT} ===`);
   console.log('Anthropic key:', !!process.env.ANTHROPIC_API_KEY);
-
+  console.log('Stripe:',        !!stripe);
+  console.log('Supabase:',      !!sbAdmin);
 });
