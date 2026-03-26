@@ -4980,6 +4980,9 @@ function initDrawEvents(){
         }
       }
     }
+
+    /* Brush tool */
+    if(activeItem&&(activeItem.brush||activeItem.erbrush)){
       isBrushing=true; brushPath=[{x:co.x,y:co.y}]; return;
     }
 
