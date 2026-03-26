@@ -829,8 +829,10 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
           </div>
 
-          <!-- SMA crossover alert bar -->
-          <div id="smaAlertBar" style="display:none;padding:6px 14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;border-bottom:1px solid rgba(201,168,76,.2);position:relative;z-index:20"></div>
+          <!-- Live price ticker strip -->
+          <div id="liveTicker" style="display:flex;align-items:center;gap:0;overflow:hidden;border-bottom:1px solid rgba(201,168,76,.12);background:#07090e;height:26px;position:relative;z-index:20">
+            <div id="liveTickerTrack" style="display:flex;align-items:center;gap:0;white-space:nowrap;will-change:transform"></div>
+          </div>
 
 
           <!-- Custom Fractal Chart -->
@@ -1670,7 +1672,6 @@ function terminateChart(){
   /* Hide live price */
   var lb=document.getElementById('livePriceBar');
   if(lb)lb.classList.remove('show');
-  var sa=document.getElementById('smaAlertBar');
   if(sa){sa.style.display='none';sa.textContent='';}
 }
 
@@ -1719,7 +1720,6 @@ function resetUp(){
   var re=document.getElementById('rEmpty2');    if(re) re.style.display='flex';
   var er=document.getElementById('rErr');       if(er) er.style.display='none';
   var ag=document.getElementById('analysisGate'); if(ag) ag.style.display='none';
-  var sa=document.getElementById('smaAlertBar'); if(sa) sa.style.display='none';
   var ce=document.getElementById('chartEmpty');  if(ce) ce.style.display='block';
 }
 
@@ -3441,7 +3441,6 @@ var sma50On         = false;
 var sma200On        = false;
 var sma400On        = false;
 var allCandleData   = {};
-var smaContextStr   = '';
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0 };
 var C = { up:'#26a69a', dn:'#ef5350', bg:'#06080d', grid:'rgba(201,168,76,0.05)', sma50:'#c9a84c', sma200:'#3498db', crosshair:'rgba(201,168,76,0.4)' };
@@ -3485,6 +3484,66 @@ function formatVol(v) {
   if (v >= 1e3) return (v/1e3).toFixed(1)+'K';
   return v.toFixed(2);
 }
+
+/* ══ LIVE TICKER STRIP — Binance public API, no key needed ══ */
+(function(){
+  var TICKER_COINS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','DOTUSDT'];
+  var tickerData={};
+  var tickerAnim=null;
+  var tickerOffset=0;
+
+  function buildTickerHTML(){
+    var html='';
+    TICKER_COINS.forEach(function(sym){
+      var d=tickerData[sym]||{};
+      var price=d.price?parseFloat(d.price).toFixed(d.price>=1000?2:d.price>=1?4:6):'—';
+      var chg=d.chg?parseFloat(d.chg):'';
+      var up=chg>=0;
+      var col=chg===''?'#8a95a8':up?'#26a69a':'#ef5350';
+      var sign=up?'+':'';
+      var label=sym.replace('USDT','');
+      html+='<div style="display:inline-flex;align-items:center;gap:6px;padding:0 14px;border-right:1px solid rgba(255,255,255,.05);height:26px;flex-shrink:0">'
+        +'<span style="font-family:DM Mono,monospace;font-size:9px;color:rgba(201,168,76,.7);letter-spacing:.06em">'+label+'</span>'
+        +'<span style="font-family:DM Mono,monospace;font-size:10px;color:#dde4ee;font-weight:600">'+price+'</span>'
+        +(chg!==''?'<span style="font-family:DM Mono,monospace;font-size:9px;color:'+col+'">'+sign+parseFloat(chg).toFixed(2)+'%</span>':'')
+        +'</div>';
+    });
+    /* Duplicate for seamless loop */
+    return html+html;
+  }
+
+  function updateTicker(){
+    var track=document.getElementById('liveTickerTrack');
+    if(track) track.innerHTML=buildTickerHTML();
+  }
+
+  function animateTicker(){
+    var track=document.getElementById('liveTickerTrack');
+    if(!track)return;
+    var totalW=track.scrollWidth/2||1;
+    tickerOffset-=0.4;
+    if(Math.abs(tickerOffset)>=totalW) tickerOffset=0;
+    track.style.transform='translateX('+tickerOffset+'px)';
+    tickerAnim=requestAnimationFrame(animateTicker);
+  }
+
+  function fetchTicker(){
+    fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=[%22'+TICKER_COINS.join('%22,%22')+'%22]')
+      .then(function(r){return r.json();})
+      .then(function(arr){
+        arr.forEach(function(d){
+          tickerData[d.symbol]={price:d.lastPrice,chg:d.priceChangePercent};
+        });
+        updateTicker();
+      }).catch(function(){});
+  }
+
+  window.addEventListener('load',function(){
+    fetchTicker();
+    setInterval(fetchTicker,8000);
+    animateTicker();
+  });
+})();
 function formatTime(ts, tf) {
   /* Legacy — only used by hover tooltip now */
   var d = new Date(ts);
@@ -3736,27 +3795,24 @@ function renderChart() {
   chartCtx.textAlign='center'; chartCtx.fillText('FRACTAL AI AGENT',W/2,H/2+6); chartCtx.restore();
 }
 
-function detectCrossovers(candles) {
-  if(candles.length<201){smaContextStr='';return;}
-  var last=null;
-  for(var i=200;i<candles.length;i++){
-    var s50a=0,s200a=0,s50b=0,s200b=0;
-    for(var k=0;k<200;k++){s200a+=candles[i-k].c; if(i-1-k>=0)s200b+=candles[i-1-k].c;}
-    for(var k=0;k<50;k++){s50a+=candles[i-k].c; if(i-1-k>=0)s50b+=candles[i-1-k].c;}
-    s50a/=50;s200a/=200;s50b/=50;s200b/=200;
-    if(s50b<=s200b&&s50a>s200a) last={i,type:'golden',price:candles[i].c};
-    else if(s50b>=s200b&&s50a<s200a) last={i,type:'death',price:candles[i].c};
-  }
-  if(!last){smaContextStr='No SMA crossover detected.';return;}
-  var barsAgo=candles.length-1-last.i;
-  smaContextStr=(last.type==='golden'?'GOLDEN CROSS':'DEATH CROSS')+' at '+formatPrice(last.price)+', '+barsAgo+' bars ago.';
-  var bar=document.getElementById('smaAlertBar');
-  if(bar){
-    bar.style.display='block';
-    bar.style.color=last.type==='golden'?'#27ae60':'#e74c3c';
-    bar.style.background=last.type==='golden'?'rgba(39,174,96,.06)':'rgba(231,76,60,.06)';
-    bar.textContent=(last.type==='golden'?'▲ GOLDEN CROSS':'▼ DEATH CROSS')+' · '+barsAgo+' bars ago · '+formatPrice(last.price);
-  }
+/* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
+function autoBarPattern(){
+  if(!chartCandles||chartCandles.length<10)return;
+  /* Remove any previous auto bar pattern */
+  drawings=drawings.filter(function(d){return !d._auto;});
+  var n=Math.min(50,chartCandles.length);
+  var startBi=0, endBi=n-1;
+  /* p1 = first bar, p2 = 50th bar — store as bar indices */
+  drawings.unshift({
+    type:'barpattern',
+    barpattern:true,
+    _auto:true,
+    pixelOnly:false,
+    p1:{price:chartCandles[startBi].h, bi:startBi, x:0, y:0},
+    p2:{price:chartCandles[endBi].l,  bi:endBi,   x:0, y:0},
+    ghostDX:0, ghostDY:-90
+  });
+  renderChart();
 }
 
 if(chartCanvas){
@@ -4051,8 +4107,7 @@ function loadChart(symbol,interval){
   if(currentSymbol&&currentSymbol!==sym){
     var ud=document.getElementById('uniDash');if(ud)ud.style.display='none';
     var re=document.getElementById('rEmpty2');if(re)re.style.display='flex';
-    var sa=document.getElementById('smaAlertBar');if(sa){sa.style.display='none';sa.textContent='';}
-    smaContextStr='';dataUrl=null;
+    dataUrl=null;
   }
   currentSymbol=sym; currentInterval=interval||'4h';
   var empty=document.getElementById('chartEmpty');if(empty)empty.style.display='none';
@@ -4078,9 +4133,10 @@ function loadChart(symbol,interval){
         chartCandles=d.candles;
         if(!allCandleData[sym])allCandleData[sym]={};
         allCandleData[sym][currentInterval]=d.candles;
-        renderChart();detectCrossovers(d.candles);
+        renderChart();
         lwChartInstance=true;
         var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
+        autoBarPattern();
       } else {
         if(isForexSymbol(sym)) fetchTwelveDataFallback(sym,currentInterval);
         else fetchBinanceFallback(sym,currentInterval);
@@ -4141,7 +4197,7 @@ function fetchTwelveDataFallback(sym, tf) {
           chartCandles = d.candles;
           if(!allCandleData[sym]) allCandleData[sym]={};
           allCandleData[sym][tf] = d.candles;
-          renderChart(); detectCrossovers(d.candles);
+          renderChart(); 
           lwChartInstance = true;
           var btn=document.getElementById('azBtn'); if(btn) btn.disabled=false;
           if(sym===currentSymbol){
@@ -4210,7 +4266,7 @@ function onTfChange(){
   currentInterval=tf.value;
   if(allCandleData[currentSymbol]&&allCandleData[currentSymbol][currentInterval]&&allCandleData[currentSymbol][currentInterval].length>0){
     chartCandles=allCandleData[currentSymbol][currentInterval];
-    renderChart();detectCrossovers(chartCandles);return;
+    renderChart();return;
   }
   fetch(BACKEND_URL+'/candles/'+currentSymbol+'?tf='+currentInterval)
     .then(function(r){return r.json();})
@@ -4219,7 +4275,7 @@ function onTfChange(){
         chartCandles=d.candles;
         if(!allCandleData[currentSymbol])allCandleData[currentSymbol]={};
         allCandleData[currentSymbol][currentInterval]=d.candles;
-        renderChart();detectCrossovers(d.candles);
+        renderChart();
       } else { fetchBinanceFallback(currentSymbol,currentInterval); }
     }).catch(function(){ fetchBinanceFallback(currentSymbol,currentInterval); });
 }
@@ -4592,6 +4648,7 @@ var measuring  = false;
 var measurePts = [];
 var brushColor = '#c9a84c'; /* default gold — changed by color picker */
 var BRUSH_COLORS = ['#c9a84c','#ef5350','#26a69a','#ffffff'];
+var _ghostDrag = null; /* {idx, startX, startY, origDX, origDY} */
 
 /* ── Color picker swatch strip — injected below toolbar ── */
 function buildColorPicker(){
@@ -4828,6 +4885,32 @@ function initDrawEvents(){
     if(e.button!==0)return; /* only left click triggers drawing tools */
     var co=getCoords(e); if(!co)return;
 
+    /* ── Ghost drag — check if clicking inside a bar pattern ghost box ── */
+    if(activeItem&&activeItem.id!=='cursor'&&activeItem.id!=='arrow_cur'&&activeItem.id!=='dot'){
+      /* only start ghost drag when in cursor mode — skip */
+    } else {
+      for(var gi2=0;gi2<drawings.length;gi2++){
+        var dd=drawings[gi2];
+        if(!dd.barpattern||dd.pixelOnly||!co.visible||co.visible.length<2)continue;
+        /* Compute ghost box bounds */
+        var bi1g=Math.max(0,Math.min(co.visible.length-1,dd.p1.bi-co.si));
+        var bi2g=Math.max(0,Math.min(co.visible.length-1,dd.p2.bi-co.si));
+        var gx1=co.W?Math.min(cpX(Math.min(bi1g,bi2g)+co.si,co),cpX(Math.max(bi1g,bi2g)+co.si,co)):0;
+        var gBoxW=Math.abs(cpX(Math.max(bi1g,bi2g)+co.si,co)-cpX(Math.min(bi1g,bi2g)+co.si,co))||60;
+        var ghostDY=dd.ghostDY!==undefined?dd.ghostDY:-80;
+        var ghostDX=dd.ghostDX!==undefined?dd.ghostDX:0;
+        var gy1=Math.min(cpY(dd.p1.price,co),cpY(dd.p2.price,co))+ghostDY;
+        var gy2=gy1+Math.abs(cpY(dd.p1.price,co)-cpY(dd.p2.price,co));
+        var gbx=gx1+ghostDX;
+        if(co.x>=gbx&&co.x<=gbx+gBoxW&&co.y>=gy1&&co.y<=gy2){
+          /* Start dragging this ghost */
+          _ghostDrag={idx:gi2,startX:co.x,startY:co.y,origDX:ghostDX,origDY:ghostDY};
+          e.preventDefault();
+          return;
+        }
+      }
+    }
+
     /* Brush tool */
     if(activeItem&&(activeItem.brush||activeItem.erbrush)){
       isBrushing=true; brushPath=[{x:co.x,y:co.y}]; return;
@@ -4883,6 +4966,15 @@ function initDrawEvents(){
   var _rafPending=false;
   cv.addEventListener('mousemove',function(e){
     hoverPoint=getCoords(e);
+    /* Ghost drag */
+    if(_ghostDrag!==null&&hoverPoint){
+      var dx=hoverPoint.x-_ghostDrag.startX;
+      var dy=hoverPoint.y-_ghostDrag.startY;
+      drawings[_ghostDrag.idx].ghostDX=_ghostDrag.origDX+dx;
+      drawings[_ghostDrag.idx].ghostDY=_ghostDrag.origDY+dy;
+      if(!_rafPending){ _rafPending=true; requestAnimationFrame(function(){ renderChart(); _rafPending=false; }); }
+      return;
+    }
     if(isBrushing&&hoverPoint){
       brushPath.push({x:hoverPoint.x,y:hoverPoint.y});
       /* Render immediately for smooth brush stroke */
@@ -4897,6 +4989,8 @@ function initDrawEvents(){
 
   /* mouseup on document to catch releases outside canvas */
   document.addEventListener('mouseup',function(e){
+    /* Release ghost drag */
+    if(_ghostDrag!==null){ _ghostDrag=null; renderChart(); return; }
     if(isBrushing){
       isBrushing=false;
       if(brushPath.length>1){
@@ -4947,7 +5041,8 @@ function makeDrawing(p1,p2){
     pixelOnly:p1.pixelOnly||false,
     ray:activeItem.ray, extended:activeItem.extended, angle:activeItem.angle,
     shape:activeItem.shape, fibtype:activeItem.fibtype,
-    channel:activeItem.channel, arrowline:activeItem.arrowline
+    channel:activeItem.channel, arrowline:activeItem.arrowline,
+    barpattern:activeItem.barpattern||false
   };
 }
 
@@ -5309,7 +5404,7 @@ function drawOne(ctx,d,co,prev){
     return;
   }
 
-  /* ── Bar Pattern — captures OHLC shape and draws ghost overlay ── */
+  /* ── Bar Pattern — captures OHLC shape, draws selection box + golden ghost copy ── */
   if(d.barpattern){
     ctx.setLineDash([4,3]);
     /* Dashed selection box */
@@ -5318,36 +5413,76 @@ function drawOne(ctx,d,co,prev){
     ctx.fillStyle='rgba(155,143,232,.04)';
     ctx.fillRect(x1,Math.min(y1,y2),x2-x1,Math.abs(y2-y1));
     ctx.setLineDash([]);
-    /* Label */
     ctx.font='bold 9px DM Mono'; ctx.fillStyle='rgba(155,143,232,.9)'; ctx.textAlign='left';
     ctx.fillText('BAR PATTERN',x1+4,Math.min(y1,y2)-4);
-    /* If live chart — replay candles in the box */
+
+    /* Collect pattern bars from live chart */
+    var patternBars=[];
     if(!d.pixelOnly&&co.visible&&co.visible.length>1){
-      var bi1=Math.max(0,Math.min(co.visible.length-1,d.p1.bi-co.si));
+      var bi1e=Math.max(0,Math.min(co.visible.length-1,d.p1.bi-co.si));
       var bi2e=Math.max(0,Math.min(co.visible.length-1,d.p2.bi-co.si));
-      var startB=Math.min(bi1,bi2e), endB=Math.max(bi1,bi2e);
-      var patternBars=co.visible.slice(startB,endB+1);
+      var startB=Math.min(bi1e,bi2e), endB=Math.max(bi1e,bi2e);
+      patternBars=co.visible.slice(startB,endB+1);
+      /* Mini replay inside selection box */
       if(patternBars.length>1){
         var pmn=Math.min.apply(null,patternBars.map(function(c){return c.l;}));
         var pmx=Math.max.apply(null,patternBars.map(function(c){return c.h;}));
         var prng=pmx-pmn||pmn*.001||.0001;
         var bw=(x2-x1)/patternBars.length;
-        var bh=Math.abs(y2-y1);
-        var by=Math.min(y1,y2);
+        var bh=Math.abs(y2-y1), by=Math.min(y1,y2);
         patternBars.forEach(function(c,ii){
           var isUp=c.c>=c.o;
           var cx2=x1+(ii+0.5)*bw;
           var scaleY=function(v){return by+((pmx-v)/prng)*bh;};
-          ctx.strokeStyle=isUp?'rgba(38,166,154,.7)':'rgba(239,83,80,.7)'; ctx.lineWidth=1; ctx.setLineDash([]);
+          ctx.strokeStyle=isUp?'rgba(38,166,154,.6)':'rgba(239,83,80,.6)'; ctx.lineWidth=1; ctx.setLineDash([]);
           ctx.beginPath(); ctx.moveTo(cx2,scaleY(c.h)); ctx.lineTo(cx2,scaleY(c.l)); ctx.stroke();
           var top=scaleY(Math.max(c.o,c.c)), cbh=Math.max(1,scaleY(Math.min(c.o,c.c))-top);
-          ctx.fillStyle=isUp?'rgba(38,166,154,.5)':'rgba(239,83,80,.5)';
+          ctx.fillStyle=isUp?'rgba(38,166,154,.45)':'rgba(239,83,80,.45)';
           ctx.fillRect(cx2-bw*.35,top,bw*.7,cbh);
         });
-        /* Bar count label */
         ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(155,143,232,.75)'; ctx.textAlign='right';
         ctx.fillText(patternBars.length+' bars',x2-3,Math.min(y1,y2)-4);
       }
+    }
+
+    /* ── Golden ghost copy — offset upward by d.ghostDY (default -80px) ── */
+    if(patternBars.length>1){
+      var ghostDY=d.ghostDY!==undefined?d.ghostDY:-80;
+      var ghostDX=d.ghostDX!==undefined?d.ghostDX:0;
+      var pmn2=Math.min.apply(null,patternBars.map(function(c){return c.l;}));
+      var pmx2=Math.max.apply(null,patternBars.map(function(c){return c.h;}));
+      var prng2=pmx2-pmn2||pmn2*.001||.0001;
+      var gw=(x2-x1)/patternBars.length;
+      var gh=Math.abs(y2-y1), gby=Math.min(y1,y2)+ghostDY, gbx=x1+ghostDX;
+      /* Ghost container background */
+      ctx.fillStyle='rgba(201,168,76,.04)';
+      ctx.fillRect(gbx, gby, x2-x1, gh);
+      /* Gold border */
+      ctx.strokeStyle='rgba(201,168,76,.55)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.strokeRect(gbx, gby, x2-x1, gh);
+      ctx.setLineDash([]);
+      /* Connecting dashed line from original to ghost */
+      ctx.strokeStyle='rgba(201,168,76,.25)'; ctx.lineWidth=1; ctx.setLineDash([3,4]);
+      ctx.beginPath(); ctx.moveTo(x1+(x2-x1)/2, Math.min(y1,y2));
+      ctx.lineTo(gbx+(x2-x1)/2, gby+gh); ctx.stroke();
+      ctx.setLineDash([]);
+      /* Ghost candles in gold */
+      patternBars.forEach(function(c,ii){
+        var isUp=c.c>=c.o;
+        var gcx=gbx+(ii+0.5)*gw;
+        var gscaleY=function(v){return gby+((pmx2-v)/prng2)*gh;};
+        ctx.strokeStyle=isUp?'rgba(201,168,76,.9)':'rgba(201,168,76,.6)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(gcx,gscaleY(c.h)); ctx.lineTo(gcx,gscaleY(c.l)); ctx.stroke();
+        var top2=gscaleY(Math.max(c.o,c.c)), cbh2=Math.max(1,gscaleY(Math.min(c.o,c.c))-top2);
+        ctx.fillStyle=isUp?'rgba(201,168,76,.5)':'rgba(201,168,76,.2)';
+        ctx.fillRect(gcx-gw*.35,top2,gw*.7,cbh2);
+      });
+      /* Ghost label */
+      ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(201,168,76,.8)'; ctx.textAlign='left';
+      ctx.fillText('◈ COPY',gbx+4,gby-3);
+      /* Drag handle icon */
+      ctx.fillStyle='rgba(201,168,76,.5)'; ctx.textAlign='right';
+      ctx.fillText('⠿',gbx+(x2-x1)-3,gby-3);
     }
     ctx.restore();return;
   }
