@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fractal AI Agent — Fractal Intelligence for Traders</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://js.stripe.com/v3/"></script>
 <!-- Fractal AI Agent v3.0 -->
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -898,7 +899,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
           <button class="az-btn" id="azBtn" disabled style="flex-shrink:0">
             <div class="az-spin" id="azSpin"></div>
             <span id="azTxt">Fractal · Bar · Weierstrass</span>
-            <span class="cost-badge" id="main-cost-badge">11 cr</span>
+            <span class="cost-badge" id="main-cost-badge">15 cr</span>
           </button>
           <!-- Individual tools — horizontal scrollable -->
           <div id="toolGrid" style="display:flex;gap:4px;flex:1;overflow-x:auto;min-width:0"></div>
@@ -1089,7 +1090,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <span class="tool-result-title">Fibonacci Auto-Draw</span>
             <span class="tool-result-badge" id="fib-badge">PRO</span>
             <div class="ud-sec-status" id="fib-status" style="display:none"><div class="ud-spin"></div></div>
-            <button class="tool-run-btn" id="fib-btn" onclick="event.stopPropagation();runTool('fib')" disabled>Run <span class="cost-badge">3 cr</span></button>
+            <button class="tool-run-btn" id="fib-btn" onclick="event.stopPropagation();runTool('fib')" disabled>Run <span class="cost-badge">__FIB__3 cr</span></button>
             <span class="tool-result-chevron" id="fib-chev">▶</span>
           </div>
           <div class="tool-result-body" id="fib-body">
@@ -1209,7 +1210,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <span class="tool-result-title">Fractal Age · Market Timing</span>
             <span class="tool-result-badge tier-mentor" id="age-badge" style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">MENTOR · Opus 4</span>
             <div class="ud-sec-status" id="age-status" style="display:none"><div class="ud-spin"></div></div>
-            <button class="tool-run-btn" id="age-btn" onclick="event.stopPropagation();runTool('age')" disabled>Run <span class="cost-badge">8 cr</span></button>
+            <button class="tool-run-btn" id="age-btn" onclick="event.stopPropagation();runTool('age')" disabled>Run <span class="cost-badge">25 cr</span></button>
             <span class="tool-result-chevron" id="age-chev">▶</span>
           </div>
           <div class="tool-result-body" id="age-body">
@@ -1238,7 +1239,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <span class="tool-result-title">Liquidity Map</span>
             <span class="tool-result-badge tier-mentor" id="liq-badge" style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">MENTOR</span>
             <div class="ud-sec-status" id="liq-status" style="display:none"><div class="ud-spin"></div></div>
-            <button class="tool-run-btn" id="liq-btn" onclick="event.stopPropagation();runTool('liq')" disabled>Run <span class="cost-badge">5 cr</span></button>
+            <button class="tool-run-btn" id="liq-btn" onclick="event.stopPropagation();runTool('liq')" disabled>Run <span class="cost-badge">8 cr</span></button>
             <span class="tool-result-chevron" id="liq-chev">▶</span>
           </div>
           <div class="tool-result-body" id="liq-body">
@@ -1265,7 +1266,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <span class="tool-result-title">Price Path Projection</span>
             <span class="tool-result-badge tier-pro" style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">PRO · Opus 4</span>
             <div class="ud-sec-status" id="proj-status" style="display:none"><div class="ud-spin"></div></div>
-            <button class="tool-run-btn" id="proj-btn" onclick="event.stopPropagation();runTool('proj')" disabled>Run <span class="cost-badge">5 cr</span></button>
+            <button class="tool-run-btn" id="proj-btn" onclick="event.stopPropagation();runTool('proj')" disabled>Run <span class="cost-badge">25 cr</span></button>
             <span class="tool-result-chevron" id="proj-chev">▶</span>
           </div>
           <div class="tool-result-body" id="proj-body">
@@ -1303,7 +1304,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <span class="tool-result-title">Trade Journal AI — Get Graded</span>
             <span class="tool-result-badge tier-mentor" id="journal-badge" style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">MENTOR · Opus 4</span>
             <div class="ud-sec-status" id="journal-status" style="display:none"><div class="ud-spin"></div></div>
-            <button class="tool-run-btn" id="journal-btn" onclick="event.stopPropagation();runTool('journal')" disabled>Run <span class="cost-badge">8 cr</span></button>
+            <button class="tool-run-btn" id="journal-btn" onclick="event.stopPropagation();runTool('journal')" disabled>Run <span class="cost-badge">20 cr</span></button>
             <span class="tool-result-chevron" id="journal-chev">▶</span>
           </div>
           <div class="tool-result-body" id="journal-body">
@@ -1457,55 +1458,140 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 <section id="pricing">
   <p class="eye reveal" id="t-peye">Plans</p>
   <h2 class="sec-h reveal" id="t-ptitle2">Choose Your Edge</h2>
-  <p class="sec-p reveal" id="t-psub">3 free analyses to start. Upgrade for the full 10-tool fractal arsenal — no indicators, pure mathematics.</p>
-  <div class="pricing-wrap reveal">
+  <p class="sec-p reveal" id="t-psub">50 free credits to start. No card needed. Upgrade when you are ready — credits reset every month.</p>
+
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1px;max-width:1200px;margin:0 auto;background:var(--border)" class="reveal">
+
     <!-- FREE -->
     <div class="pc">
-      <div class="pc-name" style="color:var(--muted)">FREE</div>
-      <div class="pc-amt"><sup style="font-size:14px;color:var(--muted)"></sup>$0</div>
-      <div class="pc-period" style="color:var(--muted)">3 analyses · no card needed</div>
+      <div class="pc-name">Free</div>
+      <div class="pc-amt"><sup></sup>$0</div>
+      <div class="pc-period">50 starter credits · once</div>
       <ul class="pc-features">
-        <li>3 chart analyses total</li>
-        <li>AI annotated chart image</li>
-        <li>Fractal pattern detection</li>
-        <li>Written analysis + trade levels</li>
-        <li>Historical pattern matches</li>
-        <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Bar self-similarity</li>
-        <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Weierstrass decomposition</li>
-        <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Time series analysis</li>
+        <li>50 credits on signup</li>
+        <li>Fractal analysis (15 cr)</li>
+        <li>Fibonacci AI (5 cr)</li>
+        <li>Volatility AI (5 cr)</li>
+        <li>Live chart · Binance data</li>
+        <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Opus 4 tools</li>
+        <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Fib Spiral tool</li>
       </ul>
-      <button class="pc-btn" onclick="document.getElementById('analyzer').scrollIntoView({behavior:'smooth'})">Try Free Now</button>
+      <button class="pc-btn" onclick="document.getElementById('analyzer').scrollIntoView({behavior:'smooth'})">Try Free</button>
     </div>
-    <!-- PRO -->
-    <div class="pc feat">
-      <div class="feat-badge" id="t-pop">MOST POPULAR</div>
-      <div class="pc-name" id="t-p2n">Pro</div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);margin-bottom:4px;letter-spacing:.1em">6 AI TOOLS UNLOCKED</div><div class="pc-amt"><sup>$</sup>29</div>
-      <div class="pc-period" id="t-ppm2">per month</div>
-      <ul class="pc-features">
-        <li>Unlimited chart analyses</li>
-        <li>AI annotated chart image</li>
-        <li>Fractal pattern detection + matches</li>
-        <li>Predicted price path</li>
-        <li style="color:var(--gold)">⬡ Bar pattern self-similarity</li>
-        <li style="color:var(--gold)">⬡ Weierstrass decomposition</li>
-        <li style="color:var(--gold)">⬡ Time series T+C+N analysis</li>
-        <li style="color:var(--gold)">⬡ Interactive fractal sliders</li>
-      </ul>
-      <button class="pc-btn" id="t-p2btn" onclick="alert('Payment integration coming soon — contact us!')">Get Started</button>
-    </div>
-    <!-- MENTOR -->
+
+    <!-- STARTER -->
     <div class="pc">
-      <div class="pc-name" id="t-p3n">Mentor</div><div style="font-family:DM Mono,monospace;font-size:8px;color:#9b8fe8;margin-bottom:4px;letter-spacing:.1em">ALL 10 TOOLS · OPUS 4</div><div class="pc-amt"><sup>$</sup>79</div>
-      <div class="pc-period" id="t-ppm3">per month</div>
+      <div class="pc-name">Starter</div>
+      <div class="pc-amt"><sup>$</sup>69</div>
+      <div class="pc-period">500 credits / month</div>
       <ul class="pc-features">
-        <li>Everything in Pro</li>
-        <li style="color:var(--gold)">⬡ Fractal Level Indicator (TradingView)</li>
-        <li>Daily fractal market report</li>
-        <li>Monthly live session</li>
-        <li>Private Telegram + Discord</li>
-        <li>Priority analysis queue</li>
+        <li>500 cr/mo (~4 full sessions)</li>
+        <li>All Sonnet 4 tools</li>
+        <li>Fractal · Bar · WW (15 cr)</li>
+        <li>Fibonacci (5 cr)</li>
+        <li>SMC (8 cr)</li>
+        <li>Volatility (5 cr)</li>
+        <li>Liquidity (8 cr)</li>
+        <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Opus 4 tools</li>
       </ul>
-      <button class="pc-btn" id="t-p3btn" onclick="alert('Payment integration coming soon — contact us!')">Get Started</button>
+      <button class="pc-btn" onclick="startCheckout('starter')">Get Started</button>
+    </div>
+
+    <!-- PRO — featured -->
+    <div class="pc feat">
+      <div class="feat-badge">MOST POPULAR</div>
+      <div class="pc-name">Pro</div>
+      <div style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);margin-bottom:4px;letter-spacing:.1em">ALL TOOLS UNLOCKED</div>
+      <div class="pc-amt"><sup>$</sup>149</div>
+      <div class="pc-period">1,500 credits / month</div>
+      <ul class="pc-features">
+        <li>1,500 cr/mo (~13 full sessions)</li>
+        <li>Every Sonnet tool</li>
+        <li style="color:var(--gold)">⬡ MTF Confluence (25 cr)</li>
+        <li style="color:var(--gold)">⬡ Fractal Age (25 cr)</li>
+        <li style="color:var(--gold)">⬡ Projection (25 cr)</li>
+        <li style="color:var(--gold)">⬡ Trade Journal (20 cr)</li>
+        <li>Forex + Stocks data</li>
+        <li>Priority queue</li>
+      </ul>
+      <button class="pc-btn" onclick="startCheckout('pro')">Get Started</button>
+    </div>
+
+    <!-- ELITE -->
+    <div class="pc">
+      <div class="pc-name">Elite</div>
+      <div class="pc-amt"><sup>$</sup>299</div>
+      <div class="pc-period">4,000 credits / month</div>
+      <ul class="pc-features">
+        <li>4,000 cr/mo (~36 full sessions)</li>
+        <li>Everything in Pro</li>
+        <li style="color:var(--gold)">⬡ Daily market report</li>
+        <li style="color:var(--gold)">⬡ Private Telegram access</li>
+        <li style="color:var(--gold)">⬡ Monthly live session</li>
+        <li>Heavy Opus 4 usage</li>
+        <li>Priority support</li>
+      </ul>
+      <button class="pc-btn" onclick="startCheckout('elite')">Get Started</button>
+    </div>
+
+    <!-- INSTITUTIONAL -->
+    <div class="pc">
+      <div class="pc-name">Institutional</div>
+      <div class="pc-amt"><sup>$</sup>999</div>
+      <div class="pc-period">15,000 credits / month</div>
+      <ul class="pc-features">
+        <li>15,000 cr/mo (~136 full sessions)</li>
+        <li>Everything in Elite</li>
+        <li style="color:var(--gold)">⬡ White-label dashboard</li>
+        <li style="color:var(--gold)">⬡ Custom analysis on request</li>
+        <li style="color:var(--gold)">⬡ Early access to new tools</li>
+        <li>Direct phone support</li>
+        <li>99.9% uptime SLA</li>
+      </ul>
+      <button class="pc-btn" onclick="startCheckout('institutional')">Get Started</button>
+    </div>
+
+  </div>
+
+  <!-- Credit reference table -->
+  <div style="max-width:700px;margin:40px auto 0;border:1px solid var(--border);background:var(--dark2)" class="reveal">
+    <div style="padding:12px 20px;border-bottom:1px solid var(--border);font-family:Cinzel,serif;font-size:11px;color:var(--white);letter-spacing:.08em">CREDIT COST PER TOOL</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+      <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04);border-right:1px solid rgba(255,255,255,.04)">
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Fractal + Bar + Weierstrass</span>
+        <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">15 cr</span>
+      </div>
+      <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04)">
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">MTF Confluence · Opus 4</span>
+        <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">25 cr</span>
+      </div>
+      <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04);border-right:1px solid rgba(255,255,255,.04)">
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Fibonacci AI</span>
+        <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">5 cr</span>
+      </div>
+      <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04)">
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Fractal Age · Opus 4</span>
+        <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">25 cr</span>
+      </div>
+      <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04);border-right:1px solid rgba(255,255,255,.04)">
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">SMC Analysis</span>
+        <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">8 cr</span>
+      </div>
+      <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04)">
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Price Projection · Opus 4</span>
+        <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">25 cr</span>
+      </div>
+      <div style="padding:8px 20px;border-right:1px solid rgba(255,255,255,.04)">
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Volatility + Liquidity</span>
+        <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">5–8 cr</span>
+      </div>
+      <div style="padding:8px 20px">
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Trade Journal · Opus 4</span>
+        <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">20 cr</span>
+      </div>
+    </div>
+    <div style="padding:10px 20px;border-top:1px solid var(--border);font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">
+      Fib Spiral drawing tool — <span style="color:var(--gold)">$1 per session</span> · paid separately via Stripe
     </div>
   </div>
 </section>
@@ -4741,6 +4827,16 @@ function pickItem(item) {
   if(item.redotool)  { doRedo(); return; }
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
 
+  /* ── Fib Spiral gate — requires $1 Stripe payment ── */
+  if(item.id === 'fibspiral') {
+    if(typeof fibSpiralIsUnlocked === 'function' && fibSpiralIsUnlocked()) {
+      /* Already paid this session — allow through */
+    } else {
+      if(typeof showFibSpiralModal === 'function') showFibSpiralModal();
+      return; /* Do NOT activate the tool */
+    }
+  }
+
   /* Cancel any in-progress bar pattern or drawing drag */
   _bpClick1=null;
   _drawDrag=null;
@@ -5661,11 +5757,8 @@ function drawOne(ctx,d,co,prev){
     var gby=cpY(ghostTopPrice,co);
 
     var gw=co.barW;
-    var gh=prng/pricePerPx; /* pattern height in pixels, independent of chart axis */
 
-    /* Maps a pattern price to its pixel Y — anchored at gby (ghost top),
-       scaled by the pattern's own price range so vertical drag actually moves it */
-    function gSY(v){return gby+((pmx-v)/prng)*gh;}
+    function gSY(v){return gby+((ghostTopPrice-v)/pricePerPx);}
 
     ctx.setLineDash([]);
     patternBars.forEach(function(c,ii){
@@ -5918,5 +6011,168 @@ window.addEventListener('load',function(){
 });
 })();
 </script>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   STRIPE + FIB SPIRAL PAYMENT
+   ══════════════════════════════════════════════════════ */
+
+/* ── Plan checkout ── */
+async function startCheckout(plan) {
+  var token = localStorage.getItem('fractal_token');
+  if (!token) {
+    alert('Please sign in first to subscribe.');
+    window.location.href = '/auth';
+    return;
+  }
+  var btn = event && event.target;
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+  try {
+    var res = await fetch('/create-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: plan, token: token })
+    });
+    var data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      alert('Error: ' + (data.error || 'Could not create checkout session'));
+      if (btn) { btn.disabled = false; btn.textContent = 'Get Started'; }
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Get Started'; }
+  }
+}
+
+/* ── Fib Spiral $1 payment ── */
+var _fibSpiralGrantToken = sessionStorage.getItem('fib_spiral_grant') || null;
+var _fibSpiralExpiry     = sessionStorage.getItem('fib_spiral_expiry') || null;
+
+function fibSpiralIsUnlocked() {
+  if (!_fibSpiralGrantToken) return false;
+  if (!_fibSpiralExpiry)     return false;
+  return Date.now() < new Date(_fibSpiralExpiry).getTime();
+}
+
+/* Check URL for ?fib_paid=SESSION_ID on page load — Stripe redirect back */
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var sessionId = params.get('fib_paid');
+  if (!sessionId) return;
+
+  /* Clean URL without triggering reload */
+  var cleanUrl = window.location.pathname;
+  window.history.replaceState({}, '', cleanUrl);
+
+  /* Verify with server */
+  var token = localStorage.getItem('fractal_token') || '';
+  fetch('/fib-spiral-verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: sessionId, token: token })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok && d.grantToken) {
+      _fibSpiralGrantToken = d.grantToken;
+      _fibSpiralExpiry     = d.expiresAt;
+      sessionStorage.setItem('fib_spiral_grant',  d.grantToken);
+      sessionStorage.setItem('fib_spiral_expiry', d.expiresAt);
+      showFibSpiralSuccess();
+    } else {
+      showFibSpiralModal(); /* re-show if verify failed */
+    }
+  })
+  .catch(function() { showFibSpiralModal(); });
+})();
+
+/* Also check on checkout success (plan) */
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('checkout') === 'success') {
+    var plan = params.get('plan') || 'plan';
+    window.history.replaceState({}, '', window.location.pathname);
+    /* Show success toast */
+    var toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.4);color:#27ae60;font-family:DM Mono,monospace;font-size:11px;padding:14px 20px;z-index:9999;border-radius:2px';
+    toast.textContent = '✓ ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' plan activated — credits added to your account';
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 6000);
+  }
+})();
+
+/* ── Fib Spiral modal ── */
+function showFibSpiralModal() {
+  var existing = document.getElementById('fibSpiralModal');
+  if (existing) { existing.style.display = 'flex'; return; }
+
+  var modal = document.createElement('div');
+  modal.id = 'fibSpiralModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(6,8,13,.92);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;padding:32px;text-align:center';
+  modal.innerHTML =
+    '<div style="font-size:28px">◈</div>'
+    + '<div style="font-family:Cinzel,serif;font-size:18px;color:var(--white);font-weight:600;letter-spacing:.06em">Fibonacci Spiral</div>'
+    + '<div style="font-family:DM Mono,monospace;font-size:11px;color:var(--gold);letter-spacing:.1em;border:1px solid rgba(201,168,76,.3);padding:6px 18px;background:rgba(201,168,76,.06)">$1 — SESSION UNLOCK</div>'
+    + '<div style="font-size:13px;color:var(--muted);max-width:360px;line-height:1.85">One payment unlocks unlimited Fibonacci Spiral drawing for this browser session (24 hours). The most precise fractal overlay tool in the chart.</div>'
+    + '<div style="display:flex;gap:12px">'
+    + '<button onclick="closeFibSpiralModal()" style="font-family:DM Mono,monospace;font-size:10px;padding:10px 22px;background:transparent;border:1px solid rgba(255,255,255,.12);color:var(--muted);cursor:pointer;border-radius:1px">Cancel</button>'
+    + '<button id="fibPayBtn" onclick="payForFibSpiral()" style="font-family:Cinzel,serif;font-size:11px;letter-spacing:.1em;padding:12px 32px;background:var(--gold);color:var(--dark);border:none;cursor:pointer;font-weight:600;border-radius:1px">Pay $1 with Stripe</button>'
+    + '</div>'
+    + '<div style="font-family:DM Mono,monospace;font-size:9px;color:rgba(138,149,168,.4)">Secured by Stripe · No subscription · Cancel anytime</div>';
+  document.body.appendChild(modal);
+}
+
+function closeFibSpiralModal() {
+  var m = document.getElementById('fibSpiralModal');
+  if (m) m.style.display = 'none';
+  /* Revert to cursor tool */
+  if (typeof GROUPS !== 'undefined' && typeof pickItem === 'function') {
+    pickItem(GROUPS[0].items[0]);
+  }
+}
+
+async function payForFibSpiral() {
+  var btn = document.getElementById('fibPayBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to Stripe…'; }
+  var token = localStorage.getItem('fractal_token') || '';
+  try {
+    var res = await fetch('/fib-spiral-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token })
+    });
+    var data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      alert('Error: ' + (data.error || 'Could not start payment'));
+      if (btn) { btn.disabled = false; btn.textContent = 'Pay $1 with Stripe'; }
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Pay $1 with Stripe'; }
+  }
+}
+
+function showFibSpiralSuccess() {
+  var m = document.getElementById('fibSpiralModal');
+  if (m) m.style.display = 'none';
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.4);color:var(--gold);font-family:DM Mono,monospace;font-size:11px;padding:14px 20px;z-index:9999;border-radius:2px;letter-spacing:.04em';
+  toast.textContent = '◈ Fibonacci Spiral unlocked for this session';
+  document.body.appendChild(toast);
+  setTimeout(function() { toast.remove(); }, 5000);
+  /* Activate the tool now */
+  if (typeof GROUPS !== 'undefined') {
+    var fibGrp = GROUPS.find(function(g) { return g && g.id === 'fibspiral_grp'; });
+    if (fibGrp && fibGrp.items && fibGrp.items.length > 0 && typeof pickItem === 'function') {
+      pickItem(fibGrp.items[0]);
+    }
+  }
+}
+</script>
+
 </body>
 </html>
