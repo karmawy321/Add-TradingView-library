@@ -1632,7 +1632,7 @@ function handleChartUpload(f){
       dataUrl = e.target.result;
       var ab = document.getElementById('azBtn');
       if(ab) ab.disabled = false;
-      if(typeof drawings !== 'undefined') drawings = [];
+      if(typeof drawings !== 'undefined') window.drawings=[]; drawings=window.drawings;
       _uploadedMode = true;
     };
     img.src = e.target.result;
@@ -1648,7 +1648,7 @@ function terminateChart(){
   currentSymbol='';
   dataUrl=null;
   _uploadedMode=false;
-  if(typeof drawings!=='undefined') drawings=[];
+  if(typeof drawings!=='undefined') window.drawings=[]; drawings=window.drawings;
   /* Re-enable inputs */
   var pIn=document.getElementById('pairIn');
   if(pIn){pIn.disabled=false;pIn.style.opacity='';pIn.value='';}
@@ -1683,7 +1683,7 @@ function clearUploadedChart(){
   if(clrBtn) clrBtn.style.display = 'none';
   if(uplLbl) uplLbl.style.display = '';
   if(fileIn) fileIn.value = '';
-  if(typeof drawings !== 'undefined') drawings = [];
+  if(typeof drawings !== 'undefined') window.drawings=[]; drawings=window.drawings;
   var ab = document.getElementById('azBtn');
   if(ab) ab.disabled = true;
   /* Re-enable coin input */
@@ -1706,7 +1706,7 @@ function clearUploadedChart(){
     }
   }
   if(azBtn) azBtn.disabled = true;
-  if(typeof drawings !== 'undefined') drawings = [];
+  if(typeof drawings !== 'undefined') window.drawings=[]; drawings=window.drawings;
 }
 
 function resetUp(){
@@ -3799,17 +3799,19 @@ function renderChart() {
 function autoBarPattern(){
   if(!chartCandles||chartCandles.length<10)return;
   /* Remove any previous auto bar pattern */
+  if(window.drawings) drawings=window.drawings;
   drawings=drawings.filter(function(d){return !d._auto;});
+  window.drawings=drawings;
   var n=Math.min(50,chartCandles.length);
-  var startBi=0, endBi=n-1;
-  /* p1 = first bar, p2 = 50th bar — store as bar indices */
+  var caps=chartCandles.slice(0,n);
   drawings.unshift({
     type:'barpattern',
     barpattern:true,
     _auto:true,
     pixelOnly:false,
-    p1:{price:chartCandles[startBi].h, bi:startBi, x:0, y:0},
-    p2:{price:chartCandles[endBi].l,  bi:endBi,   x:0, y:0},
+    p1:{price:caps[0].h,    bi:0,   x:0, y:0},
+    p2:{price:caps[n-1].l,  bi:n-1, x:0, y:0},
+    candles:caps,
     ghostDX:0, ghostDY:-90
   });
   renderChart();
@@ -4631,7 +4633,7 @@ var GROUPS = [
 ];
 
 /* ── State ── */
-var drawings   = [];
+window.window.drawings=[]; drawings=window.drawings; var drawings = window.drawings;
 var undoStack  = []; /* snapshots for undo */
 var redoStack  = []; /* snapshots for redo */
 var eraserActive = false;
@@ -4748,6 +4750,11 @@ function isActive(g) {
 }
 
 function pickItem(item) {
+  /* Immediate-action tools — fire on toolbar click, don't become active tool */
+  if(item.undotool)  { doUndo(); return; }
+  if(item.redotool)  { doRedo(); return; }
+  if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
+
   activeTool=item.id; activeItem=item;
   measuring=false; measurePts=[];
   setCursor(item.cur||'crosshair');
@@ -4758,7 +4765,7 @@ function pickItem(item) {
 }
 
 function handleSingle(g) {
-  if (g.erasertool) { saveUndo(); drawings=[]; renderChart&&renderChart(); return; }
+  if (g.erasertool) { saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
   if (g.undotool)   { doUndo(); return; }
   if (g.redotool)   { doRedo(); return; }
   if (g.zoomtool)   { chartView.zoom=Math.min(8,chartView.zoom*1.5); renderChart&&renderChart(); return; }
@@ -4950,7 +4957,7 @@ function initDrawEvents(){
     /* Handle non-drawing tool items immediately on click */
     if(activeItem&&activeItem.undotool){ doUndo(); return; }
     if(activeItem&&activeItem.redotool){ doRedo(); return; }
-    if(activeItem&&activeItem.erasertool){ saveUndo(); drawings=[]; renderChart(); return; }
+    if(activeItem&&activeItem.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart(); return; }
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') return;
     if(activeItem.textdraw){
       var lbl=prompt(activeItem.callout?'Callout text:':'Label:');
@@ -5021,8 +5028,8 @@ function initDrawEvents(){
     if(!lockedDraw){
       saveUndo();drawings.push(makeDrawing(drawStart,co));
       drawStart=null;
-      /* After drawing bar pattern, auto-switch back to cursor */
-      if(activeItem&&activeItem.barpattern){
+      /* After drawing bar pattern or fib tools, auto-switch back to cursor */
+      if(activeItem&&(activeItem.barpattern||activeItem.fibtype)){
         pickItem(GROUPS[0].items[0]);
       }
       renderChart();
@@ -5039,7 +5046,7 @@ function initDrawEvents(){
 }
 
 function makeDrawing(p1,p2){
-  return {
+  var d={
     type:activeTool,
     p1:{price:p1.price,bi:p1.bi,x:p1.x,y:p1.y},
     p2:{price:p2.price,bi:p2.bi,x:p2.x,y:p2.y},
@@ -5049,6 +5056,13 @@ function makeDrawing(p1,p2){
     channel:activeItem.channel, arrowline:activeItem.arrowline,
     barpattern:activeItem.barpattern||false
   };
+  /* Capture candles at draw time for proportional replay */
+  if(activeItem.barpattern&&chartCandles&&chartCandles.length>1){
+    var s=Math.min(p1.bi,p2.bi), e=Math.max(p1.bi,p2.bi);
+    d.candles=chartCandles.slice(Math.max(0,s),Math.min(chartCandles.length,e+1));
+    d.ghostDX=0; d.ghostDY=-90;
+  }
+  return d;
 }
 
 /* ── Draw everything ── */
@@ -5247,7 +5261,7 @@ function drawOne(ctx,d,co,prev){
       ctx.quadraticCurveTo(d.path[_bi].x,d.path[_bi].y,_cx,_cy);
     }
     ctx.lineTo(d.path[d.path.length-1].x,d.path[d.path.length-1].y);
-    if(d.closed){ctx.closePath();ctx.fillStyle=bCol.replace(')',',0.07)').replace('rgb','rgba');ctx.fill();}
+    if(d.closed){ctx.closePath();ctx.fillStyle='rgba(201,168,76,0.04)';ctx.fill();}
     ctx.stroke(); ctx.restore(); return;
   }
 
@@ -5409,11 +5423,13 @@ function drawOne(ctx,d,co,prev){
     return;
   }
 
-  /* ── Bar Pattern — single draggable golden copy, no boundary box ── */
+  /* ── Bar Pattern — single draggable golden copy, proportional to price ── */
   if(d.barpattern){
-    /* Collect pattern bars from live chart */
-    var patternBars=[];
-    if(!d.pixelOnly&&co.visible&&co.visible.length>1){
+    /* Use stored candle data if available (proportional at all zoom levels) */
+    var patternBars = d.candles || [];
+
+    /* Fallback: collect from visible if no stored data */
+    if(patternBars.length<2&&!d.pixelOnly&&co.visible&&co.visible.length>1){
       var bi1e=Math.max(0,Math.min(co.visible.length-1,d.p1.bi-co.si));
       var bi2e=Math.max(0,Math.min(co.visible.length-1,d.p2.bi-co.si));
       var startB=Math.min(bi1e,bi2e), endB=Math.max(bi1e,bi2e);
@@ -5421,24 +5437,29 @@ function drawOne(ctx,d,co,prev){
     }
     if(patternBars.length<2){ctx.restore();return;}
 
-    /* Ghost position — pixel offset from original top-left */
+    /* Ghost pixel position — offset from p1 screen position */
     var ghostDY=d.ghostDY!==undefined?d.ghostDY:-90;
     var ghostDX=d.ghostDX!==undefined?d.ghostDX:0;
 
-    /* Source rect bounds (used for drag hit-testing only, not drawn) */
-    var srcW=x2-x1, srcH=Math.abs(y2-y1);
-    var srcTop=Math.min(y1,y2);
-
-    /* Ghost rect */
-    var gbx=x1+ghostDX, gby=srcTop+ghostDY;
-    var gw=srcW/patternBars.length, gh=srcH;
-
-    /* Price range of pattern */
+    /* Ghost dimensions: width spans candle count, height uses chart price scale */
     var pmn=Math.min.apply(null,patternBars.map(function(c){return c.l;}));
     var pmx=Math.max.apply(null,patternBars.map(function(c){return c.h;}));
     var prng=pmx-pmn||pmn*.001||.0001;
 
-    function gScaleY(v){return gby+((pmx-v)/prng)*gh;}
+    /* Anchor: p1 bar screen X, p1 price screen Y */
+    var anchorX=cpX(d.p1.bi,co);
+    var anchorY=cpY(d.p1.price,co);
+
+    /* Width: use same barW as chart so candles are same width */
+    var gw=co.barW;
+    /* Height: map price range through current chart scale for true proportionality */
+    var pricePerPx=(co.rng/co.CH);
+    var gh=prng/pricePerPx; /* pixels for the full price range */
+
+    var gbx=anchorX+ghostDX;
+    var gby=anchorY+ghostDY;
+
+    function gScaleY(v){ return gby+((pmx-v)/prng)*gh; }
 
     /* Draw golden candles */
     ctx.setLineDash([]);
@@ -5453,11 +5474,12 @@ function drawOne(ctx,d,co,prev){
       ctx.fillRect(gcx-gw*.38,top2,gw*.76,cbh2);
     });
 
-    /* Subtle label + drag hint */
+    /* Label + drag handle */
+    var labelX=gbx+3, labelY=gby-3;
     ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(201,168,76,.6)';
-    ctx.textAlign='left'; ctx.fillText('◈ '+patternBars.length+' bars',gbx+3,gby-3);
+    ctx.textAlign='left'; ctx.fillText('◈ '+patternBars.length+' bars',labelX,labelY);
     ctx.textAlign='right'; ctx.fillStyle='rgba(201,168,76,.35)';
-    ctx.fillText('⠿',gbx+srcW-3,gby-3);
+    ctx.fillText('⠿',gbx+patternBars.length*gw-3,labelY);
 
     ctx.restore();return;
   }
@@ -5573,12 +5595,12 @@ function patchRenderChart(){
 function patchNav(){
   if(typeof loadChart==='function'&&!loadChart._fpatch){
     var o=loadChart;
-    loadChart=function(sym,tf){drawings=[];measurePts=[];resetSnapBtnState();o(sym,tf);};
+    loadChart=function(sym,tf){window.drawings=[]; drawings=window.drawings;measurePts=[];resetSnapBtnState();o(sym,tf);};
     loadChart._fpatch=true;
   }
   if(typeof onTfChange==='function'&&!onTfChange._fpatch){
     var o2=onTfChange;
-    onTfChange=function(){drawings=[];measurePts=[];resetSnapBtnState();o2();};
+    onTfChange=function(){window.drawings=[]; drawings=window.drawings;measurePts=[];resetSnapBtnState();o2();};
     onTfChange._fpatch=true;
   }
 }
