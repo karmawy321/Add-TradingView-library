@@ -6027,8 +6027,8 @@ window.addEventListener('load',function(){
 
 /* ── Plan checkout ── */
 async function startCheckout(plan, btn) {
-  var token = localStorage.getItem('fractal_token');
-  console.log('[checkout] token found:', !!token, token ? token.slice(0,20)+'...' : 'NONE');
+  const { data: { session } } = await supabase.auth.getSession();
+  var token = session?.access_token;
   if (!token) {
     alert('Please sign in first to subscribe.');
     window.location.href = '/auth';
@@ -6036,29 +6036,19 @@ async function startCheckout(plan, btn) {
   }
   if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
   try {
-    console.log('[checkout] sending request for plan:', plan);
     var res = await fetch('/create-checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan: plan, token: token })
     });
-    console.log('[checkout] response status:', res.status);
     var data = await res.json();
-    console.log('[checkout] response data:', data);
     if (data.url) {
       window.location.href = data.url;
     } else {
-      if (res.status === 401) {
-        localStorage.removeItem('fractal_token');
-        alert('Session expired. Please sign in again.');
-        window.location.href = '/auth';
-        return;
-      }
       alert('Error: ' + (data.error || 'Could not create checkout session'));
       if (btn) { btn.disabled = false; btn.textContent = 'Get Started'; }
     }
   } catch (e) {
-    console.error('[checkout] fetch error:', e);
     alert('Network error: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = 'Get Started'; }
   }
