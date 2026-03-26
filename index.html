@@ -5655,6 +5655,7 @@ function drawOne(ctx,d,co,prev){
     var ghostStartBi=d.ghostAnchorBi!==undefined
       ? d.ghostAnchorBi
       : Math.round(d.p1.bi+(d.ghostBarOffset||0));
+    console.log('[render] ghostAnchorBi='+d.ghostAnchorBi+' ghostStartBi='+ghostStartBi+' si='+co.si+' gbx='+( PAD.l+(ghostStartBi-co.si)*co.barW).toFixed(1));
     var gbx=PAD.l+(ghostStartBi-co.si)*co.barW;
 
     /* Ghost Y top: pmx shifted by priceOffset (default: one price-range above p1) */
