@@ -4904,12 +4904,10 @@ function initDrawEvents(){
         var ghG=prng3/pricePerPxG;
         var gwTotal=caps2.length*co.barW;
         if(co.x>=gbxG&&co.x<=gbxG+gwTotal&&co.y>=gbyG-16&&co.y<=gbyG+ghG+16){
-          /* X: which bar index is the cursor on — integer snap */
-          var cursorBiAbs=co.si+Math.round((co.x-PAD.l)/co.barW-0.5);
           _ghostDrag={
             idx:gi2,
-            startY:co.y,
-            grabBarDiff: cursorBiAbs - anchorBiG,  /* integer offset within ghost */
+            startX:co.x, startY:co.y,
+            origAnchorBi:anchorBiG,
             origPriceOff:priceOffG
           };
           e.preventDefault();
@@ -5081,10 +5079,12 @@ function initDrawEvents(){
     hoverPoint=getCoords(e);
     /* Ghost drag — X snaps to bar grid, Y is free */
     if(_ghostDrag!==null&&hoverPoint&&!hoverPoint.pixelOnly){
-      /* X: cursor bar index minus the stored grab offset = new anchor bar (integer snap) */
-      var curBiAbs=hoverPoint.si+Math.round((hoverPoint.x-PAD.l)/hoverPoint.barW-0.5);
-      drawings[_ghostDrag.idx].ghostAnchorBi = curBiAbs - _ghostDrag.grabBarDiff;
-      /* Y: pure pixel delta → price units, no snapping */
+      /* X: how many bars has cursor moved since mousedown */
+      var dxPx=hoverPoint.x-_ghostDrag.startX;
+      var barDelta=Math.round(dxPx/hoverPoint.barW);
+      console.log('[ghost] dxPx='+dxPx.toFixed(1)+' barW='+hoverPoint.barW.toFixed(2)+' barDelta='+barDelta+' anchorBi='+(_ghostDrag.origAnchorBi+barDelta));
+      drawings[_ghostDrag.idx].ghostAnchorBi=_ghostDrag.origAnchorBi+barDelta;
+      /* Y: free pixel → price */
       var dyPx=hoverPoint.y-_ghostDrag.startY;
       drawings[_ghostDrag.idx].ghostPriceOffset=_ghostDrag.origPriceOff-(dyPx*(hoverPoint.rng/hoverPoint.CH));
       if(!_rafPending){ _rafPending=true; requestAnimationFrame(function(){ renderChart(); _rafPending=false; }); }
