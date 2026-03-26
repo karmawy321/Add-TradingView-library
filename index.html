@@ -4895,17 +4895,17 @@ function initDrawEvents(){
         var pricePerPxG=co.rng/co.CH;
         var barOffG=dd.ghostBarOffset!==undefined?dd.ghostBarOffset:0;
         var priceOffG=dd.ghostPriceOffset!==undefined?dd.ghostPriceOffset:(prng3*1.1);
-        /* Ghost screen bounds */
-        var gbxG=cpX(dd.p1.bi+barOffG,co);
+        /* Ghost left pixel edge: bar center minus half barW */
+        var gbxG=PAD.l+(dd.p1.bi+barOffG-co.si)*co.barW;
         var gbyG=cpY(pmx3+priceOffG,co);
         var ghG=prng3/pricePerPxG;
         var gwTotal=caps2.length*co.barW;
-        /* Generous hit area: full width + 8px padding, full height */
-        if(co.x>=gbxG-8&&co.x<=gbxG+gwTotal+8&&co.y>=gbyG-20&&co.y<=gbyG+ghG+20){
+        /* Hit the full pixel span of all candles, no padding needed */
+        if(co.x>=gbxG&&co.x<=gbxG+gwTotal&&co.y>=gbyG-16&&co.y<=gbyG+ghG+16){
           _ghostDrag={
             idx:gi2,
             startX:co.x, startY:co.y,
-            origBarOff:dd.ghostBarOffset||0,
+            origBarOff:barOffG,
             origPriceOff:priceOffG
           };
           e.preventDefault();
@@ -5074,14 +5074,14 @@ function initDrawEvents(){
   var _rafPending=false;
   cv.addEventListener('mousemove',function(e){
     hoverPoint=getCoords(e);
-    /* Ghost drag — free XY movement */
+    /* Ghost drag — free XY, continuous float movement */
     if(_ghostDrag!==null&&hoverPoint&&!hoverPoint.pixelOnly){
       var dxPx=hoverPoint.x-_ghostDrag.startX;
       var dyPx=hoverPoint.y-_ghostDrag.startY;
-      var barDelta=Math.round(dxPx/hoverPoint.barW);
-      drawings[_ghostDrag.idx].ghostBarOffset=_ghostDrag.origBarOff+barDelta;
-      var pricePerPx=hoverPoint.rng/hoverPoint.CH;
-      drawings[_ghostDrag.idx].ghostPriceOffset=_ghostDrag.origPriceOff - dyPx*pricePerPx;
+      /* X: float bar delta — NO rounding, smooth movement */
+      drawings[_ghostDrag.idx].ghostBarOffset=_ghostDrag.origBarOff+(dxPx/hoverPoint.barW);
+      /* Y: price delta — continuous */
+      drawings[_ghostDrag.idx].ghostPriceOffset=_ghostDrag.origPriceOff-(dyPx*(hoverPoint.rng/hoverPoint.CH));
       if(!_rafPending){ _rafPending=true; requestAnimationFrame(function(){ renderChart(); _rafPending=false; }); }
       return;
     }
@@ -5646,9 +5646,9 @@ function drawOne(ctx,d,co,prev){
     var barOff=d.ghostBarOffset!==undefined?d.ghostBarOffset:0;
     var priceOff=d.ghostPriceOffset!==undefined?d.ghostPriceOffset:0;
 
-    /* Ghost X: snapped to the bar column at p1.bi + barOff */
+    /* Ghost X: float bar offset → direct pixel position, no cpX rounding */
     var ghostStartBi=d.p1.bi+barOff;
-    var gbx=cpX(ghostStartBi,co);
+    var gbx=PAD.l+(ghostStartBi-co.si)*co.barW;
 
     /* Ghost Y top: pmx shifted by priceOffset (default: one price-range above p1) */
     var defaultPriceOff=prng+pricePerPx*10; /* float one range above by default */
