@@ -4651,6 +4651,7 @@ var measurePts = [];
 var brushColor = '#c9a84c'; /* default gold — changed by color picker */
 var BRUSH_COLORS = ['#c9a84c','#ef5350','#26a69a','#ffffff'];
 var _ghostDrag = null; /* {idx, startX, startY, origDX, origDY} */
+var _bpClick1  = null; /* first click bar index for two-click bar pattern */
 
 /* ── Color picker swatch strip — injected below toolbar ── */
 function buildColorPicker(){
@@ -4754,6 +4755,9 @@ function pickItem(item) {
   if(item.undotool)  { doUndo(); return; }
   if(item.redotool)  { doRedo(); return; }
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
+
+  /* Cancel any in-progress bar pattern */
+  _bpClick1=null;
 
   activeTool=item.id; activeItem=item;
   measuring=false; measurePts=[];
@@ -4899,18 +4903,23 @@ function initDrawEvents(){
       for(var gi2=0;gi2<drawings.length;gi2++){
         var dd=drawings[gi2];
         if(!dd.barpattern||dd.pixelOnly||!co.visible||co.visible.length<2)continue;
-        /* Compute ghost box screen bounds */
-        var bi1g=Math.max(0,Math.min(co.visible.length-1,dd.p1.bi-co.si));
-        var bi2g=Math.max(0,Math.min(co.visible.length-1,dd.p2.bi-co.si));
-        var srcX1=co.W?(PAD.l+(Math.min(bi1g,bi2g)+0.5)*co.barW):0;
-        var srcX2=co.W?(PAD.l+(Math.max(bi1g,bi2g)+0.5)*co.barW):60;
-        var srcTop=Math.min(cpY(dd.p1.price,co),cpY(dd.p2.price,co));
-        var srcH=Math.abs(cpY(dd.p1.price,co)-cpY(dd.p2.price,co))||60;
+        var caps2=dd.candles||[];
+        if(caps2.length<2)continue;
+        /* Anchor screen position */
+        var anchorLocalG=dd.p1.bi-co.si;
+        var anchorXG=PAD.l+(anchorLocalG+0.5)*co.barW;
+        var anchorYG=cpY(dd.p1.price,co);
         var ghostDY=dd.ghostDY!==undefined?dd.ghostDY:-90;
         var ghostDX=dd.ghostDX!==undefined?dd.ghostDX:0;
-        var gbx=srcX1+ghostDX, gby=srcTop+ghostDY;
-        var gboxW=srcX2-srcX1;
-        if(co.x>=gbx&&co.x<=gbx+gboxW&&co.y>=gby&&co.y<=gby+srcH){
+        var gbxG=anchorXG+ghostDX;
+        var gbyG=anchorYG+ghostDY;
+        /* Height via price scale */
+        var pmn3=Math.min.apply(null,caps2.map(function(c){return c.l;}));
+        var pmx3=Math.max.apply(null,caps2.map(function(c){return c.h;}));
+        var pricePerPxG=co.rng/co.CH;
+        var ghG=((pmx3-pmn3)||pmn3*.001||.0001)/pricePerPxG;
+        var gwTotal=caps2.length*co.barW;
+        if(co.x>=gbxG&&co.x<=gbxG+gwTotal&&co.y>=gbyG&&co.y<=gbyG+ghG){
           _ghostDrag={idx:gi2,startX:co.x,startY:co.y,origDX:ghostDX,origDY:ghostDY};
           e.preventDefault();
           return;
@@ -4967,6 +4976,41 @@ function initDrawEvents(){
     if(activeItem.vline){if(!co.pixelOnly){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();}return;}
     if(activeItem.hline){if(!co.pixelOnly){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();}return;}
     if(activeItem.arrowmark){if(!co.pixelOnly){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();}return;}
+
+    /* ── Bar Pattern: two single-clicks, bar-top magnet snap ── */
+    if(activeItem&&activeItem.barpattern){
+      if(co.pixelOnly||!co.visible||co.visible.length<2)return;
+      /* Snap to nearest bar index by cursor X */
+      var snapBi2=Math.max(0,Math.min(co.visible.length-1,Math.round((co.x-PAD.l)/co.barW-0.5)));
+      var snapBiAbs2=co.si+snapBi2;
+      if(_bpClick1===null){
+        /* First click — anchor bar */
+        _bpClick1={bi:snapBiAbs2};
+        renderChart();
+      } else {
+        /* Second click — commit range */
+        var s=Math.min(_bpClick1.bi, snapBiAbs2);
+        var e2=Math.max(_bpClick1.bi, snapBiAbs2);
+        if(e2>s&&chartCandles&&chartCandles.length>s){
+          var caps=chartCandles.slice(Math.max(0,s),Math.min(chartCandles.length,e2+1));
+          if(caps.length>1){
+            saveUndo();
+            drawings.push({
+              type:'barpattern', barpattern:true, pixelOnly:false,
+              p1:{price:caps[0].h, bi:s, x:0, y:0},
+              p2:{price:caps[caps.length-1].l, bi:e2, x:0, y:0},
+              candles:caps,
+              ghostDX:0, ghostDY:-(Math.round(co.CH*0.35)) /* 35% of chart height above anchor */
+            });
+          }
+        }
+        _bpClick1=null;
+        pickItem(GROUPS[0].items[0]); /* auto-switch to cursor */
+        renderChart();
+      }
+      return;
+    }
+
     isDrawing=true; drawStart=co;
   });
 
@@ -5028,8 +5072,8 @@ function initDrawEvents(){
     if(!lockedDraw){
       saveUndo();drawings.push(makeDrawing(drawStart,co));
       drawStart=null;
-      /* After drawing bar pattern or fib tools, auto-switch back to cursor */
-      if(activeItem&&(activeItem.barpattern||activeItem.fibtype)){
+      /* After drawing fib tools, auto-switch back to cursor */
+      if(activeItem&&activeItem.fibtype){
         pickItem(GROUPS[0].items[0]);
       }
       renderChart();
@@ -5069,8 +5113,79 @@ function makeDrawing(p1,p2){
 function drawAnnotations(ctx,co){
   drawings.forEach(function(d){drawOne(ctx,d,co,false);});
 
-  /* In-progress preview */
-  if(isDrawing&&drawStart&&hoverPoint&&activeItem){
+  /* ── Bar Pattern two-click preview ── */
+  if(activeItem&&activeItem.barpattern&&co&&co.visible&&co.visible.length>1){
+    /* Snap cursor to nearest bar — use hoverPoint.x if available */
+    var hpx = hoverPoint ? hoverPoint.x : co.x;
+    var snapBi2=Math.max(0,Math.min(co.visible.length-1,Math.round((hpx-PAD.l)/co.barW-0.5)));
+    var snapX=PAD.l+(snapBi2+0.5)*co.barW;
+    var snapBar=co.visible[snapBi2];
+    var snapY=snapBar?cpY(snapBar.h,co):PAD.t;
+
+    if(_bpClick1===null){
+      /* Before first click: show magnet dot + vertical guide snapping to bar top */
+      ctx.save();
+      ctx.strokeStyle='rgba(201,168,76,.5)'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(snapX,PAD.t); ctx.lineTo(snapX,co.H-PAD.b); ctx.stroke();
+      ctx.setLineDash([]);
+      /* Magnet dot on bar high */
+      ctx.fillStyle='#c9a84c'; ctx.strokeStyle='rgba(201,168,76,.4)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(snapX,snapY,5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(snapX,snapY,8,0,Math.PI*2); ctx.stroke();
+      ctx.restore();
+    } else {
+      /* After first click: show range highlight + ghost preview of captured bars */
+      var anchorBi=_bpClick1.bi-co.si;
+      var anchorX=PAD.l+(anchorBi+0.5)*co.barW;
+      var curBi=snapBi2;
+      var lo=Math.min(anchorBi,curBi), hi=Math.max(anchorBi,curBi);
+
+      /* Highlight selected bar range */
+      ctx.save();
+      ctx.fillStyle='rgba(201,168,76,.07)';
+      ctx.fillRect(PAD.l+lo*co.barW, PAD.t, (hi-lo+1)*co.barW, co.CH);
+      /* Left and right edge lines */
+      ctx.strokeStyle='rgba(201,168,76,.6)'; ctx.lineWidth=1; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(anchorX,PAD.t); ctx.lineTo(anchorX,co.H-PAD.b); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(snapX,PAD.t); ctx.lineTo(snapX,co.H-PAD.b); ctx.stroke();
+      /* Magnet dot on second bar */
+      ctx.fillStyle='#c9a84c';
+      ctx.beginPath(); ctx.arc(snapX,snapY,5,0,Math.PI*2); ctx.fill();
+      /* Bar count label */
+      ctx.font='bold 9px DM Mono'; ctx.fillStyle='rgba(201,168,76,.9)'; ctx.textAlign='center';
+      ctx.fillText((hi-lo+1)+' bars', (anchorX+snapX)/2, PAD.t+14);
+      /* Mini ghost preview above selection */
+      if(chartCandles){
+        var s2=Math.min(_bpClick1.bi,co.si+snapBi2);
+        var e3=Math.max(_bpClick1.bi,co.si+snapBi2);
+        var previewBars=chartCandles.slice(Math.max(0,s2),Math.min(chartCandles.length,e3+1));
+        if(previewBars.length>1){
+          var pmn3=Math.min.apply(null,previewBars.map(function(c){return c.l;}));
+          var pmx3=Math.max.apply(null,previewBars.map(function(c){return c.h;}));
+          var prng3=pmx3-pmn3||pmn3*.001||.0001;
+          var pricePerPx3=co.rng/co.CH;
+          var gh3=prng3/pricePerPx3;
+          var gw3=co.barW;
+          var gbx3=Math.min(anchorX,snapX);
+          var gby3=PAD.t+14;
+          previewBars.forEach(function(c,ii){
+            var isUp=c.c>=c.o;
+            var gcx3=gbx3+(ii+0.5)*gw3;
+            function gsy(v){return gby3+((pmx3-v)/prng3)*gh3;}
+            ctx.strokeStyle=isUp?'rgba(201,168,76,.7)':'rgba(201,168,76,.35)'; ctx.lineWidth=1;
+            ctx.beginPath(); ctx.moveTo(gcx3,gsy(c.h)); ctx.lineTo(gcx3,gsy(c.l)); ctx.stroke();
+            var top3=gsy(Math.max(c.o,c.c)), cbh3=Math.max(1,gsy(Math.min(c.o,c.c))-top3);
+            ctx.fillStyle=isUp?'rgba(201,168,76,.45)':'rgba(201,168,76,.15)';
+            ctx.fillRect(gcx3-gw3*.38,top3,gw3*.76,cbh3);
+          });
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  /* In-progress preview (non-barpattern tools) */
+  if(isDrawing&&drawStart&&hoverPoint&&activeItem&&!activeItem.barpattern){
     drawOne(ctx,makeDrawing(drawStart,hoverPoint),co,true);
   }
 
@@ -5423,64 +5538,47 @@ function drawOne(ctx,d,co,prev){
     return;
   }
 
-  /* ── Bar Pattern — single draggable golden copy, proportional to price ── */
+  /* ── Bar Pattern — draggable golden copy, price-proportional ── */
   if(d.barpattern){
-    /* Use stored candle data if available (proportional at all zoom levels) */
-    var patternBars = d.candles || [];
-
-    /* Fallback: collect from visible if no stored data */
-    if(patternBars.length<2&&!d.pixelOnly&&co.visible&&co.visible.length>1){
-      var bi1e=Math.max(0,Math.min(co.visible.length-1,d.p1.bi-co.si));
-      var bi2e=Math.max(0,Math.min(co.visible.length-1,d.p2.bi-co.si));
-      var startB=Math.min(bi1e,bi2e), endB=Math.max(bi1e,bi2e);
-      patternBars=co.visible.slice(startB,endB+1);
-    }
+    var patternBars=d.candles||[];
     if(patternBars.length<2){ctx.restore();return;}
 
-    /* Ghost pixel position — offset from p1 screen position */
     var ghostDY=d.ghostDY!==undefined?d.ghostDY:-90;
     var ghostDX=d.ghostDX!==undefined?d.ghostDX:0;
 
-    /* Ghost dimensions: width spans candle count, height uses chart price scale */
+    /* Price range */
     var pmn=Math.min.apply(null,patternBars.map(function(c){return c.l;}));
     var pmx=Math.max.apply(null,patternBars.map(function(c){return c.h;}));
     var prng=pmx-pmn||pmn*.001||.0001;
 
-    /* Anchor: p1 bar screen X, p1 price screen Y */
+    /* Anchor to p1 bar screen position — moves with pan/zoom */
     var anchorX=cpX(d.p1.bi,co);
     var anchorY=cpY(d.p1.price,co);
-
-    /* Width: use same barW as chart so candles are same width */
-    var gw=co.barW;
-    /* Height: map price range through current chart scale for true proportionality */
-    var pricePerPx=(co.rng/co.CH);
-    var gh=prng/pricePerPx; /* pixels for the full price range */
-
     var gbx=anchorX+ghostDX;
     var gby=anchorY+ghostDY;
 
-    function gScaleY(v){ return gby+((pmx-v)/prng)*gh; }
+    /* Same barW and price scale as live chart = always proportional */
+    var gw=co.barW;
+    var gh=prng/(co.rng/co.CH);
 
-    /* Draw golden candles */
+    function gSY(v){return gby+((pmx-v)/prng)*gh;}
+
     ctx.setLineDash([]);
     patternBars.forEach(function(c,ii){
       var isUp=c.c>=c.o;
       var gcx=gbx+(ii+0.5)*gw;
-      ctx.strokeStyle=isUp?'rgba(201,168,76,.95)':'rgba(201,168,76,.55)';
-      ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(gcx,gScaleY(c.h)); ctx.lineTo(gcx,gScaleY(c.l)); ctx.stroke();
-      var top2=gScaleY(Math.max(c.o,c.c)), cbh2=Math.max(1,gScaleY(Math.min(c.o,c.c))-top2);
+      ctx.strokeStyle=isUp?'rgba(201,168,76,.95)':'rgba(201,168,76,.55)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(gcx,gSY(c.h)); ctx.lineTo(gcx,gSY(c.l)); ctx.stroke();
+      var top2=gSY(Math.max(c.o,c.c)), cbh2=Math.max(1,gSY(Math.min(c.o,c.c))-top2);
       ctx.fillStyle=isUp?'rgba(201,168,76,.55)':'rgba(201,168,76,.18)';
       ctx.fillRect(gcx-gw*.38,top2,gw*.76,cbh2);
     });
 
-    /* Label + drag handle */
-    var labelX=gbx+3, labelY=gby-3;
-    ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(201,168,76,.6)';
-    ctx.textAlign='left'; ctx.fillText('◈ '+patternBars.length+' bars',labelX,labelY);
+    ctx.font='bold 8px DM Mono'; ctx.textAlign='left';
+    ctx.fillStyle='rgba(201,168,76,.6)';
+    ctx.fillText('◈ '+patternBars.length+' bars',gbx+3,gby-3);
     ctx.textAlign='right'; ctx.fillStyle='rgba(201,168,76,.35)';
-    ctx.fillText('⠿',gbx+patternBars.length*gw-3,labelY);
-
+    ctx.fillText('⠿',gbx+patternBars.length*gw-3,gby-3);
     ctx.restore();return;
   }
 
@@ -5679,6 +5777,7 @@ function addFullscreen(){
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();doUndo();}
   if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='z'))){e.preventDefault();doRedo();}
+  if(e.key==='Escape'){ _bpClick1=null; isDrawing=false; drawStart=null; renderChart&&renderChart(); }
 });
 
 window.addEventListener('load',function(){
