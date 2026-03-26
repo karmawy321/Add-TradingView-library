@@ -3797,23 +3797,8 @@ function renderChart() {
 
 /* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
 function autoBarPattern(){
-  if(!chartCandles||chartCandles.length<10)return;
-  /* Sync with IIFE drawings array */
-  if(window.drawings) drawings=window.drawings;
-  /* Remove any previous auto bar pattern */
-  drawings=drawings.filter(function(d){return !d._auto;});
-  window.drawings=drawings;
-  var n=Math.min(100,chartCandles.length);
-  var caps=chartCandles.slice(0,n);
-  drawings.unshift({
-    type:'barpattern', barpattern:true, _auto:true, pixelOnly:false,
-    p1:{price:caps[0].h,         bi:0,   x:0, y:0},
-    p2:{price:caps[n-1].l,       bi:n-1, x:0, y:0},
-    candles:caps,
-    ghostDX:0, ghostDY:-90
-  });
-  window.drawings=drawings;
-  renderChart();
+  /* Delegate to IIFE-scoped version which has direct access to drawings array */
+  if(typeof window._autoBarPattern==='function') window._autoBarPattern();
 }
 
 if(chartCanvas){
@@ -4895,7 +4880,7 @@ function initDrawEvents(){
     if(e.button!==0)return; /* only left click triggers drawing tools */
     var co=getCoords(e); if(!co)return;
 
-    /* ── Ghost drag — check if clicking inside a bar pattern ghost box ── */
+    /* ── Ghost drag — check if clicking inside a bar pattern ghost ── */
     if(activeItem&&activeItem.id!=='cursor'&&activeItem.id!=='arrow_cur'&&activeItem.id!=='dot'){
       /* only start ghost drag when in cursor mode — skip */
     } else {
@@ -4904,22 +4889,25 @@ function initDrawEvents(){
         if(!dd.barpattern||dd.pixelOnly||!co.visible||co.visible.length<2)continue;
         var caps2=dd.candles||[];
         if(caps2.length<2)continue;
-        /* Anchor screen position */
-        var anchorLocalG=dd.p1.bi-co.si;
-        var anchorXG=PAD.l+(anchorLocalG+0.5)*co.barW;
-        var anchorYG=cpY(dd.p1.price,co);
-        var ghostDY=dd.ghostDY!==undefined?dd.ghostDY:-90;
-        var ghostDX=dd.ghostDX!==undefined?dd.ghostDX:0;
-        var gbxG=anchorXG+ghostDX;
-        var gbyG=anchorYG+ghostDY;
-        /* Height via price scale */
         var pmn3=Math.min.apply(null,caps2.map(function(c){return c.l;}));
         var pmx3=Math.max.apply(null,caps2.map(function(c){return c.h;}));
+        var prng3=pmx3-pmn3||pmn3*.001||.0001;
         var pricePerPxG=co.rng/co.CH;
-        var ghG=((pmx3-pmn3)||pmn3*.001||.0001)/pricePerPxG;
+        /* Ghost position using bar/price offsets */
+        var barOffG=dd.ghostBarOffset!==undefined?dd.ghostBarOffset:0;
+        var priceOffG=dd.ghostPriceOffset!==undefined?dd.ghostPriceOffset:(prng3+pricePerPxG*10);
+        var gbxG=cpX(dd.p1.bi+barOffG,co);
+        var gbyG=cpY(pmx3+priceOffG,co);
+        var ghG=prng3/pricePerPxG;
         var gwTotal=caps2.length*co.barW;
         if(co.x>=gbxG&&co.x<=gbxG+gwTotal&&co.y>=gbyG&&co.y<=gbyG+ghG){
-          _ghostDrag={idx:gi2,startX:co.x,startY:co.y,origDX:ghostDX,origDY:ghostDY};
+          var curSnapBi=co.si+Math.max(0,Math.min((co.visible||[]).length-1,
+            Math.round((co.x-PAD.l)/co.barW-0.5)));
+          _ghostDrag={
+            idx:gi2, startX:co.x, startY:co.y,
+            anchorBi:curSnapBi,
+            origPriceOff:dd.ghostPriceOffset!==undefined?dd.ghostPriceOffset:(prng3+pricePerPxG*10)
+          };
           e.preventDefault();
           return;
         }
@@ -5016,12 +5004,19 @@ function initDrawEvents(){
   var _rafPending=false;
   cv.addEventListener('mousemove',function(e){
     hoverPoint=getCoords(e);
-    /* Ghost drag */
-    if(_ghostDrag!==null&&hoverPoint){
-      var dx=hoverPoint.x-_ghostDrag.startX;
-      var dy=hoverPoint.y-_ghostDrag.startY;
-      drawings[_ghostDrag.idx].ghostDX=_ghostDrag.origDX+dx;
-      drawings[_ghostDrag.idx].ghostDY=_ghostDrag.origDY+dy;
+    /* Ghost drag — snap to bars */
+    if(_ghostDrag!==null&&hoverPoint&&!hoverPoint.pixelOnly){
+      /* Snap cursor X to nearest bar */
+      var curBi=Math.max(0,Math.min((hoverPoint.visible||[]).length-1,
+        Math.round((hoverPoint.x-PAD.l)/hoverPoint.barW-0.5)));
+      var curBiAbs=hoverPoint.si+curBi;
+      /* Bar offset from anchor p1 */
+      var barOff=curBiAbs - _ghostDrag.anchorBi;
+      /* Price offset from Y delta (price units) */
+      var dyPx=hoverPoint.y-_ghostDrag.startY;
+      var priceOff=_ghostDrag.origPriceOff - dyPx*(hoverPoint.rng/hoverPoint.CH);
+      drawings[_ghostDrag.idx].ghostBarOffset=barOff;
+      drawings[_ghostDrag.idx].ghostPriceOffset=priceOff;
       if(!_rafPending){ _rafPending=true; requestAnimationFrame(function(){ renderChart(); _rafPending=false; }); }
       return;
     }
@@ -5537,30 +5532,33 @@ function drawOne(ctx,d,co,prev){
     return;
   }
 
-  /* ── Bar Pattern — draggable golden copy, price-proportional ── */
+  /* ── Bar Pattern — draggable golden copy, bar-snapped and price-proportional ── */
   if(d.barpattern){
     var patternBars=d.candles||[];
     if(patternBars.length<2){ctx.restore();return;}
 
-    var ghostDY=d.ghostDY!==undefined?d.ghostDY:-90;
-    var ghostDX=d.ghostDX!==undefined?d.ghostDX:0;
-
-    /* Price range */
     var pmn=Math.min.apply(null,patternBars.map(function(c){return c.l;}));
     var pmx=Math.max.apply(null,patternBars.map(function(c){return c.h;}));
     var prng=pmx-pmn||pmn*.001||.0001;
+    var pricePerPx=co.rng/co.CH;
 
-    /* Anchor to p1 bar screen position — moves with pan/zoom */
-    var anchorX=cpX(d.p1.bi,co);
-    var anchorY=cpY(d.p1.price,co);
-    var gbx=anchorX+ghostDX;
-    var gby=anchorY+ghostDY;
+    /* Offsets in bar units and price units — zoom-independent */
+    var barOff=d.ghostBarOffset!==undefined?d.ghostBarOffset:0;
+    var priceOff=d.ghostPriceOffset!==undefined?d.ghostPriceOffset:0;
 
-    /* Same barW and price scale as live chart = always proportional */
+    /* Ghost X: snapped to the bar column at p1.bi + barOff */
+    var ghostStartBi=d.p1.bi+barOff;
+    var gbx=cpX(ghostStartBi,co);
+
+    /* Ghost Y top: pmx shifted by priceOffset (default: one price-range above p1) */
+    var defaultPriceOff=prng+pricePerPx*10; /* float one range above by default */
+    var effectivePriceOff=(d.ghostPriceOffset!==undefined)?priceOff:defaultPriceOff;
+    var ghostTopPrice=pmx+effectivePriceOff;
+    var gby=cpY(ghostTopPrice,co);
+
     var gw=co.barW;
-    var gh=prng/(co.rng/co.CH);
 
-    function gSY(v){return gby+((pmx-v)/prng)*gh;}
+    function gSY(v){return gby+((ghostTopPrice-v)/pricePerPx);}
 
     ctx.setLineDash([]);
     patternBars.forEach(function(c,ii){
@@ -5788,6 +5786,22 @@ window.addEventListener('load',function(){
   patchRenderChart();
   patchNav();
   addFullscreen();
+
+  /* Expose autoBarPattern from inside IIFE — has direct access to local drawings */
+  window._autoBarPattern=function(){
+    if(!chartCandles||chartCandles.length<10)return;
+    drawings=drawings.filter(function(d){return !d._auto;});
+    var n=Math.min(100,chartCandles.length);
+    var caps=chartCandles.slice(0,n);
+    drawings.unshift({
+      type:'barpattern', barpattern:true, _auto:true, pixelOnly:false,
+      p1:{price:caps[0].h,        bi:0,   x:0,y:0},
+      p2:{price:caps[n-1].l,      bi:n-1, x:0,y:0},
+      candles:caps,
+      ghostBarOffset:0, ghostPriceOffset:0
+    });
+    if(typeof renderChart==='function') renderChart();
+  };
 });
 })();
 </script>
