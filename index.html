@@ -4250,7 +4250,7 @@ function fetchBinanceFallback(sym, tf) {
       if(!allCandleData[sym]) allCandleData[sym]={};
       allCandleData[sym][tf] = candles;
       renderChart();
-      detectCrossovers(candles);
+      autoBarPattern();
       lwChartInstance = true;
       var btn = document.getElementById('azBtn'); if(btn) btn.disabled=false;
       /* Show source label */
@@ -4892,18 +4892,18 @@ function initDrawEvents(){
       for(var gi2=0;gi2<drawings.length;gi2++){
         var dd=drawings[gi2];
         if(!dd.barpattern||dd.pixelOnly||!co.visible||co.visible.length<2)continue;
-        /* Compute ghost box bounds */
+        /* Compute ghost box screen bounds */
         var bi1g=Math.max(0,Math.min(co.visible.length-1,dd.p1.bi-co.si));
         var bi2g=Math.max(0,Math.min(co.visible.length-1,dd.p2.bi-co.si));
-        var gx1=co.W?Math.min(cpX(Math.min(bi1g,bi2g)+co.si,co),cpX(Math.max(bi1g,bi2g)+co.si,co)):0;
-        var gBoxW=Math.abs(cpX(Math.max(bi1g,bi2g)+co.si,co)-cpX(Math.min(bi1g,bi2g)+co.si,co))||60;
-        var ghostDY=dd.ghostDY!==undefined?dd.ghostDY:-80;
+        var srcX1=co.W?(PAD.l+(Math.min(bi1g,bi2g)+0.5)*co.barW):0;
+        var srcX2=co.W?(PAD.l+(Math.max(bi1g,bi2g)+0.5)*co.barW):60;
+        var srcTop=Math.min(cpY(dd.p1.price,co),cpY(dd.p2.price,co));
+        var srcH=Math.abs(cpY(dd.p1.price,co)-cpY(dd.p2.price,co))||60;
+        var ghostDY=dd.ghostDY!==undefined?dd.ghostDY:-90;
         var ghostDX=dd.ghostDX!==undefined?dd.ghostDX:0;
-        var gy1=Math.min(cpY(dd.p1.price,co),cpY(dd.p2.price,co))+ghostDY;
-        var gy2=gy1+Math.abs(cpY(dd.p1.price,co)-cpY(dd.p2.price,co));
-        var gbx=gx1+ghostDX;
-        if(co.x>=gbx&&co.x<=gbx+gBoxW&&co.y>=gy1&&co.y<=gy2){
-          /* Start dragging this ghost */
+        var gbx=srcX1+ghostDX, gby=srcTop+ghostDY;
+        var gboxW=srcX2-srcX1;
+        if(co.x>=gbx&&co.x<=gbx+gboxW&&co.y>=gby&&co.y<=gby+srcH){
           _ghostDrag={idx:gi2,startX:co.x,startY:co.y,origDX:ghostDX,origDY:ghostDY};
           e.preventDefault();
           return;
@@ -5020,7 +5020,12 @@ function initDrawEvents(){
     if(!co||(Math.abs(co.x-drawStart.x)<3&&Math.abs(co.y-drawStart.y)<3)){drawStart=null;return;}
     if(!lockedDraw){
       saveUndo();drawings.push(makeDrawing(drawStart,co));
-      drawStart=null; renderChart();
+      drawStart=null;
+      /* After drawing bar pattern, auto-switch back to cursor */
+      if(activeItem&&activeItem.barpattern){
+        pickItem(GROUPS[0].items[0]);
+      }
+      renderChart();
     } else {
       saveUndo();drawings.push(makeDrawing(drawStart,co));
       drawStart=null; renderChart();
@@ -5404,18 +5409,8 @@ function drawOne(ctx,d,co,prev){
     return;
   }
 
-  /* ── Bar Pattern — captures OHLC shape, draws selection box + golden ghost copy ── */
+  /* ── Bar Pattern — single draggable golden copy, no boundary box ── */
   if(d.barpattern){
-    ctx.setLineDash([4,3]);
-    /* Dashed selection box */
-    ctx.strokeStyle='rgba(155,143,232,.7)'; ctx.lineWidth=1;
-    ctx.strokeRect(x1,Math.min(y1,y2),x2-x1,Math.abs(y2-y1));
-    ctx.fillStyle='rgba(155,143,232,.04)';
-    ctx.fillRect(x1,Math.min(y1,y2),x2-x1,Math.abs(y2-y1));
-    ctx.setLineDash([]);
-    ctx.font='bold 9px DM Mono'; ctx.fillStyle='rgba(155,143,232,.9)'; ctx.textAlign='left';
-    ctx.fillText('BAR PATTERN',x1+4,Math.min(y1,y2)-4);
-
     /* Collect pattern bars from live chart */
     var patternBars=[];
     if(!d.pixelOnly&&co.visible&&co.visible.length>1){
@@ -5423,67 +5418,47 @@ function drawOne(ctx,d,co,prev){
       var bi2e=Math.max(0,Math.min(co.visible.length-1,d.p2.bi-co.si));
       var startB=Math.min(bi1e,bi2e), endB=Math.max(bi1e,bi2e);
       patternBars=co.visible.slice(startB,endB+1);
-      /* Mini replay inside selection box */
-      if(patternBars.length>1){
-        var pmn=Math.min.apply(null,patternBars.map(function(c){return c.l;}));
-        var pmx=Math.max.apply(null,patternBars.map(function(c){return c.h;}));
-        var prng=pmx-pmn||pmn*.001||.0001;
-        var bw=(x2-x1)/patternBars.length;
-        var bh=Math.abs(y2-y1), by=Math.min(y1,y2);
-        patternBars.forEach(function(c,ii){
-          var isUp=c.c>=c.o;
-          var cx2=x1+(ii+0.5)*bw;
-          var scaleY=function(v){return by+((pmx-v)/prng)*bh;};
-          ctx.strokeStyle=isUp?'rgba(38,166,154,.6)':'rgba(239,83,80,.6)'; ctx.lineWidth=1; ctx.setLineDash([]);
-          ctx.beginPath(); ctx.moveTo(cx2,scaleY(c.h)); ctx.lineTo(cx2,scaleY(c.l)); ctx.stroke();
-          var top=scaleY(Math.max(c.o,c.c)), cbh=Math.max(1,scaleY(Math.min(c.o,c.c))-top);
-          ctx.fillStyle=isUp?'rgba(38,166,154,.45)':'rgba(239,83,80,.45)';
-          ctx.fillRect(cx2-bw*.35,top,bw*.7,cbh);
-        });
-        ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(155,143,232,.75)'; ctx.textAlign='right';
-        ctx.fillText(patternBars.length+' bars',x2-3,Math.min(y1,y2)-4);
-      }
     }
+    if(patternBars.length<2){ctx.restore();return;}
 
-    /* ── Golden ghost copy — offset upward by d.ghostDY (default -80px) ── */
-    if(patternBars.length>1){
-      var ghostDY=d.ghostDY!==undefined?d.ghostDY:-80;
-      var ghostDX=d.ghostDX!==undefined?d.ghostDX:0;
-      var pmn2=Math.min.apply(null,patternBars.map(function(c){return c.l;}));
-      var pmx2=Math.max.apply(null,patternBars.map(function(c){return c.h;}));
-      var prng2=pmx2-pmn2||pmn2*.001||.0001;
-      var gw=(x2-x1)/patternBars.length;
-      var gh=Math.abs(y2-y1), gby=Math.min(y1,y2)+ghostDY, gbx=x1+ghostDX;
-      /* Ghost container background */
-      ctx.fillStyle='rgba(201,168,76,.04)';
-      ctx.fillRect(gbx, gby, x2-x1, gh);
-      /* Gold border */
-      ctx.strokeStyle='rgba(201,168,76,.55)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
-      ctx.strokeRect(gbx, gby, x2-x1, gh);
-      ctx.setLineDash([]);
-      /* Connecting dashed line from original to ghost */
-      ctx.strokeStyle='rgba(201,168,76,.25)'; ctx.lineWidth=1; ctx.setLineDash([3,4]);
-      ctx.beginPath(); ctx.moveTo(x1+(x2-x1)/2, Math.min(y1,y2));
-      ctx.lineTo(gbx+(x2-x1)/2, gby+gh); ctx.stroke();
-      ctx.setLineDash([]);
-      /* Ghost candles in gold */
-      patternBars.forEach(function(c,ii){
-        var isUp=c.c>=c.o;
-        var gcx=gbx+(ii+0.5)*gw;
-        var gscaleY=function(v){return gby+((pmx2-v)/prng2)*gh;};
-        ctx.strokeStyle=isUp?'rgba(201,168,76,.9)':'rgba(201,168,76,.6)'; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.moveTo(gcx,gscaleY(c.h)); ctx.lineTo(gcx,gscaleY(c.l)); ctx.stroke();
-        var top2=gscaleY(Math.max(c.o,c.c)), cbh2=Math.max(1,gscaleY(Math.min(c.o,c.c))-top2);
-        ctx.fillStyle=isUp?'rgba(201,168,76,.5)':'rgba(201,168,76,.2)';
-        ctx.fillRect(gcx-gw*.35,top2,gw*.7,cbh2);
-      });
-      /* Ghost label */
-      ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(201,168,76,.8)'; ctx.textAlign='left';
-      ctx.fillText('◈ COPY',gbx+4,gby-3);
-      /* Drag handle icon */
-      ctx.fillStyle='rgba(201,168,76,.5)'; ctx.textAlign='right';
-      ctx.fillText('⠿',gbx+(x2-x1)-3,gby-3);
-    }
+    /* Ghost position — pixel offset from original top-left */
+    var ghostDY=d.ghostDY!==undefined?d.ghostDY:-90;
+    var ghostDX=d.ghostDX!==undefined?d.ghostDX:0;
+
+    /* Source rect bounds (used for drag hit-testing only, not drawn) */
+    var srcW=x2-x1, srcH=Math.abs(y2-y1);
+    var srcTop=Math.min(y1,y2);
+
+    /* Ghost rect */
+    var gbx=x1+ghostDX, gby=srcTop+ghostDY;
+    var gw=srcW/patternBars.length, gh=srcH;
+
+    /* Price range of pattern */
+    var pmn=Math.min.apply(null,patternBars.map(function(c){return c.l;}));
+    var pmx=Math.max.apply(null,patternBars.map(function(c){return c.h;}));
+    var prng=pmx-pmn||pmn*.001||.0001;
+
+    function gScaleY(v){return gby+((pmx-v)/prng)*gh;}
+
+    /* Draw golden candles */
+    ctx.setLineDash([]);
+    patternBars.forEach(function(c,ii){
+      var isUp=c.c>=c.o;
+      var gcx=gbx+(ii+0.5)*gw;
+      ctx.strokeStyle=isUp?'rgba(201,168,76,.95)':'rgba(201,168,76,.55)';
+      ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(gcx,gScaleY(c.h)); ctx.lineTo(gcx,gScaleY(c.l)); ctx.stroke();
+      var top2=gScaleY(Math.max(c.o,c.c)), cbh2=Math.max(1,gScaleY(Math.min(c.o,c.c))-top2);
+      ctx.fillStyle=isUp?'rgba(201,168,76,.55)':'rgba(201,168,76,.18)';
+      ctx.fillRect(gcx-gw*.38,top2,gw*.76,cbh2);
+    });
+
+    /* Subtle label + drag hint */
+    ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(201,168,76,.6)';
+    ctx.textAlign='left'; ctx.fillText('◈ '+patternBars.length+' bars',gbx+3,gby-3);
+    ctx.textAlign='right'; ctx.fillStyle='rgba(201,168,76,.35)';
+    ctx.fillText('⠿',gbx+srcW-3,gby-3);
+
     ctx.restore();return;
   }
 
