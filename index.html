@@ -1494,7 +1494,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
         <li>Liquidity (8 cr)</li>
         <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Opus 4 tools</li>
       </ul>
-      <button class="pc-btn" onclick="startCheckout('starter', this)">Get Started</button>
+      <button class="pc-btn" onclick="startCheckout('starter')">Get Started</button>
     </div>
 
     <!-- PRO — featured -->
@@ -1514,7 +1514,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
         <li>Forex + Stocks data</li>
         <li>Priority queue</li>
       </ul>
-      <button class="pc-btn" onclick="startCheckout('pro', this)">Get Started</button>
+      <button class="pc-btn" onclick="startCheckout('pro')">Get Started</button>
     </div>
 
     <!-- ELITE -->
@@ -1531,7 +1531,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
         <li>Heavy Opus 4 usage</li>
         <li>Priority support</li>
       </ul>
-      <button class="pc-btn" onclick="startCheckout('elite', this)">Get Started</button>
+      <button class="pc-btn" onclick="startCheckout('elite')">Get Started</button>
     </div>
 
     <!-- INSTITUTIONAL -->
@@ -1548,7 +1548,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
         <li>Direct phone support</li>
         <li>99.9% uptime SLA</li>
       </ul>
-      <button class="pc-btn" onclick="startCheckout('institutional', this)">Get Started</button>
+      <button class="pc-btn" onclick="startCheckout('institutional')">Get Started</button>
     </div>
 
   </div>
@@ -6026,26 +6026,14 @@ window.addEventListener('load',function(){
    ══════════════════════════════════════════════════════ */
 
 /* ── Plan checkout ── */
-async function startCheckout(plan, btn) {
-  /* Get a fresh token from the correct Supabase client (sb) initialized in this page */
-  var token = null;
-  try {
-    if (sb && sbReady) {
-      var { data } = await sb.auth.getSession();
-      if (data && data.session) {
-        token = data.session.access_token;
-        /* Keep localStorage in sync */
-        localStorage.setItem('fractal_token', token);
-      }
-    }
-  } catch(e) {}
-  /* Fallback to stored token if Supabase session unavailable */
-  if (!token) token = localStorage.getItem('fractal_token');
+async function startCheckout(plan) {
+  var token = localStorage.getItem('fractal_token');
   if (!token) {
     alert('Please sign in first to subscribe.');
     window.location.href = '/auth';
     return;
   }
+  var btn = event && event.target;
   if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
   try {
     var res = await fetch('/create-checkout', {
