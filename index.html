@@ -4634,8 +4634,9 @@ var measuring  = false;
 var measurePts = [];
 var brushColor = '#c9a84c'; /* default gold — changed by color picker */
 var BRUSH_COLORS = ['#c9a84c','#ef5350','#26a69a','#ffffff'];
-var _ghostDrag = null; /* {idx, startX, startY, origDX, origDY} */
+var _ghostDrag = null; /* {idx, startX, startY, origBarOff, origPriceOff} */
 var _bpClick1  = null; /* first click bar index for two-click bar pattern */
+var _drawDrag  = null; /* {idx, point:'p1'|'p2'|'body', startX, startY, origP1, origP2} */
 
 /* ── Color picker swatch strip — injected below toolbar ── */
 function buildColorPicker(){
@@ -4740,8 +4741,9 @@ function pickItem(item) {
   if(item.redotool)  { doRedo(); return; }
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
 
-  /* Cancel any in-progress bar pattern */
+  /* Cancel any in-progress bar pattern or drawing drag */
   _bpClick1=null;
+  _drawDrag=null;
 
   activeTool=item.id; activeItem=item;
   measuring=false; measurePts=[];
@@ -4880,10 +4882,8 @@ function initDrawEvents(){
     if(e.button!==0)return; /* only left click triggers drawing tools */
     var co=getCoords(e); if(!co)return;
 
-    /* ── Ghost drag — check if clicking inside a bar pattern ghost ── */
-    if(activeItem&&activeItem.id!=='cursor'&&activeItem.id!=='arrow_cur'&&activeItem.id!=='dot'){
-      /* only start ghost drag when in cursor mode — skip */
-    } else {
+    /* ── Ghost drag — click anywhere in the ghost to drag it ── */
+    if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot'){
       for(var gi2=0;gi2<drawings.length;gi2++){
         var dd=drawings[gi2];
         if(!dd.barpattern||dd.pixelOnly||!co.visible||co.visible.length<2)continue;
@@ -4893,20 +4893,20 @@ function initDrawEvents(){
         var pmx3=Math.max.apply(null,caps2.map(function(c){return c.h;}));
         var prng3=pmx3-pmn3||pmn3*.001||.0001;
         var pricePerPxG=co.rng/co.CH;
-        /* Ghost position using bar/price offsets */
         var barOffG=dd.ghostBarOffset!==undefined?dd.ghostBarOffset:0;
-        var priceOffG=dd.ghostPriceOffset!==undefined?dd.ghostPriceOffset:(prng3+pricePerPxG*10);
+        var priceOffG=dd.ghostPriceOffset!==undefined?dd.ghostPriceOffset:(prng3*1.1);
+        /* Ghost screen bounds */
         var gbxG=cpX(dd.p1.bi+barOffG,co);
         var gbyG=cpY(pmx3+priceOffG,co);
         var ghG=prng3/pricePerPxG;
         var gwTotal=caps2.length*co.barW;
-        if(co.x>=gbxG&&co.x<=gbxG+gwTotal&&co.y>=gbyG&&co.y<=gbyG+ghG){
-          var curSnapBi=co.si+Math.max(0,Math.min((co.visible||[]).length-1,
-            Math.round((co.x-PAD.l)/co.barW-0.5)));
+        /* Generous hit area: full width + 8px padding, full height */
+        if(co.x>=gbxG-8&&co.x<=gbxG+gwTotal+8&&co.y>=gbyG-20&&co.y<=gbyG+ghG+20){
           _ghostDrag={
-            idx:gi2, startX:co.x, startY:co.y,
-            anchorBi:curSnapBi,
-            origPriceOff:dd.ghostPriceOffset!==undefined?dd.ghostPriceOffset:(prng3+pricePerPxG*10)
+            idx:gi2,
+            startX:co.x, startY:co.y,
+            origBarOff:dd.ghostBarOffset||0,
+            origPriceOff:priceOffG
           };
           e.preventDefault();
           return;
@@ -4914,8 +4914,72 @@ function initDrawEvents(){
       }
     }
 
-    /* Brush tool */
-    if(activeItem&&(activeItem.brush||activeItem.erbrush)){
+    /* ── Universal drawing drag — click near any drawing to move it ── */
+    if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot'){
+      if(!co.pixelOnly&&co.visible&&co.visible.length>1){
+        var HIT=14; /* px proximity threshold */
+        for(var ddi=0;ddi<drawings.length;ddi++){
+          var ddd=drawings[ddi];
+          if(ddd.barpattern)continue; /* handled by ghost drag above */
+          if(ddd.type==='brush')continue; /* skip brush */
+          var dp1x,dp1y,dp2x,dp2y;
+          if(ddd.type==='hline'){
+            var hly=cpY(ddd.price,co);
+            if(Math.abs(co.y-hly)<HIT){
+              _drawDrag={idx:ddi,point:'body',startX:co.x,startY:co.y,
+                origP1:{price:ddd.price,bi:ddd.bi||0}};
+              e.preventDefault(); return;
+            }
+            continue;
+          }
+          if(ddd.type==='vline'){
+            var vlx=cpX(ddd.bi,co);
+            if(Math.abs(co.x-vlx)<HIT){
+              _drawDrag={idx:ddi,point:'body',startX:co.x,startY:co.y,
+                origP1:{bi:ddd.bi,price:0}};
+              e.preventDefault(); return;
+            }
+            continue;
+          }
+          if(ddd.type==='arrowmark'||ddd.type==='text'||ddd.type==='callout'){
+            dp1x=cpX(ddd.bi,co); dp1y=cpY(ddd.price,co);
+            if(Math.sqrt((co.x-dp1x)*(co.x-dp1x)+(co.y-dp1y)*(co.y-dp1y))<HIT+4){
+              _drawDrag={idx:ddi,point:'body',startX:co.x,startY:co.y,
+                origP1:{bi:ddd.bi,price:ddd.price}};
+              e.preventDefault(); return;
+            }
+            continue;
+          }
+          if(!ddd.p1||!ddd.p2)continue;
+          dp1x=cpX(ddd.p1.bi,co); dp1y=cpY(ddd.p1.price,co);
+          dp2x=cpX(ddd.p2.bi,co); dp2y=cpY(ddd.p2.price,co);
+          var d1=Math.sqrt((co.x-dp1x)*(co.x-dp1x)+(co.y-dp1y)*(co.y-dp1y));
+          var d2=Math.sqrt((co.x-dp2x)*(co.x-dp2x)+(co.y-dp2y)*(co.y-dp2y));
+          if(d1<HIT){
+            _drawDrag={idx:ddi,point:'p1',startX:co.x,startY:co.y,
+              origP1:{bi:ddd.p1.bi,price:ddd.p1.price},
+              origP2:{bi:ddd.p2.bi,price:ddd.p2.price}};
+            e.preventDefault(); return;
+          }
+          if(d2<HIT){
+            _drawDrag={idx:ddi,point:'p2',startX:co.x,startY:co.y,
+              origP1:{bi:ddd.p1.bi,price:ddd.p1.price},
+              origP2:{bi:ddd.p2.bi,price:ddd.p2.price}};
+            e.preventDefault(); return;
+          }
+          /* Body: click on or near the line/shape */
+          var ldx=dp2x-dp1x,ldy=dp2y-dp1y,lLen=ldx*ldx+ldy*ldy;
+          var lt=lLen?Math.max(0,Math.min(1,((co.x-dp1x)*ldx+(co.y-dp1y)*ldy)/lLen)):0;
+          var lDist=Math.sqrt((co.x-dp1x-lt*ldx)*(co.x-dp1x-lt*ldx)+(co.y-dp1y-lt*ldy)*(co.y-dp1y-lt*ldy));
+          if(lDist<HIT){
+            _drawDrag={idx:ddi,point:'body',startX:co.x,startY:co.y,
+              origP1:{bi:ddd.p1.bi,price:ddd.p1.price},
+              origP2:{bi:ddd.p2.bi,price:ddd.p2.price}};
+            e.preventDefault(); return;
+          }
+        }
+      }
+    }
       isBrushing=true; brushPath=[{x:co.x,y:co.y}]; return;
     }
 
@@ -4981,13 +5045,16 @@ function initDrawEvents(){
         if(e2>s&&chartCandles&&chartCandles.length>s){
           var caps=chartCandles.slice(Math.max(0,s),Math.min(chartCandles.length,e2+1));
           if(caps.length>1){
+            var bpPmx=Math.max.apply(null,caps.map(function(c){return c.h;}));
+            var bpPmn=Math.min.apply(null,caps.map(function(c){return c.l;}));
             saveUndo();
             drawings.push({
               type:'barpattern', barpattern:true, pixelOnly:false,
-              p1:{price:caps[0].h, bi:s, x:0, y:0},
-              p2:{price:caps[caps.length-1].l, bi:e2, x:0, y:0},
+              p1:{price:caps[0].h,             bi:s,  x:0,y:0},
+              p2:{price:caps[caps.length-1].l, bi:e2, x:0,y:0},
               candles:caps,
-              ghostDX:0, ghostDY:-(Math.round(co.CH*0.35)) /* 35% of chart height above anchor */
+              ghostBarOffset:0,
+              ghostPriceOffset:(bpPmx-bpPmn)*1.1
             });
           }
         }
@@ -5004,19 +5071,47 @@ function initDrawEvents(){
   var _rafPending=false;
   cv.addEventListener('mousemove',function(e){
     hoverPoint=getCoords(e);
-    /* Ghost drag — snap to bars */
+    /* Ghost drag — free XY movement */
     if(_ghostDrag!==null&&hoverPoint&&!hoverPoint.pixelOnly){
-      /* Snap cursor X to nearest bar */
-      var curBi=Math.max(0,Math.min((hoverPoint.visible||[]).length-1,
-        Math.round((hoverPoint.x-PAD.l)/hoverPoint.barW-0.5)));
-      var curBiAbs=hoverPoint.si+curBi;
-      /* Bar offset from anchor p1 */
-      var barOff=curBiAbs - _ghostDrag.anchorBi;
-      /* Price offset from Y delta (price units) */
+      var dxPx=hoverPoint.x-_ghostDrag.startX;
       var dyPx=hoverPoint.y-_ghostDrag.startY;
-      var priceOff=_ghostDrag.origPriceOff - dyPx*(hoverPoint.rng/hoverPoint.CH);
-      drawings[_ghostDrag.idx].ghostBarOffset=barOff;
-      drawings[_ghostDrag.idx].ghostPriceOffset=priceOff;
+      var barDelta=Math.round(dxPx/hoverPoint.barW);
+      drawings[_ghostDrag.idx].ghostBarOffset=_ghostDrag.origBarOff+barDelta;
+      var pricePerPx=hoverPoint.rng/hoverPoint.CH;
+      drawings[_ghostDrag.idx].ghostPriceOffset=_ghostDrag.origPriceOff - dyPx*pricePerPx;
+      if(!_rafPending){ _rafPending=true; requestAnimationFrame(function(){ renderChart(); _rafPending=false; }); }
+      return;
+    }
+    /* Universal drawing drag */
+    if(_drawDrag!==null&&hoverPoint&&!hoverPoint.pixelOnly){
+      var dxPx2=hoverPoint.x-_drawDrag.startX;
+      var dyPx2=hoverPoint.y-_drawDrag.startY;
+      var pricePerPx2=hoverPoint.rng/hoverPoint.CH;
+      var barDelta2=Math.round(dxPx2/hoverPoint.barW);
+      var priceDelta2=dyPx2*pricePerPx2;
+      var ddd2=drawings[_drawDrag.idx];
+      if(!ddd2){_drawDrag=null;return;}
+      if(ddd2.type==='hline'){
+        ddd2.price=_drawDrag.origP1.price - priceDelta2;
+      } else if(ddd2.type==='vline'){
+        ddd2.bi=(_drawDrag.origP1.bi+barDelta2);
+      } else if(ddd2.type==='arrowmark'||ddd2.type==='text'||ddd2.type==='callout'){
+        ddd2.bi=_drawDrag.origP1.bi+barDelta2;
+        ddd2.price=_drawDrag.origP1.price - priceDelta2;
+      } else if(ddd2.p1&&ddd2.p2){
+        if(_drawDrag.point==='p1'){
+          ddd2.p1={bi:_drawDrag.origP1.bi+barDelta2, price:_drawDrag.origP1.price-priceDelta2,
+            x:ddd2.p1.x, y:ddd2.p1.y};
+        } else if(_drawDrag.point==='p2'){
+          ddd2.p2={bi:_drawDrag.origP2.bi+barDelta2, price:_drawDrag.origP2.price-priceDelta2,
+            x:ddd2.p2.x, y:ddd2.p2.y};
+        } else { /* body — move both */
+          ddd2.p1={bi:_drawDrag.origP1.bi+barDelta2, price:_drawDrag.origP1.price-priceDelta2,
+            x:ddd2.p1.x, y:ddd2.p1.y};
+          ddd2.p2={bi:_drawDrag.origP2.bi+barDelta2, price:_drawDrag.origP2.price-priceDelta2,
+            x:ddd2.p2.x, y:ddd2.p2.y};
+        }
+      }
       if(!_rafPending){ _rafPending=true; requestAnimationFrame(function(){ renderChart(); _rafPending=false; }); }
       return;
     }
@@ -5036,6 +5131,8 @@ function initDrawEvents(){
   document.addEventListener('mouseup',function(e){
     /* Release ghost drag */
     if(_ghostDrag!==null){ _ghostDrag=null; renderChart(); return; }
+    /* Release universal drawing drag */
+    if(_drawDrag!==null){ _drawDrag=null; renderChart(); return; }
     if(isBrushing){
       isBrushing=false;
       if(brushPath.length>1){
@@ -5792,13 +5889,18 @@ window.addEventListener('load',function(){
     if(!chartCandles||chartCandles.length<10)return;
     drawings=drawings.filter(function(d){return !d._auto;});
     var n=Math.min(100,chartCandles.length);
-    var caps=chartCandles.slice(0,n);
+    var startBi=chartCandles.length-n;  /* last 100 bars = most recent */
+    var caps=chartCandles.slice(startBi);
+    var pmx=Math.max.apply(null,caps.map(function(c){return c.h;}));
+    var pmn=Math.min.apply(null,caps.map(function(c){return c.l;}));
+    var prng=pmx-pmn||1;
     drawings.unshift({
       type:'barpattern', barpattern:true, _auto:true, pixelOnly:false,
-      p1:{price:caps[0].h,        bi:0,   x:0,y:0},
-      p2:{price:caps[n-1].l,      bi:n-1, x:0,y:0},
+      p1:{price:caps[0].h, bi:startBi,   x:0,y:0},
+      p2:{price:caps[n-1].l, bi:startBi+n-1, x:0,y:0},
       candles:caps,
-      ghostBarOffset:0, ghostPriceOffset:0
+      ghostBarOffset:0,
+      ghostPriceOffset:prng*1.1  /* float one full range above pattern by default */
     });
     if(typeof renderChart==='function') renderChart();
   };
