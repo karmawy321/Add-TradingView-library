@@ -4907,7 +4907,7 @@ function initDrawEvents(){
           _ghostDrag={
             idx:gi2,
             startX:co.x, startY:co.y,
-            origAnchorBi:anchorBiG,
+            origPixelX:gbxG,         /* ghost left edge in pixels at drag start */
             origPriceOff:priceOffG
           };
           e.preventDefault();
@@ -5077,14 +5077,11 @@ function initDrawEvents(){
   var _rafPending=false;
   cv.addEventListener('mousemove',function(e){
     hoverPoint=getCoords(e);
-    /* Ghost drag — X snaps to bar grid, Y is free */
+    /* Ghost drag — X in pixels → bar index, Y free */
     if(_ghostDrag!==null&&hoverPoint&&!hoverPoint.pixelOnly){
-      /* X: how many bars has cursor moved since mousedown */
       var dxPx=hoverPoint.x-_ghostDrag.startX;
-      var barDelta=Math.round(dxPx/hoverPoint.barW);
-      console.log('[ghost] dxPx='+dxPx.toFixed(1)+' barW='+hoverPoint.barW.toFixed(2)+' barDelta='+barDelta+' anchorBi='+(_ghostDrag.origAnchorBi+barDelta));
-      drawings[_ghostDrag.idx].ghostAnchorBi=_ghostDrag.origAnchorBi+barDelta;
-      /* Y: free pixel → price */
+      var newGbx=_ghostDrag.origPixelX+dxPx;
+      drawings[_ghostDrag.idx].ghostAnchorBi=Math.round((newGbx-PAD.l)/hoverPoint.barW)+hoverPoint.si;
       var dyPx=hoverPoint.y-_ghostDrag.startY;
       drawings[_ghostDrag.idx].ghostPriceOffset=_ghostDrag.origPriceOff-(dyPx*(hoverPoint.rng/hoverPoint.CH));
       if(!_rafPending){ _rafPending=true; requestAnimationFrame(function(){ renderChart(); _rafPending=false; }); }
@@ -5655,7 +5652,6 @@ function drawOne(ctx,d,co,prev){
     var ghostStartBi=d.ghostAnchorBi!==undefined
       ? d.ghostAnchorBi
       : Math.round(d.p1.bi+(d.ghostBarOffset||0));
-    console.log('[render] ghostAnchorBi='+d.ghostAnchorBi+' ghostStartBi='+ghostStartBi+' si='+co.si+' gbx='+( PAD.l+(ghostStartBi-co.si)*co.barW).toFixed(1));
     var gbx=PAD.l+(ghostStartBi-co.si)*co.barW;
 
     /* Ghost Y top: pmx shifted by priceOffset (default: one price-range above p1) */
