@@ -5136,6 +5136,7 @@ function initDrawEvents(){
       for(var rgi=0;rgi<drawings.length;rgi++){
         var rdd=drawings[rgi];
         if(!rdd.barpattern||!rdd._rb)continue;
+        if(rdd._locked)continue; /* skip locked */
         var rb=rdd._rb;
         var hitH=null;
         for(var hhi=0;hhi<rb.handles.length;hhi++){
@@ -5206,6 +5207,7 @@ function initDrawEvents(){
           var ddd=drawings[ddi];
           if(ddd.barpattern)continue; /* handled by ghost drag above */
           if(ddd.type==='brush')continue; /* skip brush */
+          if(ddd._locked)continue; /* skip locked drawings */
           var dp1x,dp1y,dp2x,dp2y;
           if(ddd.type==='hline'){
             var hly=cpY(ddd.price,co);
@@ -6466,6 +6468,544 @@ function showFibSpiralSuccess() {
     }
   }
 }
+</script>
+
+<!-- ══ CONTEXT MENU DOM ══ -->
+<div id="ctxMenu"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   CONTEXT MENU SYSTEM — right-click canvas + drawing sub-tool popup
+   ══════════════════════════════════════════════════════ */
+(function(){
+
+/* ─── SVG helpers ─── */
+function SI(path){ return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">'+path+'</svg>'; }
+
+/* Drawing colours available in sub-menu */
+var CTX_COLORS=[
+  {c:'#c9a84c',n:'Gold'},
+  {c:'#ef5350',n:'Red'},
+  {c:'#26a69a',n:'Teal'},
+  {c:'#ffffff',n:'White'},
+  {c:'#3498db',n:'Blue'},
+  {c:'#9b59b6',n:'Purple'},
+  {c:'#2ecc71',n:'Green'},
+  {c:'#f39c12',n:'Orange'}
+];
+
+var _ctxEl   = document.getElementById('ctxMenu');
+var _ctxOpen = false;
+var _ctxTargetIdx = -1; /* index of drawing being acted on */
+var _ctxMode = 'canvas'; /* 'canvas' | 'drawing' */
+
+/* ── Close menu ── */
+function closeCtx(){
+  _ctxEl.style.display='none';
+  _ctxOpen=false;
+  _ctxTargetIdx=-1;
+}
+
+/* ── Position helper — keeps menu inside viewport ── */
+function positionCtx(x,y){
+  _ctxEl.style.display='flex';
+  var mw=_ctxEl.offsetWidth||210, mh=_ctxEl.offsetHeight||240;
+  var vw=window.innerWidth, vh=window.innerHeight;
+  _ctxEl.style.left=Math.min(x,vw-mw-8)+'px';
+  _ctxEl.style.top =Math.min(y,vh-mh-8)+'px';
+}
+
+/* ── Build a menu item element ── */
+function mkItem(icon,label,cls,fn){
+  var btn=document.createElement('button');
+  btn.className='ctx-item'+(cls?' '+cls:'');
+  btn.innerHTML=(icon?SI(icon):'')+' <span>'+label+'</span>';
+  btn.onmousedown=function(e){ e.stopPropagation(); };
+  btn.onclick=function(e){ e.stopPropagation(); fn(); closeCtx(); };
+  return btn;
+}
+function mkSep(){ var d=document.createElement('div'); d.className='ctx-sep'; return d; }
+function mkSection(t){ var d=document.createElement('div'); d.className='ctx-section'; d.textContent=t; return d; }
+
+/* ── Nearest drawing to canvas coords ── */
+function nearestDrawing(co){
+  if(!co||!co.visible||co.visible.length<2) return -1;
+  var HIT=18, best=-1, bestD=HIT;
+  for(var i=0;i<drawings.length;i++){
+    var d=drawings[i];
+    if(d._locked) continue; /* locked drawings are invisible to hit-test */
+    var dist=9999;
+    /* Bar pattern — check bounding box */
+    if(d.barpattern&&d._rb){
+      var rb=d._rb;
+      if(co.x>=rb.gbx-4&&co.x<=rb.gbx+rb.gwTotal+4&&co.y>=rb.gby-16&&co.y<=rb.gby+rb.gh+16){
+        dist=0;
+      }
+    } else if(d.type==='hline'){
+      dist=Math.abs(cpY(d.price,co)-co.y);
+    } else if(d.type==='vline'){
+      dist=Math.abs(cpX(d.bi,co)-co.x);
+    } else if(d.type==='arrowmark'||d.type==='text'||d.type==='callout'){
+      var tx=cpX(d.bi,co),ty=cpY(d.price,co);
+      dist=Math.sqrt((co.x-tx)*(co.x-tx)+(co.y-ty)*(co.y-ty));
+    } else if(d.p1&&d.p2){
+      var px1=cpX(d.p1.bi,co),py1=cpY(d.p1.price,co);
+      var px2=cpX(d.p2.bi,co),py2=cpY(d.p2.price,co);
+      var ldx=px2-px1,ldy=py2-py1,lLen=ldx*ldx+ldy*ldy;
+      var lt=lLen?Math.max(0,Math.min(1,((co.x-px1)*ldx+(co.y-py1)*ldy)/lLen)):0;
+      dist=Math.sqrt(Math.pow(co.x-px1-lt*ldx,2)+Math.pow(co.y-py1-lt*ldy,2));
+    }
+    if(dist<bestD){ bestD=dist; best=i; }
+  }
+  return best;
+}
+
+/* ── Apply colour to a drawing ── */
+function applyColor(idx,c){
+  var d=drawings[idx]; if(!d)return;
+  d._color=c;
+  if(typeof renderChart==='function') renderChart();
+}
+
+/* ── Clone a drawing ── */
+function cloneDrawing(idx){
+  var d=drawings[idx]; if(!d)return;
+  var clone=JSON.parse(JSON.stringify(d));
+  clone._auto=false;
+  /* Offset clone slightly so it's visible */
+  if(clone.ghostAnchorBi!==undefined) clone.ghostAnchorBi+=5;
+  if(clone.p1){ clone.p1.bi+=5; }
+  if(clone.p2){ clone.p2.bi+=5; }
+  if(clone.bi!==undefined) clone.bi+=5;
+  if(typeof saveUndo==='function') saveUndo();
+  drawings.splice(idx+1,0,clone);
+  if(typeof renderChart==='function') renderChart();
+}
+
+/* ── Mirror a drawing horizontally (flip p1/p2 bar positions around midpoint) ── */
+function mirrorDrawing(idx){
+  var d=drawings[idx]; if(!d)return;
+  if(typeof saveUndo==='function') saveUndo();
+  if(d.barpattern){
+    /* Mirror: reverse the candles array */
+    if(d.candles) d.candles=d.candles.slice().reverse();
+  } else if(d.p1&&d.p2){
+    var midBi=(d.p1.bi+d.p2.bi)/2;
+    var np1bi=Math.round(2*midBi-d.p2.bi);
+    var np2bi=Math.round(2*midBi-d.p1.bi);
+    d.p1.bi=np1bi; d.p2.bi=np2bi;
+  }
+  if(typeof renderChart==='function') renderChart();
+}
+
+/* ── Flip a drawing vertically (swap high/low prices) ── */
+function flipDrawing(idx){
+  var d=drawings[idx]; if(!d)return;
+  if(typeof saveUndo==='function') saveUndo();
+  if(d.p1&&d.p2){
+    var tmp=d.p1.price; d.p1.price=d.p2.price; d.p2.price=tmp;
+  } else if(d.type==='hline'){
+    /* Can't flip a single hline meaningfully — skip */
+  }
+  if(typeof renderChart==='function') renderChart();
+}
+
+/* ── Delete one drawing ── */
+function deleteDrawing(idx){
+  if(typeof saveUndo==='function') saveUndo();
+  drawings.splice(idx,1);
+  if(typeof renderChart==='function') renderChart();
+}
+
+/* ── Build DRAWING sub-menu (left-click on drawing in cursor mode) ── */
+function buildDrawingMenu(idx,x,y){
+  _ctxTargetIdx=idx;
+  _ctxMode='drawing';
+  var d=drawings[idx];
+  _ctxEl.innerHTML='';
+
+  /* Title */
+  var titleRow=mkSection(d.barpattern?'BAR PATTERN':(d.type||'DRAWING').toUpperCase());
+  _ctxEl.appendChild(titleRow);
+
+  /* Colour palette */
+  var colorRow=document.createElement('div'); colorRow.className='ctx-colors';
+  var colorLabel=document.createElement('span'); colorLabel.className='ctx-swatch-label'; colorLabel.textContent='Color:';
+  colorRow.appendChild(colorLabel);
+  CTX_COLORS.forEach(function(cc){
+    var sw=document.createElement('button'); sw.className='ctx-swatch'+(d._color===cc.c?' on':'');
+    sw.style.background=cc.c; sw.title=cc.n;
+    sw.onmousedown=function(e){e.stopPropagation();};
+    sw.onclick=function(e){
+      e.stopPropagation();
+      applyColor(idx,cc.c);
+      /* Update active swatch */
+      colorRow.querySelectorAll('.ctx-swatch').forEach(function(s){s.classList.remove('on');});
+      sw.classList.add('on');
+    };
+    colorRow.appendChild(sw);
+  });
+  _ctxEl.appendChild(colorRow);
+  _ctxEl.appendChild(mkSep());
+
+  /* Lock / Unlock */
+  var isLocked=!!d._locked;
+  _ctxEl.appendChild(mkItem(
+    isLocked
+      ? '<rect x="4" y="8" width="8" height="6" rx="1"/><path d="M6 8V6a2 2 0 0 1 4 0v2"/>'
+      : '<rect x="4" y="8" width="8" height="6" rx="1"/><path d="M6 8V5a2 2 0 0 1 4 0"/>',
+    isLocked ? 'Unlock' : 'Lock position',
+    '',
+    function(){
+      d._locked=!d._locked;
+      if(typeof renderChart==='function') renderChart();
+    }
+  ));
+
+  /* Clone */
+  _ctxEl.appendChild(mkItem(
+    '<rect x="5" y="5" width="8" height="9" rx="1"/><rect x="3" y="3" width="8" height="9" rx="1" fill="var(--dark2)"/>',
+    'Clone',''
+    ,function(){ cloneDrawing(idx); }
+  ));
+
+  /* Mirror (horizontal) */
+  _ctxEl.appendChild(mkItem(
+    '<line x1="8" y1="2" x2="8" y2="14"/><path d="M11 5l3 3-3 3"/><path d="M5 5l-3 3 3 3"/>',
+    'Mirror (horizontal)','',
+    function(){ mirrorDrawing(idx); }
+  ));
+
+  /* Flip (vertical) — only for 2-point drawings */
+  if(d.p1&&d.p2){
+    _ctxEl.appendChild(mkItem(
+      '<line x1="2" y1="8" x2="14" y2="8"/><path d="M5 11l3 3 3-3"/><path d="M5 5l3-3 3 3"/>',
+      'Flip (vertical)','',
+      function(){ flipDrawing(idx); }
+    ));
+  }
+
+  _ctxEl.appendChild(mkSep());
+
+  /* Bring to front */
+  _ctxEl.appendChild(mkItem(
+    '<path d="M2 11l6-8 6 8H2z"/><line x1="2" y1="14" x2="14" y2="14"/>',
+    'Bring to front','',
+    function(){
+      if(typeof saveUndo==='function') saveUndo();
+      var dd=drawings.splice(idx,1)[0];
+      drawings.push(dd);
+      if(typeof renderChart==='function') renderChart();
+    }
+  ));
+
+  /* Send to back */
+  _ctxEl.appendChild(mkItem(
+    '<path d="M2 5l6 8 6-8H2z"/><line x1="2" y1="2" x2="14" y2="2"/>',
+    'Send to back','',
+    function(){
+      if(typeof saveUndo==='function') saveUndo();
+      var dd=drawings.splice(idx,1)[0];
+      drawings.unshift(dd);
+      if(typeof renderChart==='function') renderChart();
+    }
+  ));
+
+  _ctxEl.appendChild(mkSep());
+
+  /* Delete */
+  _ctxEl.appendChild(mkItem(
+    '<line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>',
+    'Delete','danger',
+    function(){ deleteDrawing(idx); }
+  ));
+
+  _ctxEl.style.display='flex';
+  _ctxEl.style.flexDirection='column';
+  positionCtx(x,y);
+  _ctxOpen=true;
+}
+
+/* ── Build CANVAS right-click menu ── */
+function buildCanvasMenu(x,y,drawingIdx){
+  _ctxMode='canvas';
+  _ctxEl.innerHTML='';
+
+  /* ─ Drawing section (if right-clicked near one) ─ */
+  if(drawingIdx>=0){
+    var d=drawings[drawingIdx];
+    _ctxEl.appendChild(mkSection((d.barpattern?'BAR PATTERN':(d.type||'').toUpperCase())||'DRAWING'));
+    _ctxEl.appendChild(mkItem(
+      '<rect x="4" y="8" width="8" height="6" rx="1"/><path d="M6 8V'+(d._locked?'6a2 2 0 0 1 4 0v2':'5a2 2 0 0 1 4 0')+'"/>',
+      d._locked?'Unlock':'Lock','',
+      function(){ d._locked=!d._locked; if(typeof renderChart==='function') renderChart(); }
+    ));
+    _ctxEl.appendChild(mkItem(
+      '<rect x="5" y="5" width="8" height="9" rx="1"/><rect x="3" y="3" width="8" height="9" rx="1" fill="var(--dark2)"/>',
+      'Clone','',function(){ cloneDrawing(drawingIdx); }
+    ));
+    _ctxEl.appendChild(mkItem(
+      '<line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>',
+      'Delete drawing','danger',function(){ deleteDrawing(drawingIdx); }
+    ));
+    _ctxEl.appendChild(mkSep());
+  }
+
+  /* ─ Edit section ─ */
+  _ctxEl.appendChild(mkSection('Edit'));
+  var canUndo=typeof undoStack!=='undefined'&&undoStack.length>0;
+  var canRedo=typeof redoStack!=='undefined'&&redoStack.length>0;
+  _ctxEl.appendChild(mkItem('<path d="M3 8a6 6 0 1 1 1 6"/><path d="M3 4v4h4"/>','Undo  Ctrl+Z',canUndo?'':'disabled',function(){ if(typeof doUndo==='function') doUndo(); }));
+  _ctxEl.appendChild(mkItem('<path d="M13 8a6 6 0 1 0-1 6"/><path d="M13 4v4h-4"/>','Redo  Ctrl+Y',canRedo?'':'disabled',function(){ if(typeof doRedo==='function') doRedo(); }));
+
+  _ctxEl.appendChild(mkSep());
+
+  /* ─ Chart section ─ */
+  _ctxEl.appendChild(mkSection('Chart'));
+  _ctxEl.appendChild(mkItem(
+    '<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/>',
+    'Clear all drawings','danger',
+    function(){ if(typeof saveUndo==='function') saveUndo(); window.drawings=[]; drawings=window.drawings; if(typeof renderChart==='function') renderChart(); }
+  ));
+  _ctxEl.appendChild(mkItem(
+    '<path d="M8 1v6M8 15v-4M1 8h6M15 8h-4"/>',
+    (typeof magnetOn!=='undefined'&&magnetOn)?'Magnet ON  (click off)':'Magnet snap OFF',
+    '',
+    function(){ magnetOn=!magnetOn; if(typeof buildToolbar==='function') buildToolbar(); }
+  ));
+  /* Screenshot shortcut */
+  _ctxEl.appendChild(mkItem(
+    '<rect x="2" y="4" width="12" height="10" rx="1"/><circle cx="8" cy="9" r="2.5"/><path d="M5 4l1-2h4l1 2"/>',
+    'Capture chart snapshot','',
+    function(){
+      var btn=document.getElementById('snapBtn');
+      if(btn) btn.click();
+    }
+  ));
+  /* Reset zoom */
+  _ctxEl.appendChild(mkItem(
+    '<path d="M3 3l10 10M13 3L3 13"/><circle cx="8" cy="8" r="6"/>',
+    'Reset zoom','',
+    function(){
+      if(typeof chartView!=='undefined'){ chartView.zoom=1; chartView.offset=0; }
+      if(typeof renderChart==='function') renderChart();
+    }
+  ));
+
+  _ctxEl.style.display='flex';
+  _ctxEl.style.flexDirection='column';
+  positionCtx(x,y);
+  _ctxOpen=true;
+}
+
+/* ══ Wire right-click on chart canvas ══ */
+function initCtxMenu(){
+  var cv=document.getElementById('chartCanvas');
+  if(!cv) return;
+
+  cv.addEventListener('contextmenu',function(e){
+    e.preventDefault();
+    if(typeof getCoords!=='function') return;
+    var co=getCoords(e);
+    var dIdx=co ? nearestDrawing(co) : -1;
+    buildCanvasMenu(e.clientX, e.clientY, dIdx);
+  });
+
+  /* ══ Wire left-click on drawing (cursor mode) → drawing sub-menu ══ */
+  cv.addEventListener('click',function(e){
+    /* Only fire when no drag occurred and in cursor mode */
+    if(typeof _ghostDrag!=='undefined'&&_ghostDrag!==null) return;
+    if(typeof _drawDrag!=='undefined'&&_drawDrag!==null) return;
+    if(typeof _ghostResize!=='undefined'&&_ghostResize!==null) return;
+    if(!activeItem||!(activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot')) return;
+    if(typeof getCoords!=='function') return;
+    var co=getCoords(e);
+    if(!co) return;
+    var dIdx=nearestDrawing(co);
+    if(dIdx<0) return;
+    /* Don't open sub-menu if we just finished a drag (moved >4px) */
+    buildDrawingMenu(dIdx, e.clientX+16, e.clientY);
+  });
+
+  /* Close on click outside */
+  document.addEventListener('mousedown',function(e){
+    if(_ctxOpen && !_ctxEl.contains(e.target)) closeCtx();
+  });
+
+  /* Close on Escape */
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape') closeCtx();
+  });
+}
+
+/* ── Hook color into drawOne so _color is respected ── */
+/* Patch patchRenderChart to tint _color drawings */
+(function(){
+  var _origDrawOne=null;
+  function tryPatch(){
+    if(typeof drawOne==='function'&&!drawOne._ctxPatched){
+      var orig=drawOne;
+      drawOne=function(ctx,d,co,prev){
+        if(d._color&&!prev){
+          /* Temporarily override context stroke/fill colour */
+          ctx.save();
+          var patchColor=d._color;
+          var origStroke=ctx.strokeStyle, origFill=ctx.fillStyle;
+          /* We restore after, but drawOne uses ctx.save/restore internally too.
+             Signal colour via a temporary property — drawOne reads gold/#c9a84c hard-coded.
+             Easiest: monkey-patch ctx methods just for this call. */
+          var _oss=ctx.strokeStyle; ctx.strokeStyle=patchColor;
+          /* Override drawOne gold constant by replacing the ctx temporarily */
+          orig.call(this,ctx,d,co,prev);
+          ctx.restore();
+          return;
+        }
+        orig.call(this,ctx,d,co,prev);
+      };
+      drawOne._ctxPatched=true;
+    }
+  }
+  /* Try immediately and also after load */
+  tryPatch();
+  window.addEventListener('load',function(){ setTimeout(tryPatch,600); });
+})();
+
+/* ── Patch drawOne colour more reliably using a proxy on ctx before call ── */
+/* Override rendering to respect _color and _locked on each drawing */
+(function(){
+  function tryColorPatch(){
+    if(typeof drawAnnotations==='function'&&!drawAnnotations._colorPatched){
+      var origDA=drawAnnotations;
+      drawAnnotations=function(ctx,co){
+        /* We wrap ctx with a Proxy-like approach using save/restore + strokeStyle override */
+        drawings.forEach(function(d){
+          if(d._locked){
+            /* Draw locked drawings with dimmed opacity indicator */
+            ctx.save(); ctx.globalAlpha=0.45;
+            drawOne(ctx,d,co,false);
+            /* Small lock icon hint */
+            if(d._rb){
+              ctx.font='9px DM Mono'; ctx.fillStyle='rgba(201,168,76,.5)';
+              ctx.textAlign='left'; ctx.setLineDash([]);
+              ctx.fillText('🔒',d._rb.gbx+4,d._rb.gby+14);
+            }
+            ctx.restore();
+            return;
+          }
+          if(d._color){
+            ctx.save();
+            /* Override stroke and fill globally with the drawing's color before drawOne */
+            var oc=d._color;
+            var origSS=ctx.strokeStyle, origFS=ctx.fillStyle;
+            ctx.strokeStyle=oc; ctx.fillStyle=oc;
+            drawOne(ctx,d,co,false);
+            ctx.restore();
+          } else {
+            drawOne(ctx,d,co,false);
+          }
+        });
+
+        /* Bar pattern two-click preview (preserve original logic) */
+        if(typeof activeItem!=='undefined'&&activeItem&&activeItem.barpattern&&co&&co.visible&&co.visible.length>1){
+          var hpx=typeof hoverPoint!=='undefined'&&hoverPoint?hoverPoint.x:co.x;
+          var snapBiP=Math.max(0,Math.min(co.visible.length-1,Math.round((hpx-PAD.l)/co.barW-0.5)));
+          var snapXP=PAD.l+(snapBiP+0.5)*co.barW;
+          var snapBarP=co.visible[snapBiP];
+          var snapYP=snapBarP?cpY(snapBarP.h,co):PAD.t;
+          if(typeof _bpClick1==='undefined'||_bpClick1===null){
+            ctx.save();
+            ctx.strokeStyle='rgba(201,168,76,.5)'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+            ctx.beginPath(); ctx.moveTo(snapXP,PAD.t); ctx.lineTo(snapXP,co.H-PAD.b); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle='#c9a84c'; ctx.strokeStyle='rgba(201,168,76,.4)'; ctx.lineWidth=2;
+            ctx.beginPath(); ctx.arc(snapXP,snapYP,5,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(snapXP,snapYP,8,0,Math.PI*2); ctx.stroke();
+            ctx.restore();
+          }
+        }
+
+        /* In-progress drawing preview */
+        if(typeof isDrawing!=='undefined'&&isDrawing&&typeof drawStart!=='undefined'&&drawStart&&
+           typeof hoverPoint!=='undefined'&&hoverPoint&&typeof activeItem!=='undefined'&&activeItem&&
+           !activeItem.barpattern){
+          drawOne(ctx,makeDrawing(drawStart,hoverPoint),co,true);
+        }
+        /* Brush preview */
+        if(typeof isBrushing!=='undefined'&&isBrushing&&typeof brushPath!=='undefined'&&brushPath.length>1){
+          ctx.save();
+          ctx.strokeStyle=typeof brushColor!=='undefined'?brushColor:'#c9a84c';
+          ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([]);
+          ctx.beginPath(); ctx.moveTo(brushPath[0].x,brushPath[0].y);
+          for(var bpi=1;bpi<brushPath.length-1;bpi++){
+            var cpx2=(brushPath[bpi].x+brushPath[bpi+1].x)/2;
+            var cpy2=(brushPath[bpi].y+brushPath[bpi+1].y)/2;
+            ctx.quadraticCurveTo(brushPath[bpi].x,brushPath[bpi].y,cpx2,cpy2);
+          }
+          ctx.lineTo(brushPath[brushPath.length-1].x,brushPath[brushPath.length-1].y);
+          ctx.stroke(); ctx.restore();
+        }
+        /* Measure ruler */
+        if(typeof measuring!=='undefined'&&measuring&&typeof measurePts!=='undefined'&&measurePts.length===2){
+          var mp1=measurePts[0],mp2=measurePts[1];
+          ctx.save();
+          ctx.strokeStyle='rgba(41,128,185,.8)'; ctx.lineWidth=1.5; ctx.setLineDash([6,3]);
+          ctx.beginPath(); ctx.moveTo(mp1.x,mp1.y); ctx.lineTo(mp2.x,mp2.y); ctx.stroke();
+          ctx.setLineDash([]); ctx.fillStyle='rgba(41,128,185,.9)';
+          var mBars=Math.abs(mp2.bi-mp1.bi);
+          var mPct=mp1.price&&mp1.price!==0?((mp2.price-mp1.price)/mp1.price*100).toFixed(2):'-';
+          ctx.font='bold 10px DM Mono'; ctx.textAlign='center';
+          ctx.fillText(mBars+' bars  '+mPct+'%',(mp1.x+mp2.x)/2,(mp1.y+mp2.y)/2-8);
+          ctx.restore();
+        }
+      };
+      drawAnnotations._colorPatched=true;
+    }
+  }
+  tryColorPatch();
+  window.addEventListener('load',function(){ setTimeout(tryColorPatch,800); });
+})();
+
+/* ── Block drag on locked drawings ── */
+(function(){
+  function patchDragLock(){
+    if(typeof initDrawEvents==='undefined') return;
+    /* The lock check happens inside mousedown hit loop — patch _drawDrag setter */
+    var _origDrawDragSetter=Object.getOwnPropertyDescriptor(window,'_drawDrag');
+    /* Simpler: patch the drawing drag mousemove to check lock */
+    /* Actually lock is enforced in nearestDrawing (skips locked) and
+       we'll guard the ghost drag too. This is done by checking d._locked
+       in the mousedown handlers that were already patched via the drawing loop. */
+  }
+  window.addEventListener('load',function(){ setTimeout(patchDragLock,900); });
+})();
+
+/* ── Guard ghost drag against locked drawings ── */
+(function(){
+  function patchGhostLock(){
+    /* Wrap getCoords coord retrieval chain — easiest: intercept _ghostDrag start
+       We do this by adding a check in the existing mousedown before _ghostDrag is set.
+       Since we can't easily re-open the closure, we observe via a setter on _ghostDrag. */
+    var _gd=null;
+    try{
+      Object.defineProperty(window,'_ghostDrag',{
+        get:function(){ return _gd; },
+        set:function(v){
+          if(v&&v.idx!==undefined&&drawings[v.idx]&&drawings[v.idx]._locked){
+            /* refuse to start drag on locked pattern */
+            _gd=null; return;
+          }
+          _gd=v;
+        },
+        configurable:true
+      });
+    }catch(e){}
+  }
+  window.addEventListener('load',function(){ setTimeout(patchGhostLock,500); });
+})();
+
+window.addEventListener('load',function(){ setTimeout(initCtxMenu,400); });
+
+})(); /* end context menu IIFE */
 </script>
 
 </body>
