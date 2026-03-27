@@ -5766,7 +5766,8 @@ function drawOne(ctx,d,co,prev){
 
     var gw=co.barW;
 
-    function gSY(v){return gby+((ghostTopPrice-v)/pricePerPx);}
+    var gh=prng/pricePerPx;
+    function gSY(v){return gby+((pmx-v)/prng)*gh;}
 
     ctx.setLineDash([]);
     patternBars.forEach(function(c,ii){

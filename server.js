@@ -508,8 +508,14 @@ app.post('/create-checkout', async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
   const { plan, token } = req.body;
   if (!plan || !PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
-  const profile = await getUserProfile(token);
-  if (!profile) return res.status(401).json({ error: 'Please sign in first to subscribe' });
+  if (!token) return res.status(401).json({ error: 'Please sign in first to subscribe' });
+  /* Decode JWT locally — no Supabase call needed, same approach as fib spiral */
+  let userId = 'guest', userEmail = undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+    userId = payload.sub || 'guest';
+    userEmail = payload.email;
+  } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
   const priceId = PLANS[plan].priceId;
   if (!priceId) return res.status(500).json({ error: `Stripe price not configured for ${plan}` });
   try {
@@ -517,8 +523,8 @@ app.post('/create-checkout', async (req, res) => {
       mode: 'subscription',
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
-      metadata: { userId: profile.userId, plan },
-      customer_email: profile.email,
+      metadata: { userId, plan },
+      customer_email: userEmail,
       success_url: `${SITE_URL}/?checkout=success&plan=${plan}`,
       cancel_url:  `${SITE_URL}/?checkout=cancelled`,
     });
