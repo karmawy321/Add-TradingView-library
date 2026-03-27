@@ -836,9 +836,6 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
           </div>
 
 
-          <!-- SMA Cross Alert Badge -->
-          <div id="smaCrossAlert" style="display:none;position:absolute;top:44px;right:12px;z-index:50;align-items:center;gap:8px;padding:6px 12px;border:1px solid rgba(39,174,96,.5);background:rgba(39,174,96,.08);border-radius:2px;pointer-events:none"></div>
-
           <!-- Custom Fractal Chart -->
           <div id="chartArea">
             <!-- Drawing toolbar — left strip -->
@@ -3529,9 +3526,7 @@ var chartSSE        = null;
 var sma50On         = false;
 var sma200On        = false;
 var sma400On        = false;
-var smaCrossLinesOn = false;  /* show vertical lines at every cross */
-var smaCrossAlertOn = false;  /* show floating alert badge */
-var sma400Color     = '#9b8fe8';
+var smaCrossOn      = false;  /* SMA 200/400 cross indicator */
 var allCandleData   = {};
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0 };
@@ -3808,69 +3803,128 @@ function renderChart() {
   }
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
-  if(sma400On) drawSMA(400,'#9b8fe8');
 
-  /* SMA 200/400 Cross Detection & Vertical Lines */
-  if((smaCrossLinesOn || smaCrossAlertOn) && chartCandles.length >= 401) {
+  /* ── SMA 200 / 400 Cross Indicator ── */
+  if(smaCrossOn && chartCandles.length >= 401) {
+    /* Helper: get SMA value at a given absolute candle index */
+    function getSMA(absIdx, period) {
+      if(absIdx < period - 1) return null;
+      var sum = 0;
+      for(var k = 0; k < period; k++) sum += chartCandles[absIdx - k].c;
+      return sum / period;
+    }
+
+    /* Draw SMA 200 (blue) and SMA 400 (red) lines */
+    function drawSMAFull(period, color) {
+      chartCtx.save();
+      chartCtx.strokeStyle = color;
+      chartCtx.lineWidth = 1.8;
+      chartCtx.setLineDash([]);
+      chartCtx.beginPath();
+      var drew = false;
+      visible.forEach(function(c, i) {
+        var absIdx = startIdx + i;
+        var val = getSMA(absIdx, period);
+        if(val === null) return;
+        var y = py(val);
+        if(!drew) { chartCtx.moveTo(px(i), y); drew = true; }
+        else chartCtx.lineTo(px(i), y);
+      });
+      if(drew) chartCtx.stroke();
+      chartCtx.restore();
+    }
+    drawSMAFull(200, '#2980b9'); /* blue */
+    drawSMAFull(400, '#e74c3c'); /* red */
+
+    /* Find all crosses in full candle history */
     var crosses = [];
     for(var ci = 401; ci < chartCandles.length; ci++) {
-      var sum200a=0, sum400a=0, sum200b=0, sum400b=0;
-      for(var k=0;k<400;k++) { if(k<200) sum200a+=chartCandles[ci-k].c; sum400a+=chartCandles[ci-k].c; }
-      for(var k=0;k<400;k++) { if(k<200) sum200b+=chartCandles[ci-1-k].c; sum400b+=chartCandles[ci-1-k].c; }
-      var sma200a=sum200a/200, sma400a=sum400a/400;
-      var sma200b=sum200b/200, sma400b=sum400b/400;
-      var wasAbove = sma200b > sma400b;
-      var isAbove  = sma200a > sma400a;
-      if(wasAbove !== isAbove) {
-        crosses.push({ ci: ci, golden: isAbove });
+      var s200cur = getSMA(ci,   200), s400cur = getSMA(ci,   400);
+      var s200prv = getSMA(ci-1, 200), s400prv = getSMA(ci-1, 400);
+      if(s200cur === null || s400cur === null || s200prv === null || s400prv === null) continue;
+      var golden = (s200prv <= s400prv) && (s200cur > s400cur);
+      var death  = (s200prv >= s400prv) && (s200cur < s400cur);
+      if(golden || death) crosses.push({ ci: ci, golden: golden });
+    }
+
+    /* Draw vertical lines + triangle markers for crosses in visible range */
+    crosses.forEach(function(cr) {
+      var vi = cr.ci - startIdx;
+      if(vi < 0 || vi >= n) return;
+      var x   = px(vi);
+      var col = cr.golden ? '#27ae60' : '#e74c3c';
+      var c   = visible[vi];
+      if(!c) return;
+
+      /* Vertical line from slightly below low to slightly above high */
+      var yTop = py(c.h * 1.02);
+      var yBot = py(c.l * 0.98);
+
+      chartCtx.save();
+      chartCtx.strokeStyle = col;
+      chartCtx.lineWidth = 2;
+      chartCtx.setLineDash([]);
+      chartCtx.globalAlpha = 0.85;
+      chartCtx.beginPath();
+      chartCtx.moveTo(x, PAD.t);
+      chartCtx.lineTo(x, H - PAD.b);
+      chartCtx.stroke();
+      chartCtx.globalAlpha = 1;
+      chartCtx.setLineDash([]);
+
+      /* Triangle marker */
+      var sz = Math.max(6, barW * 0.7);
+      if(cr.golden) {
+        /* Triangle UP below bar */
+        var ty = yBot + sz + 4;
+        chartCtx.fillStyle = col;
+        chartCtx.beginPath();
+        chartCtx.moveTo(x, ty - sz);
+        chartCtx.lineTo(x - sz * 0.7, ty);
+        chartCtx.lineTo(x + sz * 0.7, ty);
+        chartCtx.closePath();
+        chartCtx.fill();
+      } else {
+        /* Triangle DOWN above bar */
+        var ty = yTop - sz - 4;
+        chartCtx.fillStyle = col;
+        chartCtx.beginPath();
+        chartCtx.moveTo(x, ty + sz);
+        chartCtx.lineTo(x - sz * 0.7, ty);
+        chartCtx.lineTo(x + sz * 0.7, ty);
+        chartCtx.closePath();
+        chartCtx.fill();
       }
+
+      /* Label */
+      chartCtx.font = 'bold 8px DM Mono';
+      chartCtx.fillStyle = col;
+      chartCtx.textAlign = 'center';
+      chartCtx.fillText(cr.golden ? '▲ GC' : '▼ DC', x, cr.golden ? yBot + sz*2 + 8 : yTop - sz*2 - 2);
+      chartCtx.restore();
+    });
+
+    /* Show latest cross alert in top-right corner */
+    if(crosses.length > 0) {
+      var last = crosses[crosses.length - 1];
+      var barsAgo = chartCandles.length - 1 - last.ci;
+      var col = last.golden ? '#27ae60' : '#e74c3c';
+      var label = last.golden ? '⬆ GOLDEN CROSS' : '⬇ DEATH CROSS';
+      chartCtx.save();
+      chartCtx.font = 'bold 9px DM Mono';
+      var tw = chartCtx.measureText(label).width + 40;
+      var bx = W - PAD.r - tw - 8;
+      var by = PAD.t + 6;
+      chartCtx.fillStyle = last.golden ? 'rgba(39,174,96,.12)' : 'rgba(231,76,60,.12)';
+      chartCtx.strokeStyle = col;
+      chartCtx.lineWidth = 1;
+      chartCtx.fillRect(bx, by, tw, 22);
+      chartCtx.strokeRect(bx, by, tw, 22);
+      chartCtx.fillStyle = col;
+      chartCtx.textAlign = 'left';
+      chartCtx.fillText(label + '  ·  ' + barsAgo + ' bars ago', bx + 6, by + 14);
+      chartCtx.restore();
     }
-    /* Draw vertical lines for visible crosses */
-    if(smaCrossLinesOn) {
-      crosses.forEach(function(cr) {
-        var vi = cr.ci - startIdx;
-        if(vi < 0 || vi >= visible.length) return;
-        var x = px(vi);
-        chartCtx.save();
-        chartCtx.strokeStyle = cr.golden ? 'rgba(39,174,96,0.7)' : 'rgba(239,83,80,0.7)';
-        chartCtx.lineWidth = 1.5;
-        chartCtx.setLineDash([4,3]);
-        chartCtx.beginPath(); chartCtx.moveTo(x, PAD.t); chartCtx.lineTo(x, H-PAD.b); chartCtx.stroke();
-        chartCtx.setLineDash([]);
-        /* Label */
-        chartCtx.font = 'bold 8px DM Mono';
-        chartCtx.fillStyle = cr.golden ? '#27ae60' : '#ef5350';
-        chartCtx.textAlign = 'center';
-        chartCtx.fillText(cr.golden ? '⬆ GC' : '⬇ DC', x, PAD.t + 10);
-        chartCtx.restore();
-      });
-    }
-    /* Alert badge — show most recent cross */
-    if(smaCrossAlertOn && crosses.length > 0) {
-      var last = crosses[crosses.length-1];
-      var barsAgo = chartCandles.length - last.ci;
-      var alertEl = document.getElementById('smaCrossAlert');
-      if(alertEl) {
-        alertEl.style.display = 'flex';
-        alertEl.style.borderColor = last.golden ? 'rgba(39,174,96,.5)' : 'rgba(239,83,80,.5)';
-        alertEl.style.background  = last.golden ? 'rgba(39,174,96,.08)' : 'rgba(239,83,80,.08)';
-        var icon  = last.golden ? '⬆' : '⬇';
-        var label = last.golden ? 'GOLDEN CROSS' : 'DEATH CROSS';
-        var col   = last.golden ? '#27ae60' : '#ef5350';
-        alertEl.innerHTML =
-          '<span style="font-size:13px">'+icon+'</span>'
-          +'<div style="display:flex;flex-direction:column;gap:1px">'
-          +'<span style="font-family:Cinzel,serif;font-size:9px;color:'+col+';letter-spacing:.1em;font-weight:600">'+label+'</span>'
-          +'<span style="font-family:DM Mono,monospace;font-size:8px;color:rgba(220,232,255,.5)">SMA 200 / 400 · '+barsAgo+' bars ago</span>'
-          +'</div>';
-      }
-    } else if(smaCrossAlertOn) {
-      var alertEl = document.getElementById('smaCrossAlert');
-      if(alertEl) { alertEl.style.display='none'; }
-    }
-  } else {
-    var alertEl = document.getElementById('smaCrossAlert');
-    if(alertEl) alertEl.style.display='none';
   }
 
   /* Chart type rendering */
@@ -4449,19 +4503,6 @@ function toggleSMA(period){
   if(!chart) renderChart();
 }
 
-function toggleSmaCross(mode) {
-  if(mode === 'lines') {
-    smaCrossLinesOn = !smaCrossLinesOn;
-    var b = document.getElementById('smaCrossLinesBtn');
-    if(b) b.style.opacity = smaCrossLinesOn ? '1' : '0.35';
-  } else if(mode === 'alert') {
-    smaCrossAlertOn = !smaCrossAlertOn;
-    var b = document.getElementById('smaCrossAlertBtn');
-    if(b) b.style.opacity = smaCrossAlertOn ? '1' : '0.35';
-  }
-  renderChart();
-}
-
 function yToPrice(y){
   if(!chartCandles.length)return 0;
   var mn=Math.min.apply(null,chartCandles.slice(-100).map(function(c){return c.l;}));
@@ -4742,13 +4783,10 @@ var GROUPS = [
       { id:'arrowup',   label:'Arrow Up mark',    icon:S('<line x1="8" y1="13" x2="8" y2="4"/><path d="M4 7l4-4 4 4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'up' },
       { id:'arrowdn',   label:'Arrow Down mark',  icon:S('<line x1="8" y1="3" x2="8" y2="12"/><path d="M4 9l4 4 4-4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'down' },
     ]},
-  /* ── SMA Cross ── */
-  { id:'smacross_grp', icon:S('<line x1="2" y1="8" x2="14" y2="8" stroke-dasharray="2 2"/><line x1="4" y1="12" x2="12" y2="4"/><circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none"/>'), tooltip:'SMA 200/400 Cross',
-    items:[
-      { id:'smacross_lines', label:'Cross — Vertical Lines', icon:S('<line x1="8" y1="2" x2="8" y2="14" stroke-dasharray="3 2"/><line x1="4" y1="6" x2="12" y2="10" opacity=".5"/>'), cur:'default', smacross:'lines' },
-      { id:'smacross_alert', label:'Cross — Alert Badge',   icon:S('<path d="M8 2a5 5 0 0 1 5 5c0 3-1.5 4.5-2 6H5c-.5-1.5-2-3-2-6a5 5 0 0 1 5-5z"/><line x1="6" y1="14" x2="10" y2="14"/>'), cur:'default', smacross:'alert' },
-      { id:'smacross_both',  label:'Cross — Lines + Alert', icon:S('<line x1="8" y1="2" x2="8" y2="14" stroke-dasharray="3 2"/><circle cx="8" cy="8" r="3" fill="currentColor" opacity=".3"/>'), cur:'default', smacross:'both' },
-    ]},
+  /* ── SMA Cross Indicator ── */
+  { id:'smacross_grp',
+    icon:S('<line x1="2" y1="10" x2="14" y2="6" stroke="#2980b9"/><line x1="2" y1="12" x2="14" y2="8" stroke="#e74c3c" opacity=".7"/><line x1="8" y1="2" x2="8" y2="14" stroke-dasharray="2 2" opacity=".6"/>'),
+    tooltip:'SMA 200/400 Cross', single:true, smacrosstool:true, cur:'default', toggle:true },
   'sep',
   /* ── Fibonacci ── */
   { id:'fib_grp', icon:S('<line x1="2" y1="2" x2="14" y2="2"/><line x1="2" y1="6" x2="14" y2="6" opacity=".7"/><line x1="2" y1="10" x2="14" y2="10" opacity=".5"/><line x1="2" y1="14" x2="14" y2="14" opacity=".3"/><line x1="4" y1="2" x2="4" y2="14"/>'), tooltip:'Fibonacci',
@@ -4854,7 +4892,7 @@ function buildToolbar() {
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
-      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:lockedDraw);
+      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:g.smacrosstool?smaCrossOn:lockedDraw);
       btn.title=g.tooltip;
       btn.onclick=function(e){ e.stopPropagation(); handleSingle(g); };
       var tip=document.createElement('div'); tip.className='tb-tooltip'; tip.textContent=g.tooltip;
@@ -4915,10 +4953,7 @@ function buildToolbar() {
 }
 
 function isActive(g) {
-  if (g.single) return false;
-  /* SMA cross group — active if any cross mode is on */
-  if (g.id === 'smacross_grp') return smaCrossLinesOn || smaCrossAlertOn;
-  if (!activeItem) return false;
+  if (!activeItem||g.single) return false;
   if (g.items) return g.items.some(function(i){return i.id===activeItem.id;});
   return false;
 }
@@ -4930,21 +4965,6 @@ function pickItem(item) {
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
 
   /* ── Fib Spiral gate — requires $1 Stripe payment ── */
-  /* SMA Cross toggle — immediate action, don't stay as active tool */
-  if(item.smacross) {
-    if(item.smacross === 'both') {
-      smaCrossLinesOn = !smaCrossLinesOn;
-      smaCrossAlertOn = smaCrossLinesOn;
-    } else if(item.smacross === 'lines') {
-      smaCrossLinesOn = !smaCrossLinesOn;
-    } else if(item.smacross === 'alert') {
-      smaCrossAlertOn = !smaCrossAlertOn;
-    }
-    buildToolbar();
-    renderChart&&renderChart();
-    return;
-  }
-
   if(item.id === 'fibspiral') {
     if(typeof fibSpiralIsUnlocked === 'function' && fibSpiralIsUnlocked()) {
       /* Already paid this session — allow through */
@@ -4975,6 +4995,7 @@ function handleSingle(g) {
   if (g.magnettool) { magnetOn=!magnetOn; buildToolbar(); return; }
   if (g.locktool)   { lockedDraw=!lockedDraw; buildToolbar(); return; }
   if (g.measuretool){ activeTool='measure'; activeItem=g; measuring=true; measurePts=[]; setCursor('crosshair'); buildToolbar(); return; }
+  if (g.smacrosstool){ smaCrossOn=!smaCrossOn; buildToolbar(); renderChart&&renderChart(); return; }
 }
 
 function setCursor(cur) {
