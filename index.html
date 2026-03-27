@@ -3526,9 +3526,7 @@ var chartSSE        = null;
 var sma50On         = false;
 var sma200On        = false;
 var sma400On        = false;
-var axisGatesOn     = false;   /* Axis Gates: SMA crossover signal lines */
-var _agCache        = null;    /* cached crossover index array */
-var _agCacheLen     = 0;       /* candle count at last cache build */
+var axisGatesOn     = false;   /* Axis Gates: SMA200/SMA400 crossover signal lines */
 var allCandleData   = {};
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0 };
@@ -3806,55 +3804,37 @@ function renderChart() {
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
 
-  /* ── Axis Gates — signal lines at structural convergence points ── */
+  /* ── Axis Gates — vertical line at every SMA200/SMA400 crossover bar ── */
   if(axisGatesOn && candles.length >= 401) {
-    /* Rebuild cache only when candle array grows or is replaced */
-    if(!_agCache || _agCacheLen !== candles.length) {
-      /* Prefix-sum array for O(1) SMA window queries */
-      var _pfx = new Float64Array(candles.length + 1);
-      for(var _k=0; _k<candles.length; _k++) _pfx[_k+1] = _pfx[_k] + candles[_k].c;
-      var _crosses = [];
-      for(var _gi=400; _gi<candles.length; _gi++) {
-        var _s2c = (_pfx[_gi+1] - _pfx[_gi-199]) / 200;
-        var _s4c = (_pfx[_gi+1] - _pfx[_gi-399]) / 400;
-        var _s2p = (_pfx[_gi]   - _pfx[_gi-200]) / 200;
-        var _s4p = (_pfx[_gi]   - _pfx[_gi-400]) / 400;
-        if     (_s2p < _s4p && _s2c >= _s4c) _crosses.push({gi:_gi, bull:true});
-        else if(_s2p > _s4p && _s2c <= _s4c) _crosses.push({gi:_gi, bull:false});
-      }
-      _agCache    = _crosses;
-      _agCacheLen = candles.length;
+    function agSMA(gi, period) {
+      var sum = 0;
+      for(var k = 0; k < period; k++) sum += candles[gi - k].c;
+      return sum / period;
     }
-    /* Render only crosses that fall inside the current visible window */
     chartCtx.save();
     chartCtx.lineWidth = 1.8;
     chartCtx.setLineDash([]);
-    _agCache.forEach(function(sig) {
-      var _vi = sig.gi - startIdx;
-      if(_vi < 0 || _vi >= visible.length) return;
-      var _c  = candles[sig.gi];
-      var _x  = px(_vi);
-      var _yH = py(_c.h);
-      var _yL = py(_c.l);
-      var _col = sig.bull
-        ? 'rgba(38,166,154,0.85)'    /* teal — sma200 crosses above sma400 */
-        : 'rgba(239,83,80,0.80)';    /* red  — sma200 crosses below sma400 */
-      chartCtx.strokeStyle = _col;
-      chartCtx.fillStyle   = _col;
-      /* Vertical line high → low */
+    visible.forEach(function(c, i) {
+      var gi = startIdx + i;
+      if(gi < 400) return; /* need 400 bars of history */
+      var sma200Cur  = agSMA(gi,     200);
+      var sma400Cur  = agSMA(gi,     400);
+      var sma200Prev = agSMA(gi - 1, 200);
+      var sma400Prev = agSMA(gi - 1, 400);
+      var crossover  = sma200Prev < sma400Prev && sma200Cur >= sma400Cur;
+      var crossunder = sma200Prev > sma400Prev && sma200Cur <= sma400Cur;
+      if(!crossover && !crossunder) return;
+      var col = crossover ? 'rgba(38,166,154,0.9)' : 'rgba(239,83,80,0.9)';
+      var x = px(i), yH = py(c.h), yL = py(c.l);
+      chartCtx.strokeStyle = col; chartCtx.fillStyle = col;
+      /* line.new(bar_index, high, bar_index, low) */
+      chartCtx.beginPath(); chartCtx.moveTo(x, yH); chartCtx.lineTo(x, yL); chartCtx.stroke();
+      /* diamond at midpoint */
+      var mid = (yH + yL) / 2, ds = 4;
       chartCtx.beginPath();
-      chartCtx.moveTo(_x, _yH);
-      chartCtx.lineTo(_x, _yL);
-      chartCtx.stroke();
-      /* Diamond marker at bar midpoint */
-      var _mid = (_yH + _yL) / 2, _d = 3.5;
-      chartCtx.beginPath();
-      chartCtx.moveTo(_x,      _mid - _d);
-      chartCtx.lineTo(_x + _d, _mid);
-      chartCtx.lineTo(_x,      _mid + _d);
-      chartCtx.lineTo(_x - _d, _mid);
-      chartCtx.closePath();
-      chartCtx.fill();
+      chartCtx.moveTo(x, mid - ds); chartCtx.lineTo(x + ds, mid);
+      chartCtx.lineTo(x, mid + ds); chartCtx.lineTo(x - ds, mid);
+      chartCtx.closePath(); chartCtx.fill();
     });
     chartCtx.restore();
   }
@@ -4921,7 +4901,7 @@ function handleSingle(g) {
   if (g.redotool)   { doRedo(); return; }
   if (g.zoomtool)   { chartView.zoom=Math.min(8,chartView.zoom*1.5); renderChart&&renderChart(); return; }
   if (g.magnettool)   { magnetOn=!magnetOn; buildToolbar(); return; }
-  if (g.axisgatetool) { axisGatesOn=!axisGatesOn; _agCache=null; buildToolbar(); renderChart&&renderChart(); return; }
+  if (g.axisgatetool) { axisGatesOn=!axisGatesOn; buildToolbar(); renderChart&&renderChart(); return; }
   if (g.locktool)   { lockedDraw=!lockedDraw; buildToolbar(); return; }
   if (g.measuretool){ activeTool='measure'; activeItem=g; measuring=true; measurePts=[]; setCursor('crosshair'); buildToolbar(); return; }
 }
