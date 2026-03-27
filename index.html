@@ -3526,6 +3526,9 @@ var chartSSE        = null;
 var sma50On         = false;
 var sma200On        = false;
 var sma400On        = false;
+var axisGatesOn     = false;   /* Axis Gates: SMA crossover signal lines */
+var _agCache        = null;    /* cached crossover index array */
+var _agCacheLen     = 0;       /* candle count at last cache build */
 var allCandleData   = {};
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0 };
@@ -3802,6 +3805,59 @@ function renderChart() {
   }
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
+
+  /* ── Axis Gates — signal lines at structural convergence points ── */
+  if(axisGatesOn && candles.length >= 401) {
+    /* Rebuild cache only when candle array grows or is replaced */
+    if(!_agCache || _agCacheLen !== candles.length) {
+      /* Prefix-sum array for O(1) SMA window queries */
+      var _pfx = new Float64Array(candles.length + 1);
+      for(var _k=0; _k<candles.length; _k++) _pfx[_k+1] = _pfx[_k] + candles[_k].c;
+      var _crosses = [];
+      for(var _gi=400; _gi<candles.length; _gi++) {
+        var _s2c = (_pfx[_gi+1] - _pfx[_gi-199]) / 200;
+        var _s4c = (_pfx[_gi+1] - _pfx[_gi-399]) / 400;
+        var _s2p = (_pfx[_gi]   - _pfx[_gi-200]) / 200;
+        var _s4p = (_pfx[_gi]   - _pfx[_gi-400]) / 400;
+        if     (_s2p < _s4p && _s2c >= _s4c) _crosses.push({gi:_gi, bull:true});
+        else if(_s2p > _s4p && _s2c <= _s4c) _crosses.push({gi:_gi, bull:false});
+      }
+      _agCache    = _crosses;
+      _agCacheLen = candles.length;
+    }
+    /* Render only crosses that fall inside the current visible window */
+    chartCtx.save();
+    chartCtx.lineWidth = 1.8;
+    chartCtx.setLineDash([]);
+    _agCache.forEach(function(sig) {
+      var _vi = sig.gi - startIdx;
+      if(_vi < 0 || _vi >= visible.length) return;
+      var _c  = candles[sig.gi];
+      var _x  = px(_vi);
+      var _yH = py(_c.h);
+      var _yL = py(_c.l);
+      var _col = sig.bull
+        ? 'rgba(38,166,154,0.85)'    /* teal — sma200 crosses above sma400 */
+        : 'rgba(239,83,80,0.80)';    /* red  — sma200 crosses below sma400 */
+      chartCtx.strokeStyle = _col;
+      chartCtx.fillStyle   = _col;
+      /* Vertical line high → low */
+      chartCtx.beginPath();
+      chartCtx.moveTo(_x, _yH);
+      chartCtx.lineTo(_x, _yL);
+      chartCtx.stroke();
+      /* Diamond marker at bar midpoint */
+      var _mid = (_yH + _yL) / 2, _d = 3.5;
+      chartCtx.beginPath();
+      chartCtx.moveTo(_x,      _mid - _d);
+      chartCtx.lineTo(_x + _d, _mid);
+      chartCtx.lineTo(_x,      _mid + _d);
+      chartCtx.lineTo(_x - _d, _mid);
+      chartCtx.closePath();
+      chartCtx.fill();
+    });
+    chartCtx.restore();
+  }
 
   /* Chart type rendering */
   if (chartType === 'area' || chartType === 'line') {
@@ -4691,6 +4747,7 @@ var GROUPS = [
   { id:'measure', icon:S('<path d="M2 12l12-8"/><path d="M2 12l2-2"/><path d="M14 4l-2 2"/><line x1="2" y1="14" x2="14" y2="14"/>'), tooltip:'Measure', single:true, measuretool:true, cur:'crosshair' },
   { id:'zoom',    icon:S('<circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/><line x1="5" y1="7" x2="9" y2="7"/><line x1="7" y1="5" x2="7" y2="9"/>'), tooltip:'Zoom In', single:true, zoomtool:true, cur:'zoom-in' },
   { id:'magnet',  icon:S('<path d="M5 3a4 4 0 0 1 6 0v4a1 1 0 0 1-2 0V5a2 2 0 0 0-2 0v2a1 1 0 0 1-2 0z"/><path d="M4 11h8"/>'), tooltip:'Magnet snap', single:true, magnettool:true, cur:'crosshair', toggle:true },
+  { id:'axisgates', icon:S('<line x1="5" y1="2" x2="5" y2="14"/><line x1="11" y1="2" x2="11" y2="14"/><polygon points="5,4.5 3,7 5,9.5 7,7" fill="currentColor" stroke="none" opacity=".9"/><polygon points="11,6.5 9,9 11,11.5 13,9" fill="currentColor" stroke="none" opacity=".9"/>'), tooltip:'Axis Gates', single:true, axisgatetool:true, cur:'default', toggle:true },
   'sep',
   /* ── Undo / Redo / Erase — all in one group ── */
   { id:'edit_grp', icon:S('<path d="M3 8a6 6 0 1 1 1 6"/><path d="M3 4v4h4"/>'), tooltip:'Edit / Undo / Erase',
@@ -4763,7 +4820,7 @@ function buildToolbar() {
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
-      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:lockedDraw);
+      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:g.axisgatetool?axisGatesOn:lockedDraw);
       btn.title=g.tooltip;
       btn.onclick=function(e){ e.stopPropagation(); handleSingle(g); };
       var tip=document.createElement('div'); tip.className='tb-tooltip'; tip.textContent=g.tooltip;
@@ -4863,7 +4920,8 @@ function handleSingle(g) {
   if (g.undotool)   { doUndo(); return; }
   if (g.redotool)   { doRedo(); return; }
   if (g.zoomtool)   { chartView.zoom=Math.min(8,chartView.zoom*1.5); renderChart&&renderChart(); return; }
-  if (g.magnettool) { magnetOn=!magnetOn; buildToolbar(); return; }
+  if (g.magnettool)   { magnetOn=!magnetOn; buildToolbar(); return; }
+  if (g.axisgatetool) { axisGatesOn=!axisGatesOn; _agCache=null; buildToolbar(); renderChart&&renderChart(); return; }
   if (g.locktool)   { lockedDraw=!lockedDraw; buildToolbar(); return; }
   if (g.measuretool){ activeTool='measure'; activeItem=g; measuring=true; measurePts=[]; setCursor('crosshair'); buildToolbar(); return; }
 }
