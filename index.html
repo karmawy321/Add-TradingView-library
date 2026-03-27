@@ -3526,8 +3526,7 @@ var chartSSE        = null;
 var sma50On         = false;
 var sma200On        = false;
 var sma400On        = false;
-var smaCrossOn      = false;  /* SMA 200/400 cross */
-var complexFractalOn = false; /* Complex Fractal Index */
+var complexFractalOn = false;
 var allCandleData   = {};
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0 };
@@ -3805,186 +3804,133 @@ function renderChart() {
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
 
-  /* ── SMA 200/400 Cross Indicator ── */
-  if(smaCrossOn && chartCandles.length >= 401) {
-    function getSMACross(absIdx, period) {
-      if(absIdx < period - 1) return null;
-      var sum = 0;
-      for(var k = 0; k < period; k++) sum += chartCandles[absIdx - k].c;
-      return sum / period;
-    }
-    function drawSMALine(period, color) {
-      chartCtx.save(); chartCtx.strokeStyle = color; chartCtx.lineWidth = 1.8; chartCtx.setLineDash([]);
-      chartCtx.beginPath(); var drew = false;
-      visible.forEach(function(c, i) {
-        var v = getSMACross(startIdx + i, period); if(v === null) return;
-        if(!drew) { chartCtx.moveTo(px(i), py(v)); drew = true; } else chartCtx.lineTo(px(i), py(v));
-      });
-      if(drew) chartCtx.stroke(); chartCtx.restore();
-    }
-    drawSMALine(200, '#2980b9'); drawSMALine(400, '#e74c3c');
-    var crosses = [];
-    for(var ci = 401; ci < chartCandles.length; ci++) {
-      var s2c=getSMACross(ci,200), s4c=getSMACross(ci,400), s2p=getSMACross(ci-1,200), s4p=getSMACross(ci-1,400);
-      if(!s2c||!s4c||!s2p||!s4p) continue;
-      if(s2p<=s4p && s2c>s4c) crosses.push({ci:ci,golden:true});
-      if(s2p>=s4p && s2c<s4c) crosses.push({ci:ci,golden:false});
-    }
-    crosses.forEach(function(cr) {
-      var vi=cr.ci-startIdx; if(vi<0||vi>=n) return;
-      var x=px(vi), col=cr.golden?'#27ae60':'#e74c3c', c=visible[vi]; if(!c) return;
-      chartCtx.save(); chartCtx.strokeStyle=col; chartCtx.lineWidth=2; chartCtx.globalAlpha=0.85;
-      chartCtx.beginPath(); chartCtx.moveTo(x,PAD.t); chartCtx.lineTo(x,H-PAD.b); chartCtx.stroke();
-      chartCtx.globalAlpha=1;
-      var sz=Math.max(6,barW*0.7);
-      chartCtx.fillStyle=col; chartCtx.beginPath();
-      if(cr.golden){ var ty=py(c.l*0.98)+sz+4; chartCtx.moveTo(x,ty-sz); chartCtx.lineTo(x-sz*.7,ty); chartCtx.lineTo(x+sz*.7,ty); }
-      else { var ty=py(c.h*1.02)-sz-4; chartCtx.moveTo(x,ty+sz); chartCtx.lineTo(x-sz*.7,ty); chartCtx.lineTo(x+sz*.7,ty); }
-      chartCtx.closePath(); chartCtx.fill();
-      chartCtx.font='bold 8px DM Mono'; chartCtx.fillStyle=col; chartCtx.textAlign='center';
-      chartCtx.fillText(cr.golden?'▲ GC':'▼ DC', x, cr.golden?py(c.l*0.98)+sz*2+8:py(c.h*1.02)-sz*2-2);
-      chartCtx.restore();
-    });
-    if(crosses.length>0){
-      var last=crosses[crosses.length-1], barsAgo=chartCandles.length-1-last.ci;
-      var col=last.golden?'#27ae60':'#e74c3c', label=last.golden?'⬆ GOLDEN CROSS':'⬇ DEATH CROSS';
-      chartCtx.save(); chartCtx.font='bold 9px DM Mono';
-      var tw=chartCtx.measureText(label).width+40, bx=W-PAD.r-tw-8, by=PAD.t+6;
-      chartCtx.fillStyle=last.golden?'rgba(39,174,96,.12)':'rgba(231,76,60,.12)';
-      chartCtx.strokeStyle=col; chartCtx.lineWidth=1;
-      chartCtx.fillRect(bx,by,tw,22); chartCtx.strokeRect(bx,by,tw,22);
-      chartCtx.fillStyle=col; chartCtx.textAlign='left';
-      chartCtx.fillText(label+' · '+barsAgo+' bars ago',bx+6,by+14); chartCtx.restore();
-    }
-  }
+  /* ── Complex Fractal Index (complexfractal.com) — works with 100+ candles ── */
+  if(complexFractalOn && candles.length >= 100) {
+    var _N = candles.length;
+    var _close = candles.map(function(c){return c.c;});
+    var _high  = candles.map(function(c){return c.h;});
+    var _low   = candles.map(function(c){return c.l;});
 
-  /* ── Complex Fractal Index ── */
-  if(complexFractalOn && chartCandles.length >= 1501) {
-    var candles = chartCandles;
-    var N = candles.length;
-
-    /* EMA helper */
-    function calcEMA(period, srcArr) {
-      var k = 2 / (period + 1), out = new Array(N).fill(null);
-      for(var i = period - 1; i < N; i++) {
-        if(out[i-1] === null) { var s=0; for(var j=0;j<period;j++) s+=srcArr[i-j]; out[i]=s/period; }
-        else out[i] = srcArr[i]*k + out[i-1]*(1-k);
+    /* EMA */
+    var _ema = function(arr, p) {
+      var _p = Math.min(p, _N-1); if(_p < 1) _p = 1;
+      var k = 2/(_p+1), out = new Array(_N).fill(null);
+      for(var i=0; i<_N; i++){
+        if(i < _p-1){ out[i]=null; continue; }
+        if(i === _p-1){ var s=0; for(var j=0;j<_p;j++) s+=arr[i-j]; out[i]=s/_p; continue; }
+        out[i] = out[i-1]!==null ? arr[i]*k + out[i-1]*(1-k) : arr[i];
       }
       return out;
-    }
+    };
 
-    /* RMA (Wilder) helper */
-    function calcRMA(period, srcArr) {
-      var alpha = 1/period, out = new Array(N).fill(null);
-      for(var i = period - 1; i < N; i++) {
-        if(out[i-1] === null) { var s=0; for(var j=0;j<period;j++) s+=srcArr[i-j]; out[i]=s/period; }
-        else out[i] = alpha*srcArr[i] + (1-alpha)*out[i-1];
+    /* RMA (Wilder) */
+    var _rma = function(arr, p) {
+      var _p = Math.min(p, _N-1); if(_p < 1) _p = 1;
+      var a = 1/_p, out = new Array(_N).fill(null);
+      for(var i=0; i<_N; i++){
+        if(i < _p-1){ out[i]=null; continue; }
+        if(i === _p-1){ var s=0; for(var j=0;j<_p;j++) s+=arr[i-j]; out[i]=s/_p; continue; }
+        out[i] = out[i-1]!==null ? a*arr[i]+(1-a)*out[i-1] : arr[i];
       }
       return out;
-    }
+    };
 
-    /* ATR helper */
-    function calcATR(period) {
-      var tr = new Array(N).fill(0);
-      for(var i=1;i<N;i++) tr[i]=Math.max(candles[i].h-candles[i].l, Math.abs(candles[i].h-candles[i-1].c), Math.abs(candles[i].l-candles[i-1].c));
-      return calcRMA(period, tr);
-    }
-
-    var closeArr = candles.map(function(c){return c.c;});
-    var highArr  = candles.map(function(c){return c.h;});
-    var lowArr   = candles.map(function(c){return c.l;});
+    /* ATR */
+    var _tr = new Array(_N).fill(0);
+    for(var _i=1;_i<_N;_i++)
+      _tr[_i] = Math.max(_high[_i]-_low[_i], Math.abs(_high[_i]-candles[_i-1].c), Math.abs(_low[_i]-candles[_i-1].c));
 
     /* MACD: fast=EMA(100), slow=EMA(26), signal=EMA(macd,50) */
-    var ema100 = calcEMA(100, closeArr);
-    var ema26  = calcEMA(26,  closeArr);
-    var macdArr = ema100.map(function(v,i){ return (v!==null&&ema26[i]!==null) ? v-ema26[i] : null; });
-    var signalArr = calcEMA(50, macdArr.map(function(v){return v||0;}));
+    var _ema100 = _ema(_close, 100);
+    var _ema26  = _ema(_close, 26);
+    var _macd   = _ema100.map(function(v,i){ return (v!==null && _ema26[i]!==null) ? v - _ema26[i] : null; });
+    var _macdFill = _macd.map(function(v){ return v || 0; });
+    var _sig    = _ema(_macdFill, 50);
 
-    /* EMAs for display table */
-    var ema1500 = calcEMA(1500, closeArr);
-    var ema400  = calcEMA(400,  closeArr);
-    var ema200  = calcEMA(200,  closeArr);
+    /* EMA levels for table */
+    var _eLong  = _ema(_close, Math.min(1500, _N-1));
+    var _e400   = _ema(_close, Math.min(400,  _N-1));
+    var _e200   = _ema(_close, Math.min(200,  _N-1));
+    var _e100   = _ema(_close, Math.min(100,  _N-1));
 
-    /* omed calculation */
-    var scl=5, mcl=15, scl2=2, mcl2=7;
-    var ma_scl = calcRMA(scl, closeArr);
-    var ma_mcl = calcRMA(mcl, closeArr);
-    var atr_scl = calcATR(scl);
-    var atr_mcl = calcATR(mcl);
-    var omedArr = new Array(N).fill(null);
-    for(var i=mcl2+mcl;i<N;i++){
-      var sct = (ma_scl[i-scl2]||closeArr[i]) + 1*atr_scl[i];
-      var scb = (ma_scl[i-scl2]||closeArr[i]) - 1*atr_scl[i];
-      var mct = (ma_mcl[i-mcl2]||closeArr[i]) + 3*atr_mcl[i];
-      var mcb = (ma_mcl[i-mcl2]||closeArr[i]) - 3*atr_mcl[i];
-      var scmm = (sct+scb)/2;
-      var denom = mct-mcb;
-      omedArr[i] = denom!==0 ? (scmm-mcb)/denom : 0.5;
+    /* omed (fractal channel position) */
+    var _scl=5, _mcl=15, _scl2=2, _mcl2=7;
+    var _ma_scl  = _rma(_close, _scl);
+    var _ma_mcl  = _rma(_close, _mcl);
+    var _atr_scl = _rma(_tr, _scl);
+    var _atr_mcl = _rma(_tr, _mcl);
+    var _omed = new Array(_N).fill(null);
+    for(var _i=_mcl2+_mcl; _i<_N; _i++){
+      var _sct = (_ma_scl[_i-_scl2]||_close[_i]) + 1*(_atr_scl[_i]||0);
+      var _scb = (_ma_scl[_i-_scl2]||_close[_i]) - 1*(_atr_scl[_i]||0);
+      var _mct = (_ma_mcl[_i-_mcl2]||_close[_i]) + 3*(_atr_mcl[_i]||0);
+      var _mcb = (_ma_mcl[_i-_mcl2]||_close[_i]) - 3*(_atr_mcl[_i]||0);
+      var _scmm = (_sct+_scb)/2, _denom = _mct-_mcb;
+      _omed[_i] = _denom !== 0 ? (_scmm-_mcb)/_denom : 0.5;
     }
 
     /* SMI → emasignal */
-    var a=10, b=3;
-    var rdiffArr = new Array(N).fill(0);
-    var diffArr  = new Array(N).fill(0);
-    for(var i=a-1;i<N;i++){
-      var ll=lowArr[i], hh=highArr[i];
-      for(var j=1;j<a;j++){ll=Math.min(ll,lowArr[i-j]);hh=Math.max(hh,highArr[i-j]);}
-      diffArr[i]=hh-ll; rdiffArr[i]=closeArr[i]-(hh+ll)/2;
+    var _rdiff = new Array(_N).fill(0), _diffArr = new Array(_N).fill(0);
+    for(var _i=9; _i<_N; _i++){
+      var _ll=_low[_i], _hh=_high[_i];
+      for(var _j=1;_j<10;_j++){ _ll=Math.min(_ll,_low[_i-_j]); _hh=Math.max(_hh,_high[_i-_j]); }
+      _diffArr[_i]=_hh-_ll; _rdiff[_i]=_close[_i]-(_hh+_ll)/2;
     }
-    var avgrel  = calcEMA(b, calcEMA(b, rdiffArr));
-    var avgdiff = calcEMA(b, calcEMA(b, diffArr));
-    var smiArr  = avgrel.map(function(v,i){ return (avgdiff[i]&&avgdiff[i]!==0)?(v/(avgdiff[i]/2)*100):0; });
-    var emasignalArr = calcEMA(10, smiArr);
+    var _avgrel   = _ema(_ema(_rdiff, 3), 3);
+    var _avgdiff  = _ema(_ema(_diffArr, 3), 3);
+    var _smi      = _avgrel.map(function(v,i){ var d=_avgdiff[i]; return (d&&d!==0)?(v/(d/2)*100):0; });
+    var _esig     = _ema(_smi, 10);
 
-    /* Draw vertical lines for MACD crosses */
-    for(var ci=51;ci<N;ci++){
-      var mc=macdArr[ci], mp=macdArr[ci-1], sc=signalArr[ci], sp=signalArr[ci-1];
-      if(mc===null||mp===null||sc===null||sp===null) continue;
-      var crossover  = mp<=sp && mc>sc;
-      var crossunder = mp>=sp && mc<sc;
-      if(!crossover && !crossunder) continue;
-      var vi = ci - startIdx; if(vi<0||vi>=n) continue;
-      var x = px(vi);
-      var col;
-      if(crossover  && mc>0) col='rgba(39,174,96,0.75)';       /* vt1: green */
-      else if(crossover  && mc<=0) col='rgba(231,76,60,0.75)'; /* vt2: red */
-      else if(crossunder && mc>0) col='rgba(41,128,185,0.75)'; /* vt3: blue */
-      else col='rgba(241,196,15,0.75)';                         /* vt4: yellow */
-      chartCtx.save(); chartCtx.strokeStyle=col; chartCtx.lineWidth=2; chartCtx.setLineDash([3,3]);
-      chartCtx.beginPath(); chartCtx.moveTo(x,PAD.t); chartCtx.lineTo(x,H-PAD.b); chartCtx.stroke();
+    /* Draw MACD cross vertical lines on price chart */
+    for(var _ci=51; _ci<_N; _ci++){
+      var _mc=_macd[_ci], _mp=_macd[_ci-1], _sc=_sig[_ci], _sp=_sig[_ci-1];
+      if(_mc===null||_mp===null||_sc===null||_sp===null) continue;
+      var _crossover  = (_mp<=_sp) && (_mc>_sc);
+      var _crossunder = (_mp>=_sp) && (_mc<_sc);
+      if(!_crossover && !_crossunder) continue;
+      var _vi = _ci - startIdx; if(_vi<0||_vi>=n) continue;
+      var _x  = px(_vi);
+      var _col;
+      if(_crossover  && _mc>0)  _col='rgba(39,174,96,0.85)';
+      else if(_crossover)       _col='rgba(231,76,60,0.85)';
+      else if(_crossunder&&_mc>0) _col='rgba(41,128,185,0.85)';
+      else                      _col='rgba(241,196,15,0.85)';
+      chartCtx.save();
+      chartCtx.strokeStyle=_col; chartCtx.lineWidth=2; chartCtx.setLineDash([4,3]);
+      chartCtx.beginPath(); chartCtx.moveTo(_x,PAD.t); chartCtx.lineTo(_x,H-PAD.b); chartCtx.stroke();
       chartCtx.setLineDash([]); chartCtx.restore();
     }
 
-    /* Table overlay — top right */
-    var lastI = N-1;
-    var m  = macdArr[lastI];
-    var om = omedArr[lastI];
-    var es = emasignalArr[lastI];
-    var e1500 = ema1500[lastI], e400=ema400[lastI], e200=ema200[lastI], e100=ema100[lastI];
-
-    if(m!==null && om!==null && es!==null) {
+    /* Top-right info table */
+    var _li = _N - 1;
+    var _mVal  = _macd[_li];
+    var _omVal = _omed[_li];
+    var _esVal = _esig[_li];
+    if(_mVal !== null && _omVal !== null && _esVal !== null){
       chartCtx.save();
-      var tbX = W - PAD.r - 10;
-      var tbY = PAD.t + 8;
-      var tbW = 260;
-      var rowH = 22;
-      var rows = [
-        { text: 'FRACTAL AI AGENT', col: '#c9a84c', size: '9px' },
-        { text: '1500:' + (e1500?e1500.toFixed(2):'—') + '  400:' + (e400?e400.toFixed(2):'—') + '  200:' + (e200?e200.toFixed(2):'—') + '  100:' + (e100?e100.toFixed(2):'—'), col: '#c9a84c', size: '7px' },
-        { text: (om>=0.8?'SELL':om<=0.2?'BUY':'') + '  ' + om.toFixed(3), col: om>=0.8?'#e74c3c':om<=0.2?'#27ae60':'#f1c40f', size: '11px' },
-        { text: (es>=60?'SELL':es<=-60?'BUY':'') + '  ' + es.toFixed(2), col: es>=60?'#e74c3c':es<=-60?'#27ae60':'#f1c40f', size: '11px' },
+      var _tbW = 272, _tbX = W - PAD.r - 6, _tbY = PAD.t + 6, _rH = 22;
+      var _e1v = _eLong[_li], _e4v = _e400[_li], _e2v = _e200[_li], _e1cv = _e100[_li];
+      var _omCol = _omVal>=0.8?'#e74c3c':_omVal<=0.2?'#27ae60':'#f1c40f';
+      var _omTxt = _omVal>=0.8?'SELL':_omVal<=0.2?'BUY':'';
+      var _esCol = _esVal>=60?'#e74c3c':_esVal<=-60?'#27ae60':'#f1c40f';
+      var _esTxt = _esVal>=60?'SELL':_esVal<=-60?'BUY':'';
+      var _rows = [
+        { t:'FRACTAL AI AGENT', c:'#c9a84c', fs:'bold 9px' },
+        { t:(_e1v?(_N>=1500?'1500':'~'+_N)+':'+_e1v.toFixed(2)+' ':'')+(_e4v?'400:'+_e4v.toFixed(2)+' ':'')+(_e2v?'200:'+_e2v.toFixed(2)+' ':'')+(_e1cv?'100:'+_e1cv.toFixed(2):''), c:'#c9a84c', fs:'7px' },
+        { t:_omTxt+' '+_omVal.toFixed(3), c:_omCol, fs:'bold 13px' },
+        { t:_esTxt+' '+_esVal.toFixed(2), c:_esCol, fs:'bold 13px' },
       ];
-      var totalH = rows.length * rowH + 8;
-      chartCtx.fillStyle = 'rgba(6,8,13,0.88)';
-      chartCtx.strokeStyle = 'rgba(201,168,76,0.25)';
-      chartCtx.lineWidth = 1;
-      chartCtx.fillRect(tbX - tbW, tbY, tbW, totalH);
-      chartCtx.strokeRect(tbX - tbW, tbY, tbW, totalH);
-      rows.forEach(function(row, ri) {
-        chartCtx.font = 'bold ' + row.size + ' DM Mono';
-        chartCtx.fillStyle = row.col;
-        chartCtx.textAlign = 'right';
-        chartCtx.fillText(row.text.trim(), tbX - 8, tbY + 14 + ri * rowH);
+      var _totH = _rows.length*_rH + 10;
+      chartCtx.fillStyle='rgba(6,8,13,0.92)';
+      chartCtx.strokeStyle='rgba(201,168,76,0.3)';
+      chartCtx.lineWidth=1;
+      chartCtx.fillRect(_tbX-_tbW, _tbY, _tbW, _totH);
+      chartCtx.strokeRect(_tbX-_tbW, _tbY, _tbW, _totH);
+      _rows.forEach(function(row, ri){
+        chartCtx.font=row.fs+' DM Mono';
+        chartCtx.fillStyle=row.c;
+        chartCtx.textAlign='right';
+        chartCtx.fillText(row.t.trim(), _tbX-8, _tbY+16+ri*_rH);
       });
       chartCtx.restore();
     }
@@ -4846,13 +4792,9 @@ var GROUPS = [
       { id:'arrowup',   label:'Arrow Up mark',    icon:S('<line x1="8" y1="13" x2="8" y2="4"/><path d="M4 7l4-4 4 4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'up' },
       { id:'arrowdn',   label:'Arrow Down mark',  icon:S('<line x1="8" y1="3" x2="8" y2="12"/><path d="M4 9l4 4 4-4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'down' },
     ]},
-  /* ── SMA Cross ── */
-  { id:'smacross_grp',
-    icon:S('<line x1="2" y1="10" x2="14" y2="6"/><line x1="2" y1="12" x2="14" y2="8" opacity=".6"/><line x1="8" y1="2" x2="8" y2="14" stroke-dasharray="2 2" opacity=".7"/>'),
-    tooltip:'SMA 200/400 Cross', single:true, smacrosstool:true, cur:'default', toggle:true },
   /* ── Complex Fractal Index ── */
   { id:'complexfractal_grp',
-    icon:S('<path d="M2 12 Q4 4 8 8 Q12 12 14 4" fill="none"/><line x1="2" y1="8" x2="14" y2="8" opacity=".3"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/>'),
+    icon:S('<path d="M2 11 Q5 4 8 8 Q11 12 14 5" fill="none" stroke-width="2"/><circle cx="5" cy="9" r="1.5" fill="currentColor" stroke="none"/><circle cx="11" cy="7" r="1.5" fill="currentColor" stroke="none"/>'),
     tooltip:'Complex Fractal Index', single:true, complexfractaltool:true, cur:'default', toggle:true },
   'sep',
   /* ── Fibonacci ── */
@@ -4959,7 +4901,7 @@ function buildToolbar() {
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
-      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:g.smacrosstool?smaCrossOn:g.complexfractaltool?complexFractalOn:lockedDraw);
+      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:g.complexfractaltool?complexFractalOn:lockedDraw);
       btn.title=g.tooltip;
       btn.onclick=function(e){ e.stopPropagation(); handleSingle(g); };
       var tip=document.createElement('div'); tip.className='tb-tooltip'; tip.textContent=g.tooltip;
@@ -5062,7 +5004,6 @@ function handleSingle(g) {
   if (g.magnettool) { magnetOn=!magnetOn; buildToolbar(); return; }
   if (g.locktool)   { lockedDraw=!lockedDraw; buildToolbar(); return; }
   if (g.measuretool){ activeTool='measure'; activeItem=g; measuring=true; measurePts=[]; setCursor('crosshair'); buildToolbar(); return; }
-  if (g.smacrosstool){ smaCrossOn=!smaCrossOn; buildToolbar(); renderChart&&renderChart(); return; }
   if (g.complexfractaltool){ complexFractalOn=!complexFractalOn; buildToolbar(); renderChart&&renderChart(); return; }
 }
 
