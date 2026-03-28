@@ -87,7 +87,7 @@
 .nav-signout{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);background:none;border:1px solid rgba(255,255,255,.06);cursor:pointer;padding:6px 12px;transition:all .2s;letter-spacing:.04em;border-radius:1px}
 .nav-signout:hover{color:var(--red);border-color:rgba(231,76,60,.3)}
 /* Cost badge on tool buttons */
-.cost-badge{font-family:'DM Mono',monospace;font-size:8px;color:rgba(201,168,76,.7);background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);padding:1px 6px;border-radius:1px;margin-left:4px;letter-spacing:.04em;white-space:nowrap;display:inline-block}
+.cost-badge{font-family:'DM Mono',monospace;font-size:8px;color:rgba(201,168,76,.7);background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);padding:1px 6px;border-radius:1px;margin-left:4px;letter-spacing:.04em}
 /* Out of credits overlay */
 .no-credits-gate{display:none;position:fixed;inset:0;background:rgba(6,8,13,.92);z-index:500;align-items:center;justify-content:center;flex-direction:column;gap:16px;text-align:center;padding:32px}
 .no-credits-gate.show{display:flex}
@@ -276,10 +276,42 @@ section{padding:96px 48px}
 .fld input,.fld select{background:var(--dark4);border:1px solid rgba(201,168,76,.2);color:var(--light);padding:7px 9px;font-size:12px;font-family:'DM Sans',sans-serif;width:100%;outline:none;border-radius:1px;transition:border .2s}
 .fld input:focus,.fld select:focus{border-color:var(--gold)}
 .fld select option{background:var(--dark3)}
-.az-btn{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.1em;background:var(--gold);color:var(--dark);border:none;padding:12px;width:100%;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:7px;font-weight:600;border-radius:1px}
+/* ══ AI TOOLS PANEL ══ */
+#aiToolsPanel{background:#06080d;border-top:1px solid rgba(201,168,76,.15)}
+/* Controls row */
+#aiCtrlRow{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.05);flex-wrap:wrap}
+#aiCtrlRow select{font-family:'DM Mono',monospace;font-size:9px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none;cursor:pointer;border-radius:1px}
+#snapBtn{font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em;display:flex;align-items:center;gap:5px;transition:all .15s;border-radius:1px;white-space:nowrap}
+#snapBtn:hover{background:rgba(255,255,255,.06);color:#dde4ee;border-color:rgba(255,255,255,.2)}
+.az-btn{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.1em;background:var(--gold);color:var(--dark);border:none;padding:9px 20px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;font-weight:600;border-radius:1px;white-space:nowrap}
 .az-btn:hover:not(:disabled){background:var(--gold2)}
-.az-btn:disabled{opacity:.4;cursor:not-allowed}
-.az-spin{width:12px;height:12px;border:2px solid rgba(6,8,13,.3);border-top-color:var(--dark);border-radius:50%;animation:spin .7s linear infinite;display:none}
+.az-btn:disabled{opacity:.38;cursor:not-allowed}
+.az-spin{width:11px;height:11px;border:2px solid rgba(6,8,13,.3);border-top-color:var(--dark);border-radius:50%;animation:spin .7s linear infinite;display:none;flex-shrink:0}
+#aiCtrlStatus{display:none;align-items:center;gap:5px;margin-left:4px}
+.tool-badge{background:var(--dark3);border:1px solid var(--border2);padding:4px 8px;display:flex;align-items:center;gap:5px;border-radius:1px}
+.tb-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.tb-dot.running{background:var(--gold);animation:pulse 1s infinite}
+.tb-dot.done{background:#27ae60}
+.tb-dot.err{background:#e74c3c}
+.tb-label{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:.06em}
+.tb-state{font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);margin-left:2px}
+/* Tool card grid — 5 across, 2 rows */
+#aiToolGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:rgba(255,255,255,.05);border-top:1px solid rgba(255,255,255,.05)}
+.ai-tc{display:flex;flex-direction:column;align-items:flex-start;padding:13px 14px 11px;background:#07090e;cursor:pointer;transition:background .15s;border:none;text-align:left;position:relative;gap:3px;min-height:82px}
+.ai-tc:hover:not([disabled]){background:#0d1018}
+.ai-tc:hover:not([disabled]) .ai-tc-name{color:#e8c97a}
+.ai-tc[disabled]{opacity:.32;cursor:not-allowed}
+.ai-tc-icon{font-size:16px;line-height:1;margin-bottom:2px;opacity:.85}
+.ai-tc-name{font-family:'Cinzel',serif;font-size:10.5px;color:var(--light);font-weight:600;letter-spacing:.03em;line-height:1.3;transition:color .15s}
+.ai-tc-sub{font-family:'DM Mono',monospace;font-size:7.5px;color:var(--muted);letter-spacing:.04em;line-height:1.5;margin-top:1px}
+.ai-tc-footer{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:auto;padding-top:7px}
+.ai-tc-cr{font-family:'DM Mono',monospace;font-size:8px;color:rgba(201,168,76,.7);background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);padding:2px 7px;border-radius:1px;letter-spacing:.06em;white-space:nowrap}
+.ai-tc-lock{font-size:9px;opacity:.4;line-height:1}
+.ai-tc-state{font-family:'DM Mono',monospace;font-size:8px;position:absolute;top:9px;right:10px;opacity:.75}
+/* Legacy cost-badge on main az-btn */
+.cost-badge{font-family:'DM Mono',monospace;font-size:8px;color:rgba(6,8,13,.65);background:rgba(6,8,13,.25);border:1px solid rgba(6,8,13,.18);padding:2px 7px;border-radius:1px;letter-spacing:.04em;white-space:nowrap}
+@media(max-width:900px){#aiToolGrid{grid-template-columns:repeat(5,1fr)}}
+@media(max-width:640px){#aiToolGrid{grid-template-columns:repeat(5,1fr)}.ai-tc{padding:10px 10px 9px;min-height:70px}.ai-tc-name{font-size:9px}.ai-tc-sub{display:none}}
 @keyframes spin{to{transform:rotate(360deg)}}
 .r-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
 .r-empty p{font-size:13px;color:var(--muted)}
@@ -503,7 +535,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
     padding: 6px 8px !important;
   }
   #snapBtn, #azBtn{ font-size: 11px !important; }
-  #toolGrid{ max-height: 280px; overflow-y: auto; }
+  #aiToolGrid{ overflow-y:auto; }
   .hero-in{
     display: flex !important;
     flex-direction: column !important;
@@ -528,8 +560,8 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   #chartToolsPanel input, #chartToolsPanel select{ font-size:12px !important; }
   #pairIn{ width:90px !important; }
   #snapBtn, #azBtn{ padding:6px !important; font-size:10px !important; }
-  #aiToolsStrip{ flex-wrap:wrap !important; }
-  #toolGrid{ overflow-x:auto; overflow-y:hidden; flex-wrap:nowrap; }
+  #aiToolsPanel{ overflow-x:hidden; }
+  #aiToolGrid{ overflow-x:auto; }
   /* Flyout — anchored to toolbar right edge */
   .tb-flyout{ left:44px !important; max-height:70vh !important; overflow-y:auto !important; }
   .tb-tooltip{ left:48px !important; }
@@ -881,34 +913,36 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
         </div>
 
         <!-- BOTTOM STRIP: AI tools — horizontal row below canvas -->
-        <div id="aiToolsStrip" style="border-top:1px solid var(--border2);background:#080a10;display:flex;align-items:center;gap:8px;padding:8px 12px;flex-wrap:wrap">
-          <!-- Fields inline -->
-          <select id="focusIn" style="font-family:'DM Mono',monospace;font-size:9px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:4px 7px;outline:none">
-            <option value="fractal">Fractal</option>
-            <option value="fibonacci">Fibonacci</option>
-            <option value="wave">Elliott waves</option>
-            <option value="full">Full analysis</option>
-          </select>
-          <select id="matchIn" style="font-family:'DM Mono',monospace;font-size:9px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:4px 7px;outline:none">
-            <option value="2">2 matches</option><option value="3" selected>3 matches</option><option value="4">4 matches</option>
-          </select>
-          <!-- Capture + Run -->
-          <button id="snapBtn" style="font-family:'DM Mono',monospace;font-size:9px;padding:5px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#8a95a8;cursor:pointer;letter-spacing:.06em;display:flex;align-items:center;gap:6px" onclick="takeSnapshot()">
-            <span>📷</span><span id="snapTxt">Capture</span>
-          </button>
-          <button class="az-btn" id="azBtn" disabled style="flex-shrink:0">
-            <div class="az-spin" id="azSpin"></div>
-            <span id="azTxt">Fractal · Bar · Weierstrass</span>
-            <span class="cost-badge" id="main-cost-badge">15 cr</span>
-          </button>
-          <!-- Individual tools — horizontal scrollable -->
-          <div id="toolGrid" style="display:flex;gap:4px;flex:1;overflow-x:auto;min-width:0"></div>
-          <!-- Status -->
-          <div id="toolStatus" style="display:none;gap:4px">
-            <div class="tool-badge" id="ts-fractal"><div class="tb-dot" id="tsd-fractal"></div><div class="tb-label">Fractal</div><div class="tb-state" id="tss-fractal">—</div></div>
-            <div class="tool-badge" id="ts-bar"><div class="tb-dot" id="tsd-bar"></div><div class="tb-label">Bar</div><div class="tb-state" id="tss-bar">—</div></div>
-            <div class="tool-badge" id="ts-ww"><div class="tb-dot" id="tsd-ww"></div><div class="tb-label">WW</div><div class="tb-state" id="tss-ww">—</div></div>
+        <div id="aiToolsPanel">
+          <!-- Controls row -->
+          <div id="aiCtrlRow">
+            <select id="focusIn">
+              <option value="fractal">Fractal</option>
+              <option value="fibonacci">Fibonacci</option>
+              <option value="wave">Elliott waves</option>
+              <option value="full">Full analysis</option>
+            </select>
+            <select id="matchIn">
+              <option value="2">2 matches</option>
+              <option value="3" selected>3 matches</option>
+              <option value="4">4 matches</option>
+            </select>
+            <button id="snapBtn" onclick="takeSnapshot()">
+              <span>📷</span><span id="snapTxt">Capture</span>
+            </button>
+            <button class="az-btn" id="azBtn" disabled>
+              <div class="az-spin" id="azSpin"></div>
+              <span id="azTxt">Fractal · Bar · Weierstrass</span>
+              <span class="cost-badge" id="main-cost-badge">15 cr</span>
+            </button>
+            <div id="aiCtrlStatus">
+              <div class="tool-badge" id="ts-fractal"><div class="tb-dot" id="tsd-fractal"></div><div class="tb-label">Fractal</div><div class="tb-state" id="tss-fractal">—</div></div>
+              <div class="tool-badge" id="ts-bar"><div class="tb-dot" id="tsd-bar"></div><div class="tb-label">Bar</div><div class="tb-state" id="tss-bar">—</div></div>
+              <div class="tool-badge" id="ts-ww"><div class="tb-dot" id="tsd-ww"></div><div class="tb-label">WW</div><div class="tb-state" id="tss-ww">—</div></div>
+            </div>
           </div>
+          <!-- Tool card grid -->
+          <div id="aiToolGrid"></div>
         </div>
       </div>
 
@@ -1090,7 +1124,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <span class="tool-result-title">Fibonacci Auto-Draw</span>
             <span class="tool-result-badge" id="fib-badge">PRO</span>
             <div class="ud-sec-status" id="fib-status" style="display:none"><div class="ud-spin"></div></div>
-            <button class="tool-run-btn" id="fib-btn" onclick="event.stopPropagation();runTool('fib')" disabled>Run <span class="cost-badge">3 cr</span></button>
+            <button class="tool-run-btn" id="fib-btn" onclick="event.stopPropagation();runTool('fib')" disabled>Run <span class="cost-badge">__FIB__3 cr</span></button>
             <span class="tool-result-chevron" id="fib-chev">▶</span>
           </div>
           <div class="tool-result-body" id="fib-body">
@@ -1481,7 +1515,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
     <!-- STARTER -->
     <div class="pc">
-      <div class="pc-name">Starter</div>
+      <div class="pc-name" id="t-p1n">Starter</div>
       <div class="pc-amt"><sup>$</sup>69</div>
       <div class="pc-period">500 credits / month</div>
       <ul class="pc-features">
@@ -1500,7 +1534,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
     <!-- PRO — featured -->
     <div class="pc feat">
       <div class="feat-badge">MOST POPULAR</div>
-      <div class="pc-name">Pro</div>
+      <div class="pc-name" id="t-p2n">Pro</div>
       <div style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);margin-bottom:4px;letter-spacing:.1em">ALL TOOLS UNLOCKED</div>
       <div class="pc-amt"><sup>$</sup>149</div>
       <div class="pc-period">1,500 credits / month</div>
@@ -1519,7 +1553,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
     <!-- ELITE -->
     <div class="pc">
-      <div class="pc-name">Elite</div>
+      <div class="pc-name" id="t-p3n">Elite</div>
       <div class="pc-amt"><sup>$</sup>299</div>
       <div class="pc-period">4,000 credits / month</div>
       <ul class="pc-features">
@@ -1536,7 +1570,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
     <!-- INSTITUTIONAL -->
     <div class="pc">
-      <div class="pc-name">Institutional</div>
+      <div class="pc-name" id="t-p4n">Institutional</div>
       <div class="pc-amt"><sup>$</sup>999</div>
       <div class="pc-period">15,000 credits / month</div>
       <ul class="pc-features">
@@ -1620,7 +1654,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
 <script>
 /* ── TRANSLATIONS ── */
-var T={en:{brand:'Fractal AI Agent',n1:'How it works',n2:'Methodology',n3:'Analyzer',n4:'Pricing',ncta:'Try Free',heye:'Fractal Intelligence for Traders',h1:'The Market Is a<br><em>Fractal.</em> Read It.',hsub:'Upload any chart. Our AI detects self-similar fractal structures at every scale — returning an annotated image, wave analysis, and predicted price path in seconds.',hcta1:'Analyze My Chart',hcta2:'The Science',st1:'Fractal Scales',st2:'Analysis Time',st3:'Avg Similarity',heye2:'The Process',htitle:'From Chart to Clarity in Seconds',hsub2:'Four steps. No indicators needed. Pure fractal geometry applied to your chart the moment you upload it.',s1t:'Upload Your Chart',s1d:'Any screenshot from TradingView, Binance, MT4 or MT5. Any pair, any market, any timeframe.',s2t:'AI Reads the Fractal',s2d:'Identifies self-similar structures across macro, mid and micro scales simultaneously.',s3t:'Annotations Drawn',s3d:'Your chart comes back annotated — fractal flip zones, wave labels, entry zone and Fibonacci targets.',s4t:'Full Analysis Written',s4d:'Complete breakdown: fractal structure, wave position, entry, stop loss, targets and R:R ratio.',aeye:'The Methodology',atitle:'Built on Real Fractal Mathematics',abh:'Why Fractals Work in Trading',abody:'Markets are not random. Price is <strong>continuous everywhere but differentiable nowhere</strong> — exactly like the Weierstrass function. The roughness repeats at every scale.<br><br>The big wave contains a smaller wave with the same structure. That smaller wave contains an even smaller one — again identical. When high self-similarity is detected across three scales simultaneously, the signal reliability is fundamentally higher.<br><br>Fractal AI Agent reads the <strong>fractal noise layer</strong> — the structured chaos that conventional tools discard as random.',sc1n:'Weierstrass Function',sc1d:'Price is continuous but never smooth. Infinite roughness at every point IS the signal.',sc2n:'Time Series Decomposition',sc2d:'P(t) = Trend + Cycle + Fractal Noise. We read the third layer everyone else ignores.',sc3n:'Fractal Self-Similarity',sc3d:'Big wave contains small wave — identical structure. High similarity across 3 scales = high confidence.',azeye:'Live Demo',aztitle:'Analyze Your Chart Now',azsub:'No sign-up required. Upload any chart and see the full fractal analysis instantly.',dstrong:'Click or drag',dtxt:'chart here',dhint:'TradingView · Binance · MT4 · any screenshot',lpair:'Pair / Asset',ltf:'Timeframe',lfocus:'Focus',lmatch:'Matches',azbtn:'Analyze Chart',rempty:'Upload a chart to see the fractal analysis here',ltxt:'Analyzing fractal structure…',tab1:'Analysis',tab2:'Patterns',tab3:'Prediction',clbl:'AI Annotated',ptitle:'Prediction Summary',ts1:'"I used to spend an hour identifying fractal cuts. Now I get an annotated image in 10 seconds."',ts1c:'— Ahmad K. · Forex Trader',ts2:'"This reads the actual fractal structure of price. The Fibonacci targets have been consistently accurate."',ts2c:'— Sara M. · Crypto Trader',ts3:'"The AI explains the wave position and why the fractal cut matters. It teaches me while I trade."',ts3c:'— Omar T. · Student Trader',peye:'Plans',ptitle2:'Choose Your Edge',psub:'3 free analyses to start. Upgrade for the full 10-tool fractal arsenal — no indicators, pure mathematics.',p1n:'Starter',p2n:'Pro',p3n:'Mentor',pop:'MOST POPULAR',ppm:'per month',gs:'Get Started',p1f1:'15 chart analyses / month',p1f2:'Annotated chart image',p1f3:'Fractal pattern detection',p1f4:'Self-similarity across 3 scales',p1f5:'Written analysis + trade levels',p1f6:'All markets & timeframes',p2f1:'Unlimited chart analyses',p2f2:'Everything in Starter',p2f3:'Historical pattern matching',p2f4:'Win rate statistics',p2f5:'Predicted price path',p2f6:'Live Binance price data',p2f7:'Priority response',p3f1:'Everything in Pro',p3f2:'Fractal Level Indicator',p3f3:'Daily fractal market report',p3f4:'Monthly live session',p3f5:'Private Telegram + Discord',ctah:'The Market Has Always<br>Been a Fractal.',ctap:'Now you have the tool to read it.',ctabtn:'Analyze Your First Chart Free',fn1:'How it works',fn2:'Methodology',fn3:'Pricing',steps:['Reading fractal structures…','Detecting wave positions…','Calculating Fibonacci levels…','Identifying self-similar scales…','Searching pattern database…','Drawing annotations…','Writing analysis…']},ar:{brand:'فراكتل إيه آي أيجنت',n1:'كيف يعمل',n2:'المنهجية',n3:'التحليل',n4:'الأسعار',ncta:'جرّب مجاناً',heye:'ذكاء الفراكتل للمتداولين',h1:'السوق هو <em>فراكتل.</em><br>تعلّم قراءته.',hsub:'ارفع أي رسم بياني. يكتشف ذكاؤنا الاصطناعي الهياكل الفراكتلية المتشابهة في كل مستوى — ويعيد إليك صورة مشروحة وتحليلاً للأمواج في ثوانٍ.',hcta1:'حلّل رسمي البياني',hcta2:'العلم والمنهجية',st1:'مستويات الفراكتل',st2:'وقت التحليل',st3:'متوسط التشابه',heye2:'العملية',htitle:'من الرسم البياني إلى الوضوح في ثوانٍ',hsub2:'أربع خطوات. بدون مؤشرات. هندسة الفراكتل البحتة مطبقة على رسمك البياني فور رفعه.',s1t:'ارفع رسمك البياني',s1d:'أي لقطة شاشة من TradingView أو Binance أو MT4. أي زوج وأي إطار زمني.',s2t:'الذكاء الاصطناعي يقرأ الفراكتل',s2d:'يحدد الهياكل المتشابهة عبر مستويات الموجة الكبيرة والمتوسطة والصغيرة في آنٍ واحد.',s3t:'رسم التعليقات التوضيحية',s3d:'يعود رسمك البياني محللاً — مناطق قطع الفراكتل ومسميات الأمواج وأهداف فيبوناتشي.',s4t:'تحليل مكتوب كامل',s4d:'تغطية شاملة: بنية الفراكتل، موضع الموجة، الدخول، وقف الخسارة، الأهداف، نسبة المخاطرة.',aeye:'المنهجية',atitle:'مبني على رياضيات الفراكتل الحقيقية',abh:'لماذا تعمل الفراكتلات في التداول',abody:'الأسواق ليست عشوائية. السعر <strong>مستمر في كل مكان لكنه غير قابل للاشتقاق في أي نقطة</strong> — تماماً كدالة فايرشتراس. الخشونة تتكرر في كل مستوى.<br><br>الموجة الكبيرة تحتوي موجة أصغر بنفس البنية. وتلك الموجة الأصغر تحتوي موجة أصغر منها — متطابقة مرة أخرى. عندما يُكتشف تشابه عالٍ عبر ثلاثة مستويات في آنٍ واحد، تكون موثوقية الإشارة أعلى بشكل جوهري.<br><br>يقرأ Fractal AI Agent <strong>طبقة ضوضاء الفراكتل</strong> — الفوضى المنظمة التي تتجاهلها الأدوات التقليدية.',sc1n:'دالة فايرشتراس',sc1d:'السعر مستمر لكنه ليس سلساً أبداً. الخشونة اللانهائية في كل نقطة هي الإشارة.',sc2n:'تحليل السلاسل الزمنية',sc2d:'السعر = الاتجاه + الدورة + ضوضاء الفراكتل. نقرأ الطبقة الثالثة التي يتجاهلها الجميع.',sc3n:'التشابه الذاتي للفراكتل',sc3d:'الموجة الكبيرة تحتوي الصغيرة — جميعها متطابقة البنية. تشابه عالٍ عبر 3 مستويات = ثقة عالية.',azeye:'تجربة مباشرة',aztitle:'حلّل رسمك البياني الآن',azsub:'لا تسجيل مطلوب. ارفع أي رسم بياني وشاهد التحليل الفراكتلي الكامل فوراً.',dstrong:'انقر أو اسحب',dtxt:'الرسم البياني هنا',dhint:'TradingView · Binance · MT4 · أي لقطة شاشة',lpair:'الزوج / الأصل',ltf:'الإطار الزمني',lfocus:'التركيز',lmatch:'التطابقات',azbtn:'تحليل الرسم البياني',rempty:'ارفع رسماً بيانياً لرؤية التحليل الفراكتلي هنا',ltxt:'تحليل البنية الفراكتلية…',tab1:'التحليل',tab2:'الأنماط',tab3:'التوقع',clbl:'مشروح بالذكاء الاصطناعي',ptitle:'ملخص التوقع',ts1:'"كنت أقضي ساعة في تحديد قطع الفراكتل يدوياً. الآن أحصل على صورة مشروحة في 10 ثوانٍ."',ts1c:'— أحمد ك. · متداول فوركس',ts2:'"إنه يقرأ البنية الفراكتلية الفعلية للسعر. أهداف فيبوناتشي كانت دقيقة باستمرار."',ts2c:'— سارة م. · متداولة عملات رقمية',ts3:'"شرح الذكاء الاصطناعي لموضع الموجة يعلمني أثناء التداول."',ts3c:'— عمر ت. · متداول مبتدئ',peye:'الخطط',ptitle2:'اختر ميزتك',psub:'جميع الخطط تشمل الرسم البياني المشروح والتحليل الفراكتلي وكشف التشابه الذاتي.',p1n:'مبتدئ',p2n:'احترافي',p3n:'موجّه',pop:'الأكثر شيوعاً',ppm:'شهرياً',gs:'ابدأ الآن',p1f1:'15 تحليل رسم بياني / شهر',p1f2:'صورة الرسم البياني المشروحة',p1f3:'كشف نمط الفراكتل',p1f4:'التشابه الذاتي عبر 3 مستويات',p1f5:'تحليل مكتوب + مستويات التداول',p1f6:'جميع الأسواق والأطر الزمنية',p2f1:'تحليلات غير محدودة',p2f2:'كل ما في المبتدئ',p2f3:'مطابقة الأنماط التاريخية',p2f4:'إحصاءات نسبة الفوز',p2f5:'مسار السعر المتوقع',p2f6:'بيانات أسعار Binance المباشرة',p2f7:'أولوية الاستجابة',p3f1:'كل ما في الاحترافي',p3f2:'مؤشر مستوى الفراكتل',p3f3:'تقرير سوق الفراكتل اليومي',p3f4:'جلسة مباشرة شهرية',p3f5:'تيليجرام + ديسكورد خاص',ctah:'السوق كان دائماً<br>فراكتلاً.',ctap:'الآن لديك الأداة لقراءته.',ctabtn:'حلّل رسمك البياني الأول مجاناً',fn1:'كيف يعمل',fn2:'المنهجية',fn3:'الأسعار',steps:['قراءة البنيات الفراكتلية…','كشف مواضع الأمواج…','حساب مستويات فيبوناتشي…','تحديد المستويات المتشابهة…','البحث في قاعدة الأنماط…','رسم التعليقات التوضيحية…','كتابة التحليل…']},pt:{brand:'Fractal AI Agent',n1:'Como funciona',n2:'Metodologia',n3:'Analisador',n4:'Preços',ncta:'Testar Grátis',heye:'Inteligência Fractal para Traders',h1:'O Mercado É um<br><em>Fractal.</em> Leia-o.',hsub:'Envie qualquer gráfico. Nossa IA detecta estruturas fractais auto-similares em todas as escalas — devolvendo uma imagem anotada, análise de ondas e trajetória prevista em segundos.',hcta1:'Analisar Meu Gráfico',hcta2:'A Ciência',st1:'Escalas Fractais',st2:'Tempo de Análise',st3:'Similaridade Média',heye2:'O Processo',htitle:'Do Gráfico à Clareza em Segundos',hsub2:'Quatro etapas. Sem indicadores. Geometria fractal pura aplicada ao seu gráfico no momento do upload.',s1t:'Envie Seu Gráfico',s1d:'Qualquer captura de tela do TradingView, Binance, MT4 ou MT5. Qualquer par, mercado ou timeframe.',s2t:'IA Lê o Fractal',s2d:'Identifica estruturas auto-similares nas escalas macro, mid e micro simultaneamente.',s3t:'Anotações Desenhadas',s3d:'Seu gráfico volta anotado — zonas de inversão fractal, rótulos de ondas e alvos Fibonacci.',s4t:'Análise Completa Escrita',s4d:'Cobertura completa: estrutura fractal, posição da onda, entrada, stop loss, alvos e razão risco:retorno.',aeye:'A Metodologia',atitle:'Construído sobre Matemática Fractal Real',abh:'Por Que Fractais Funcionam no Trading',abody:'Mercados não são aleatórios. O preço é <strong>contínuo em todo lugar mas diferenciável em nenhum lugar</strong> — exatamente como a função de Weierstrass. A rugosidade se repete em cada escala.<br><br>A onda grande contém uma onda menor com a mesma estrutura. Essa onda menor contém uma ainda menor — novamente idêntica. Quando alta auto-similaridade é detectada em três escalas simultaneamente, a confiabilidade do sinal é fundamentalmente maior.<br><br>Fractal AI Agent lê a <strong>camada de ruído fractal</strong> — o caos estruturado que ferramentas convencionais descartam.',sc1n:'Função de Weierstrass',sc1d:'O preço é contínuo mas nunca suave. A rugosidade infinita em cada ponto É o sinal.',sc2n:'Decomposição de Séries Temporais',sc2d:'P(t) = Tendência + Ciclo + Ruído Fractal. Lemos a terceira camada que todos ignoram.',sc3n:'Auto-Similaridade Fractal',sc3d:'Onda grande contém a pequena — estrutura idêntica. Alta similaridade em 3 escalas = alta confiança.',azeye:'Demo ao Vivo',aztitle:'Analise Seu Gráfico Agora',azsub:'Sem cadastro. Envie qualquer gráfico e veja a análise fractal completa instantaneamente.',dstrong:'Clique ou arraste',dtxt:'o gráfico aqui',dhint:'TradingView · Binance · MT4 · qualquer captura',lpair:'Par / Ativo',ltf:'Timeframe',lfocus:'Foco',lmatch:'Correspondências',azbtn:'Analisar Gráfico',rempty:'Envie um gráfico para ver a análise fractal aqui',ltxt:'Analisando estrutura fractal…',tab1:'Análise',tab2:'Padrões',tab3:'Previsão',clbl:'Anotado por IA',ptitle:'Resumo da Previsão',ts1:'"Eu gastava uma hora identificando cortes fractais. Agora recebo uma imagem anotada em 10 segundos."',ts1c:'— Ahmad K. · Trader Forex',ts2:'"Está lendo a estrutura fractal real do preço. Os alvos Fibonacci têm sido consistentemente precisos."',ts2c:'— Sara M. · Trader de Cripto',ts3:'"A IA explica a posição da onda e por que o corte fractal importa. Me ensina enquanto opero."',ts3c:'— Omar T. · Trader Iniciante',peye:'Planos',ptitle2:'Escolha Sua Vantagem',psub:'Todos os planos incluem gráfico anotado, análise fractal, detecção de auto-similaridade e correspondência.',p1n:'Iniciante',p2n:'Pro',p3n:'Mentor',pop:'MAIS POPULAR',ppm:'por mês',gs:'Começar',p1f1:'15 análises de gráfico / mês',p1f2:'Imagem de gráfico anotada',p1f3:'Detecção de padrão fractal',p1f4:'Auto-similaridade em 3 escalas',p1f5:'Análise escrita + níveis de trade',p1f6:'Todos os mercados e timeframes',p2f1:'Análises ilimitadas',p2f2:'Tudo do Iniciante',p2f3:'Correspondência de padrões históricos',p2f4:'Estatísticas de taxa de acerto',p2f5:'Trajetória de preço prevista',p2f6:'Dados Binance ao vivo',p2f7:'Resposta prioritária',p3f1:'Tudo do Pro',p3f2:'Indicador de Nível Fractal',p3f3:'Relatório diário de mercado fractal',p3f4:'Sessão ao vivo mensal',p3f5:'Telegram + Discord privado',ctah:'O Mercado Sempre Foi<br>um Fractal.',ctap:'Agora você tem a ferramenta para lê-lo.',ctabtn:'Analise Seu Primeiro Gráfico Grátis',fn1:'Como funciona',fn2:'Metodologia',fn3:'Preços',steps:['Lendo estruturas fractais…','Detectando posições de ondas…','Calculando níveis Fibonacci…','Identificando escalas auto-similares…','Pesquisando banco de padrões…','Desenhando anotações…','Escrevendo análise…']}};
+var T={en:{brand:'Fractal AI Agent',n1:'How it works',n2:'Methodology',n3:'Analyzer',n4:'Pricing',ncta:'Try Free',heye:'Fractal Intelligence for Traders',h1:'The Market Is a<br><em>Fractal.</em> Read It.',hsub:'Upload any chart. Our AI detects self-similar fractal structures at every scale — returning an annotated image, wave analysis, and predicted price path in seconds.',hcta1:'Analyze My Chart',hcta2:'The Science',st1:'Fractal Scales',st2:'Analysis Time',st3:'Avg Similarity',heye2:'The Process',htitle:'From Chart to Clarity in Seconds',hsub2:'Four steps. No indicators needed. Pure fractal geometry applied to your chart the moment you upload it.',s1t:'Upload Your Chart',s1d:'Any screenshot from TradingView, Binance, MT4 or MT5. Any pair, any market, any timeframe.',s2t:'AI Reads the Fractal',s2d:'Identifies self-similar structures across macro, mid and micro scales simultaneously.',s3t:'Annotations Drawn',s3d:'Your chart comes back annotated — fractal flip zones, wave labels, entry zone and Fibonacci targets.',s4t:'Full Analysis Written',s4d:'Complete breakdown: fractal structure, wave position, entry, stop loss, targets and R:R ratio.',aeye:'The Methodology',atitle:'Built on Real Fractal Mathematics',abh:'Why Fractals Work in Trading',abody:'Markets are not random. Price is <strong>continuous everywhere but differentiable nowhere</strong> — exactly like the Weierstrass function. The roughness repeats at every scale.<br><br>The big wave contains a smaller wave with the same structure. That smaller wave contains an even smaller one — again identical. When high self-similarity is detected across three scales simultaneously, the signal reliability is fundamentally higher.<br><br>Fractal AI Agent reads the <strong>fractal noise layer</strong> — the structured chaos that conventional tools discard as random.',sc1n:'Weierstrass Function',sc1d:'Price is continuous but never smooth. Infinite roughness at every point IS the signal.',sc2n:'Time Series Decomposition',sc2d:'P(t) = Trend + Cycle + Fractal Noise. We read the third layer everyone else ignores.',sc3n:'Fractal Self-Similarity',sc3d:'Big wave contains small wave — identical structure. High similarity across 3 scales = high confidence.',azeye:'Live Demo',aztitle:'Analyze Your Chart Now',azsub:'No sign-up required. Upload any chart and see the full fractal analysis instantly.',dstrong:'Click or drag',dtxt:'chart here',dhint:'TradingView · Binance · MT4 · any screenshot',lpair:'Pair / Asset',ltf:'Timeframe',lfocus:'Focus',lmatch:'Matches',azbtn:'Analyze Chart',rempty:'Upload a chart to see the fractal analysis here',ltxt:'Analyzing fractal structure…',tab1:'Analysis',tab2:'Patterns',tab3:'Prediction',clbl:'AI Annotated',ptitle:'Prediction Summary',ts1:'"I used to spend an hour identifying fractal cuts. Now I get an annotated image in 10 seconds."',ts1c:'— Ahmad K. · Forex Trader',ts2:'"This reads the actual fractal structure of price. The Fibonacci targets have been consistently accurate."',ts2c:'— Sara M. · Crypto Trader',ts3:'"The AI explains the wave position and why the fractal cut matters. It teaches me while I trade."',ts3c:'— Omar T. · Student Trader',peye:'Plans',ptitle2:'Choose Your Edge',psub:'3 free analyses to start. Upgrade for the full 10-tool fractal arsenal — no indicators, pure mathematics.',p1n:'Starter',p2n:'Pro',p3n:'Elite',p4n:'Institutional',pop:'MOST POPULAR',ppm:'per month',gs:'Get Started',p1f1:'15 chart analyses / month',p1f2:'Annotated chart image',p1f3:'Fractal pattern detection',p1f4:'Self-similarity across 3 scales',p1f5:'Written analysis + trade levels',p1f6:'All markets & timeframes',p2f1:'Unlimited chart analyses',p2f2:'Everything in Starter',p2f3:'Historical pattern matching',p2f4:'Win rate statistics',p2f5:'Predicted price path',p2f6:'Live Binance price data',p2f7:'Priority response',p3f1:'Everything in Pro',p3f2:'Fractal Level Indicator',p3f3:'Daily fractal market report',p3f4:'Monthly live session',p3f5:'Private Telegram + Discord',ctah:'The Market Has Always<br>Been a Fractal.',ctap:'Now you have the tool to read it.',ctabtn:'Analyze Your First Chart Free',fn1:'How it works',fn2:'Methodology',fn3:'Pricing',steps:['Reading fractal structures…','Detecting wave positions…','Calculating Fibonacci levels…','Identifying self-similar scales…','Searching pattern database…','Drawing annotations…','Writing analysis…']},ar:{brand:'فراكتل إيه آي أيجنت',n1:'كيف يعمل',n2:'المنهجية',n3:'التحليل',n4:'الأسعار',ncta:'جرّب مجاناً',heye:'ذكاء الفراكتل للمتداولين',h1:'السوق هو <em>فراكتل.</em><br>تعلّم قراءته.',hsub:'ارفع أي رسم بياني. يكتشف ذكاؤنا الاصطناعي الهياكل الفراكتلية المتشابهة في كل مستوى — ويعيد إليك صورة مشروحة وتحليلاً للأمواج في ثوانٍ.',hcta1:'حلّل رسمي البياني',hcta2:'العلم والمنهجية',st1:'مستويات الفراكتل',st2:'وقت التحليل',st3:'متوسط التشابه',heye2:'العملية',htitle:'من الرسم البياني إلى الوضوح في ثوانٍ',hsub2:'أربع خطوات. بدون مؤشرات. هندسة الفراكتل البحتة مطبقة على رسمك البياني فور رفعه.',s1t:'ارفع رسمك البياني',s1d:'أي لقطة شاشة من TradingView أو Binance أو MT4. أي زوج وأي إطار زمني.',s2t:'الذكاء الاصطناعي يقرأ الفراكتل',s2d:'يحدد الهياكل المتشابهة عبر مستويات الموجة الكبيرة والمتوسطة والصغيرة في آنٍ واحد.',s3t:'رسم التعليقات التوضيحية',s3d:'يعود رسمك البياني محللاً — مناطق قطع الفراكتل ومسميات الأمواج وأهداف فيبوناتشي.',s4t:'تحليل مكتوب كامل',s4d:'تغطية شاملة: بنية الفراكتل، موضع الموجة، الدخول، وقف الخسارة، الأهداف، نسبة المخاطرة.',aeye:'المنهجية',atitle:'مبني على رياضيات الفراكتل الحقيقية',abh:'لماذا تعمل الفراكتلات في التداول',abody:'الأسواق ليست عشوائية. السعر <strong>مستمر في كل مكان لكنه غير قابل للاشتقاق في أي نقطة</strong> — تماماً كدالة فايرشتراس. الخشونة تتكرر في كل مستوى.<br><br>الموجة الكبيرة تحتوي موجة أصغر بنفس البنية. وتلك الموجة الأصغر تحتوي موجة أصغر منها — متطابقة مرة أخرى. عندما يُكتشف تشابه عالٍ عبر ثلاثة مستويات في آنٍ واحد، تكون موثوقية الإشارة أعلى بشكل جوهري.<br><br>يقرأ Fractal AI Agent <strong>طبقة ضوضاء الفراكتل</strong> — الفوضى المنظمة التي تتجاهلها الأدوات التقليدية.',sc1n:'دالة فايرشتراس',sc1d:'السعر مستمر لكنه ليس سلساً أبداً. الخشونة اللانهائية في كل نقطة هي الإشارة.',sc2n:'تحليل السلاسل الزمنية',sc2d:'السعر = الاتجاه + الدورة + ضوضاء الفراكتل. نقرأ الطبقة الثالثة التي يتجاهلها الجميع.',sc3n:'التشابه الذاتي للفراكتل',sc3d:'الموجة الكبيرة تحتوي الصغيرة — جميعها متطابقة البنية. تشابه عالٍ عبر 3 مستويات = ثقة عالية.',azeye:'تجربة مباشرة',aztitle:'حلّل رسمك البياني الآن',azsub:'لا تسجيل مطلوب. ارفع أي رسم بياني وشاهد التحليل الفراكتلي الكامل فوراً.',dstrong:'انقر أو اسحب',dtxt:'الرسم البياني هنا',dhint:'TradingView · Binance · MT4 · أي لقطة شاشة',lpair:'الزوج / الأصل',ltf:'الإطار الزمني',lfocus:'التركيز',lmatch:'التطابقات',azbtn:'تحليل الرسم البياني',rempty:'ارفع رسماً بيانياً لرؤية التحليل الفراكتلي هنا',ltxt:'تحليل البنية الفراكتلية…',tab1:'التحليل',tab2:'الأنماط',tab3:'التوقع',clbl:'مشروح بالذكاء الاصطناعي',ptitle:'ملخص التوقع',ts1:'"كنت أقضي ساعة في تحديد قطع الفراكتل يدوياً. الآن أحصل على صورة مشروحة في 10 ثوانٍ."',ts1c:'— أحمد ك. · متداول فوركس',ts2:'"إنه يقرأ البنية الفراكتلية الفعلية للسعر. أهداف فيبوناتشي كانت دقيقة باستمرار."',ts2c:'— سارة م. · متداولة عملات رقمية',ts3:'"شرح الذكاء الاصطناعي لموضع الموجة يعلمني أثناء التداول."',ts3c:'— عمر ت. · متداول مبتدئ',peye:'الخطط',ptitle2:'اختر ميزتك',psub:'جميع الخطط تشمل الرسم البياني المشروح والتحليل الفراكتلي وكشف التشابه الذاتي.',p1n:'مبتدئ',p2n:'احترافي',p3n:'إيليت',p4n:'مؤسسي',pop:'الأكثر شيوعاً',ppm:'شهرياً',gs:'ابدأ الآن',p1f1:'15 تحليل رسم بياني / شهر',p1f2:'صورة الرسم البياني المشروحة',p1f3:'كشف نمط الفراكتل',p1f4:'التشابه الذاتي عبر 3 مستويات',p1f5:'تحليل مكتوب + مستويات التداول',p1f6:'جميع الأسواق والأطر الزمنية',p2f1:'تحليلات غير محدودة',p2f2:'كل ما في المبتدئ',p2f3:'مطابقة الأنماط التاريخية',p2f4:'إحصاءات نسبة الفوز',p2f5:'مسار السعر المتوقع',p2f6:'بيانات أسعار Binance المباشرة',p2f7:'أولوية الاستجابة',p3f1:'كل ما في الاحترافي',p3f2:'مؤشر مستوى الفراكتل',p3f3:'تقرير سوق الفراكتل اليومي',p3f4:'جلسة مباشرة شهرية',p3f5:'تيليجرام + ديسكورد خاص',ctah:'السوق كان دائماً<br>فراكتلاً.',ctap:'الآن لديك الأداة لقراءته.',ctabtn:'حلّل رسمك البياني الأول مجاناً',fn1:'كيف يعمل',fn2:'المنهجية',fn3:'الأسعار',steps:['قراءة البنيات الفراكتلية…','كشف مواضع الأمواج…','حساب مستويات فيبوناتشي…','تحديد المستويات المتشابهة…','البحث في قاعدة الأنماط…','رسم التعليقات التوضيحية…','كتابة التحليل…']},pt:{brand:'Fractal AI Agent',n1:'Como funciona',n2:'Metodologia',n3:'Analisador',n4:'Preços',ncta:'Testar Grátis',heye:'Inteligência Fractal para Traders',h1:'O Mercado É um<br><em>Fractal.</em> Leia-o.',hsub:'Envie qualquer gráfico. Nossa IA detecta estruturas fractais auto-similares em todas as escalas — devolvendo uma imagem anotada, análise de ondas e trajetória prevista em segundos.',hcta1:'Analisar Meu Gráfico',hcta2:'A Ciência',st1:'Escalas Fractais',st2:'Tempo de Análise',st3:'Similaridade Média',heye2:'O Processo',htitle:'Do Gráfico à Clareza em Segundos',hsub2:'Quatro etapas. Sem indicadores. Geometria fractal pura aplicada ao seu gráfico no momento do upload.',s1t:'Envie Seu Gráfico',s1d:'Qualquer captura de tela do TradingView, Binance, MT4 ou MT5. Qualquer par, mercado ou timeframe.',s2t:'IA Lê o Fractal',s2d:'Identifica estruturas auto-similares nas escalas macro, mid e micro simultaneamente.',s3t:'Anotações Desenhadas',s3d:'Seu gráfico volta anotado — zonas de inversão fractal, rótulos de ondas e alvos Fibonacci.',s4t:'Análise Completa Escrita',s4d:'Cobertura completa: estrutura fractal, posição da onda, entrada, stop loss, alvos e razão risco:retorno.',aeye:'A Metodologia',atitle:'Construído sobre Matemática Fractal Real',abh:'Por Que Fractais Funcionam no Trading',abody:'Mercados não são aleatórios. O preço é <strong>contínuo em todo lugar mas diferenciável em nenhum lugar</strong> — exatamente como a função de Weierstrass. A rugosidade se repete em cada escala.<br><br>A onda grande contém uma onda menor com a mesma estrutura. Essa onda menor contém uma ainda menor — novamente idêntica. Quando alta auto-similaridade é detectada em três escalas simultaneamente, a confiabilidade do sinal é fundamentalmente maior.<br><br>Fractal AI Agent lê a <strong>camada de ruído fractal</strong> — o caos estruturado que ferramentas convencionais descartam.',sc1n:'Função de Weierstrass',sc1d:'O preço é contínuo mas nunca suave. A rugosidade infinita em cada ponto É o sinal.',sc2n:'Decomposição de Séries Temporais',sc2d:'P(t) = Tendência + Ciclo + Ruído Fractal. Lemos a terceira camada que todos ignoram.',sc3n:'Auto-Similaridade Fractal',sc3d:'Onda grande contém a pequena — estrutura idêntica. Alta similaridade em 3 escalas = alta confiança.',azeye:'Demo ao Vivo',aztitle:'Analise Seu Gráfico Agora',azsub:'Sem cadastro. Envie qualquer gráfico e veja a análise fractal completa instantaneamente.',dstrong:'Clique ou arraste',dtxt:'o gráfico aqui',dhint:'TradingView · Binance · MT4 · qualquer captura',lpair:'Par / Ativo',ltf:'Timeframe',lfocus:'Foco',lmatch:'Correspondências',azbtn:'Analisar Gráfico',rempty:'Envie um gráfico para ver a análise fractal aqui',ltxt:'Analisando estrutura fractal…',tab1:'Análise',tab2:'Padrões',tab3:'Previsão',clbl:'Anotado por IA',ptitle:'Resumo da Previsão',ts1:'"Eu gastava uma hora identificando cortes fractais. Agora recebo uma imagem anotada em 10 segundos."',ts1c:'— Ahmad K. · Trader Forex',ts2:'"Está lendo a estrutura fractal real do preço. Os alvos Fibonacci têm sido consistentemente precisos."',ts2c:'— Sara M. · Trader de Cripto',ts3:'"A IA explica a posição da onda e por que o corte fractal importa. Me ensina enquanto opero."',ts3c:'— Omar T. · Trader Iniciante',peye:'Planos',ptitle2:'Escolha Sua Vantagem',psub:'Todos os planos incluem gráfico anotado, análise fractal, detecção de auto-similaridade e correspondência.',p1n:'Iniciante',p2n:'Pro',p3n:'Elite',p4n:'Institucional',pop:'MAIS POPULAR',ppm:'por mês',gs:'Começar',p1f1:'15 análises de gráfico / mês',p1f2:'Imagem de gráfico anotada',p1f3:'Detecção de padrão fractal',p1f4:'Auto-similaridade em 3 escalas',p1f5:'Análise escrita + níveis de trade',p1f6:'Todos os mercados e timeframes',p2f1:'Análises ilimitadas',p2f2:'Tudo do Iniciante',p2f3:'Correspondência de padrões históricos',p2f4:'Estatísticas de taxa de acerto',p2f5:'Trajetória de preço prevista',p2f6:'Dados Binance ao vivo',p2f7:'Resposta prioritária',p3f1:'Tudo do Pro',p3f2:'Indicador de Nível Fractal',p3f3:'Relatório diário de mercado fractal',p3f4:'Sessão ao vivo mensal',p3f5:'Telegram + Discord privado',ctah:'O Mercado Sempre Foi<br>um Fractal.',ctap:'Agora você tem a ferramenta para lê-lo.',ctabtn:'Analise Seu Primeiro Gráfico Grátis',fn1:'Como funciona',fn2:'Metodologia',fn3:'Preços',steps:['Lendo estruturas fractais…','Detectando posições de ondas…','Calculando níveis Fibonacci…','Identificando escalas auto-similares…','Pesquisando banco de padrões…','Desenhando anotações…','Escrevendo análise…']}};
 
 var lang='en';
 function tx(k){return(T[lang]&&T[lang][k])||T.en[k]||'';}
@@ -1631,7 +1665,7 @@ function setLang(l){
   html.lang=l;html.dir=l==='ar'?'rtl':'ltr';
   document.body.style.fontFamily=l==='ar'?"'Tajawal',sans-serif":"'DM Sans',sans-serif";
   document.querySelectorAll('.lb').forEach(function(b){b.classList.toggle('on',b.textContent.trim()===l.toUpperCase());});
-  var ids=['brand','n1','n2','n3','n4','ncta','heye','h1','hsub','hcta1','hcta2','st1','st2','st3','heye2','htitle','hsub2','s1t','s1d','s2t','s2d','s3t','s3d','s4t','s4d','aeye','atitle','abh','abody','sc1n','sc1d','sc2n','sc2d','sc3n','sc3d','azeye','aztitle','azsub','dstrong','dtxt','dhint','lpair','ltf','lfocus','lmatch','rempty','ltxt','tab1','tab2','tab3','clbl','ptitle','ts1','ts1c','ts2','ts2c','ts3','ts3c','peye','ptitle2','psub','p1n','p2n','p3n','pop','p1f1','p1f2','p1f3','p1f4','p1f5','p1f6','p2f1','p2f2','p2f3','p2f4','p2f5','p2f6','p2f7','p3f1','p3f2','p3f3','p3f4','p3f5','ctah','ctap','ctabtn','fn1','fn2','fn3'];
+  var ids=['brand','n1','n2','n3','n4','ncta','heye','h1','hsub','hcta1','hcta2','st1','st2','st3','heye2','htitle','hsub2','s1t','s1d','s2t','s2d','s3t','s3d','s4t','s4d','aeye','atitle','abh','abody','sc1n','sc1d','sc2n','sc2d','sc3n','sc3d','azeye','aztitle','azsub','dstrong','dtxt','dhint','lpair','ltf','lfocus','lmatch','rempty','ltxt','tab1','tab2','tab3','clbl','ptitle','ts1','ts1c','ts2','ts2c','ts3','ts3c','peye','ptitle2','psub','p1n','p2n','p3n','p4n','pop','p1f1','p1f2','p1f3','p1f4','p1f5','p1f6','p2f1','p2f2','p2f3','p2f4','p2f5','p2f6','p2f7','p3f1','p3f2','p3f3','p3f4','p3f5','ctah','ctap','ctabtn','fn1','fn2','fn3'];
   ids.forEach(function(id){var el=document.getElementById('t-'+id);if(el&&tx(id))el.innerHTML=tx(id);});
   ['ppm1','ppm2','ppm3'].forEach(function(id){var el=document.getElementById('t-'+id);if(el)el.textContent=tx('ppm');});
   ['p1btn','p2btn','p3btn'].forEach(function(id){var el=document.getElementById('t-'+id);if(el)el.textContent=tx('gs');});
@@ -2008,7 +2042,7 @@ azBtn.addEventListener('click', function(){
   var pairVal = document.getElementById('pairIn').value.trim();
   azTxtEl.textContent = pairVal ? 'Analyzing ' + pairVal + '…' : 'Running…';
   showDash();
-  document.getElementById('toolStatus').style.display='grid';
+  document.getElementById('aiCtrlStatus').style.display='grid';
 
   /* Show pro gate if free user */
   document.getElementById('proGate').style.display = 'none';
@@ -2602,14 +2636,18 @@ function tierAllows(tool){
 }
 
 function updateToolButtons(){
+  /* Update the Run buttons in the detail result sections */
   Object.keys(TOOL_TIERS).forEach(function(tool){
     var btn = document.getElementById(tool+'-btn');
     if(!btn) return;
     var allowed = tierAllows(tool);
+    var tx = typeof window.tx === 'function' ? window.tx : function(k){ return k; };
     btn.disabled = !dataUrl || !allowed;
-    btn.textContent = allowed ? 'Run' : '🔒 Upgrade';
+    btn.textContent = allowed ? tx('run')||'Run' : '🔒 '+tx('upgrade')||'🔒 Upgrade';
     btn.title = allowed ? '' : 'This tool requires a higher plan';
   });
+  /* Also rebuild the card grid so enabled state is fresh */
+  buildToolGrid();
 }
 
 /* Call updateToolButtons whenever image is uploaded */
@@ -3080,54 +3118,42 @@ var TOOL_COSTS = {
   ww:       4
 };
 
+/* Icons match the tool-result-section headers below */
 var TOOLS = [
-  { id:'fib',     label:'Fibonacci',      endpoint:'/fibonacci',   cost:3  },
-  { id:'smc',     label:'Smart Money',    endpoint:'/smc',         cost:4  },
-  { id:'vol',     label:'Volatility',     endpoint:'/volatility',  cost:3  },
-  { id:'bar',     label:'Bar Pattern',    endpoint:'/bar-pattern', cost:4  },
-  { id:'ww',      label:'Weierstrass',    endpoint:'/weierstrass', cost:4  },
-  { id:'proj',    label:'Projection',     endpoint:'/projection',  cost:25 },
-  { id:'mtf',     label:'MTF Confluence', endpoint:'/mtf',         cost:8  },
-  { id:'age',     label:'Fractal Age',    endpoint:'/fractal-age', cost:25 },
-  { id:'liq',     label:'Liquidity Map',  endpoint:'/liquidity',   cost:8  },
-  { id:'journal', label:'Trade Journal',  endpoint:'/journal',     cost:20 }
+  { id:'fib',     label:'Fibonacci',      sub:'Auto levels · Extensions',  icon:'⟡', endpoint:'/fibonacci',   cost:3,  tier:'pro'    },
+  { id:'smc',     label:'Smart Money',    sub:'Order blocks · BOS · FVG',  icon:'⬡', endpoint:'/smc',         cost:4,  tier:'pro'    },
+  { id:'vol',     label:'Volatility',     sub:'Regime · Position size',    icon:'≋', endpoint:'/volatility',  cost:3,  tier:'pro'    },
+  { id:'bar',     label:'Bar Pattern',    sub:'Self-similarity scan',      icon:'▦', endpoint:'/bar-pattern', cost:4,  tier:'pro'    },
+  { id:'ww',      label:'Weierstrass',    sub:'Hurst · Decomposition',     icon:'∿', endpoint:'/weierstrass', cost:4,  tier:'pro'    },
+  { id:'proj',    label:'Projection',     sub:'3-scenario price path',     icon:'↗', endpoint:'/projection',  cost:25, tier:'pro'    },
+  { id:'mtf',     label:'MTF Confluence', sub:'Weekly · Daily · H4',       icon:'⊕', endpoint:'/mtf',         cost:8,  tier:'mentor' },
+  { id:'age',     label:'Fractal Age',    sub:'Cycle timing · Urgency',    icon:'⧗', endpoint:'/fractal-age', cost:25, tier:'mentor' },
+  { id:'liq',     label:'Liquidity Map',  sub:'Stop clusters · Sweeps',    icon:'◎', endpoint:'/liquidity',   cost:8,  tier:'mentor' },
+  { id:'journal', label:'Trade Journal',  sub:'AI graded · Coaching',      icon:'✦', endpoint:'/journal',     cost:20, tier:'mentor' }
 ];
 
 function buildToolGrid() {
-  var grid = document.getElementById('toolGrid');
+  var grid = document.getElementById('aiToolGrid') || document.getElementById('toolGrid');
   if (!grid) return;
   grid.innerHTML = '';
+  var hasChart = (typeof dataUrl !== 'undefined' && dataUrl) ||
+                 (typeof chartCandles !== 'undefined' && chartCandles && chartCandles.length > 1);
   TOOLS.forEach(function(t) {
     var allowed = tierAllows(t.id);
-    var btn = document.createElement('button');
-    btn.id = 'tbtn-' + t.id;
-    btn.style.cssText = [
-      'flex-shrink:0',
-      'padding:5px 10px',
-      'display:inline-flex',
-      'align-items:center',
-      'gap:6px',
-      'background:rgba(255,255,255,.03)',
-      'border:1px solid rgba(255,255,255,.07)',
-      'cursor:pointer',
-      'font-family:DM Mono,monospace',
-      'font-size:10px',
-      'color:#dde4ee',
-      'letter-spacing:.04em',
-      'transition:background .15s,border-color .15s',
-      'white-space:nowrap',
-      'border-radius:2px'
-    ].join(';');
-    btn.onmouseover = function(){ this.style.background='rgba(201,168,76,.1)'; this.style.borderColor='rgba(201,168,76,.3)'; };
-    btn.onmouseout  = function(){ this.style.background='rgba(255,255,255,.03)'; this.style.borderColor='rgba(255,255,255,.07)'; };
-    btn.innerHTML = (allowed ? '' : '<span style="opacity:.5;font-size:9px">🔒</span> ')
-      + '<span>' + t.label + '</span>'
-      + '<span style="font-family:DM Mono,monospace;font-size:8px;color:rgba(201,168,76,.65);background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.18);padding:1px 5px;border-radius:1px;white-space:nowrap">'
-      + t.cost + ' cr</span>';
-    btn.onclick = function(){ runSingleTool(t); };
-    btn.disabled = !dataUrl && !(chartCandles && chartCandles.length > 1);
-    if(btn.disabled) btn.style.opacity = '0.38';
-    grid.appendChild(btn);
+    var card = document.createElement('button');
+    card.className = 'ai-tc';
+    card.id = 'tbtn-' + t.id;
+    if (!hasChart) card.setAttribute('disabled', true);
+    card.innerHTML =
+      '<div class="ai-tc-icon">' + t.icon + '</div>' +
+      '<div class="ai-tc-name">' + t.label + '</div>' +
+      '<div class="ai-tc-sub">' + t.sub + '</div>' +
+      '<div class="ai-tc-footer">' +
+        '<span class="ai-tc-cr">' + t.cost + ' cr</span>' +
+        (!allowed ? '<span class="ai-tc-lock">🔒</span>' : '') +
+      '</div>';
+    card.onclick = function() { runSingleTool(t); };
+    grid.appendChild(card);
   });
 }
 
@@ -4688,16 +4714,29 @@ function handleCaptureUpload(input){
 
 function executeTool(tool,imgData){
   var btn=document.getElementById('tbtn-'+tool.id);
-  if(!imgData){showErr('Load a chart first');if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">'+tool.cost+' cr</span>';return;}
+  function resetCard(stateIcon,stateColor){
+    if(!btn)return;
+    var allowed=tierAllows(tool.id);
+    btn.innerHTML=
+      '<div class="ai-tc-icon">'+tool.icon+'</div>'+
+      '<div class="ai-tc-name">'+tool.label+'</div>'+
+      '<div class="ai-tc-sub">'+tool.sub+'</div>'+
+      '<div class="ai-tc-footer">'+
+        '<span class="ai-tc-cr">'+tool.cost+' cr</span>'+
+        (!allowed?'<span class="ai-tc-lock">🔒</span>':'')+
+      '</div>'+
+      (stateIcon?'<div class="ai-tc-state" style="color:'+stateColor+'">'+stateIcon+'</div>':'');
+  }
+  if(!imgData){showErr('Load a chart first');resetCard('','');return;}
   dataUrl=imgData;
-  if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c">running…</span>';
+  if(btn){ btn.setAttribute('disabled',true); resetCard('…','rgba(201,168,76,.8)'); }
   var pair=currentSymbol||(document.getElementById('pairIn')||{}).value||'';
   var token=localStorage.getItem('fractal_token');
   var langVal=localStorage.getItem('fractal_lang')||'en';
   var b64=imgData.split(',')[1], mType=imgData.split(';')[0].split(':')[1];
   callBackend(tool.endpoint,{image:b64,mediaType:mType,pair:pair,timeframe:currentInterval,language:langVal,_token:token,sma_context:smaContextStr})
   .then(function(result){
-    if(result&&result.error){showErr(result.error);return;}
+    if(result&&result.error){showErr(result.error);if(btn)btn.removeAttribute('disabled');resetCard('','');return;}
     drawToolResultOnChart(tool.id,result);
     if(tool.id==='fib'&&typeof renderFibonacci==='function')renderFibonacci(result);
     else if(tool.id==='smc'&&typeof renderSMC==='function')renderSMC(result);
@@ -4709,11 +4748,14 @@ function executeTool(tool,imgData){
     else if(tool.id==='journal'&&typeof renderJournal==='function')renderJournal(result);
     var ud=document.getElementById('uniDash');if(ud)ud.style.display='flex';
     var re=document.getElementById('rEmpty2');if(re)re.style.display='none';
-    if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#27ae60">✓ done</span>';
+    if(btn)btn.removeAttribute('disabled');
+    resetCard('✓','#27ae60');
+    setTimeout(function(){resetCard('','');},3000);
   })
   .catch(function(e){
     showErr(tool.label+' failed: '+e.message);
-    if(btn)btn.innerHTML='<span>'+tool.label+'</span><span style="font-size:9px;color:#c9a84c;opacity:.7">'+tool.cost+' cr</span>';
+    if(btn)btn.removeAttribute('disabled');
+    resetCard('','');
   });
 }
 
