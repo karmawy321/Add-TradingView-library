@@ -308,7 +308,7 @@ section{padding:96px 48px}
 .ai-tc-lock{font-size:9px;opacity:.4;line-height:1}
 .ai-tc-state{font-family:'DM Mono',monospace;font-size:8px;position:absolute;top:9px;right:10px;opacity:.75}
 .cost-badge{font-family:'DM Mono',monospace;font-size:8px;color:rgba(6,8,13,.65);background:rgba(6,8,13,.25);border:1px solid rgba(6,8,13,.18);padding:2px 7px;border-radius:1px;letter-spacing:.04em;white-space:nowrap}
-@media(max-width:640px){#aiToolGrid{grid-template-columns:repeat(5,1fr)}.ai-tc{padding:9px 9px 8px;min-height:72px}.ai-tc-name{font-size:9px}.ai-tc-sub{display:none}}
+/* AI tool card sub text hidden below 640px handled in 600px block above */
 @keyframes spin{to{transform:rotate(360deg)}}
 .r-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
 .r-empty p{font-size:13px;color:var(--muted)}
@@ -495,9 +495,11 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 }
 #chartToolsPanel > div:first-child > div:first-child::-webkit-scrollbar{display:none}
 
-/* MOBILE */
+/* ══ TABLET (≤900px) ══ */
 @media(max-width:900px){
-  nav{padding:14px 20px}.nav-links{display:none}
+  nav{padding:14px 20px}
+  .nav-links{display:none}
+  .nav-r .ls{display:none} /* hide lang switcher on tablet — space needed */
   section{padding:60px 20px}
   .hero{padding:100px 20px 60px}
   .steps{grid-template-columns:1fr 1fr}
@@ -508,63 +510,128 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   .divider{padding:0 20px}
   .levels{grid-template-columns:1fr 1fr}
   #analyzer{padding:60px 20px}
-
-  /* ── Analyzer panel — stack chart over results ── */
-  .nd-main{
-    grid-template-columns: 1fr !important;
-    grid-template-rows: auto auto;
-  }
-  /* Chart area fixed height on tablet */
-  #chartArea{
-    height: clamp(260px, 55vw, 380px) !important;
-  }
-  /* Right panel below chart — full width */
-  .nd-side{
-    width: 100% !important;
-    max-width: 100% !important;
-    border-left: none !important;
-    border-top: 1px solid rgba(255,255,255,.06) !important;
-  }
-  /* Chart toolbar wraps on tablet */
-  #chartToolsPanel > div:first-child > div:first-child{
-    flex-wrap: wrap !important;
-    gap: 6px !important;
-    padding: 6px 8px !important;
-  }
-  #snapBtn, #azBtn{ font-size: 11px !important; }
-  #toolGrid{ max-height: 280px; overflow-y: auto; }
-  .hero-in{
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 24px !important;
-  }
-  .nd-metrics{ grid-template-columns: 1fr 1fr !important; }
+  .nd-main{grid-template-columns:1fr !important;grid-template-rows:auto auto}
+  #chartArea{height:clamp(260px,55vw,380px) !important}
+  .nd-side{width:100% !important;max-width:100% !important;border-left:none !important;border-top:1px solid rgba(255,255,255,.06) !important}
+  #chartToolsPanel > div:first-child > div:first-child{flex-wrap:wrap !important;gap:6px !important;padding:6px 8px !important}
+  .hero-in{display:flex !important;flex-direction:column !important;gap:24px !important}
+  .nd-metrics{grid-template-columns:1fr 1fr !important}
   .res-4col{grid-template-columns:1fr 1fr !important}
   .res-3col{grid-template-columns:1fr 1fr !important}
-  #pairIn{ width: 100% !important; }
-  #analyzer{ padding: 20px 0 !important; }
-  .az-wrap{ padding: 0 !important; }
+  #pairIn{width:100% !important}
+  #analyzer{padding:20px 0 !important}
+  .az-wrap{padding:0 !important}
+  /* Pricing — 2 cols on tablet */
+  #pricing > div[style*="repeat(5"]{grid-template-columns:repeat(2,1fr) !important}
+  /* Tools showcase — 2 cols on tablet */
+  .tools-grid{grid-template-columns:repeat(2,1fr) !important}
+  /* AI tool cards — 3+2 on tablet, horizontal scroll row */
+  #aiToolGrid{grid-template-columns:repeat(5,minmax(100px,1fr));overflow-x:auto}
+  /* AI ctrl row compact */
+  #aiCtrlRow{gap:6px;padding:8px 10px}
+  /* Snap + Az btn compact */
+  #snapBtn{padding:5px 9px;font-size:8px}
+  .az-btn{padding:7px 12px;font-size:10px}
+  .az-spin{width:10px;height:10px}
 }
 
-/* ── Mobile chart layout ── */
-@media(max-width:768px){
-  #chartToolsPanel{ min-height:unset !important; }
-  /* Chart area proportional height on phone */
-  #chartArea{
-    height: clamp(220px, 56vw, 320px) !important;
+/* ══ PHONE (≤600px) ══ */
+@media(max-width:600px){
+  /* Nav — keep logo + auth only */
+  nav{padding:12px 16px}
+  .nav-r .ls{display:none}
+  .nav-r .nav-credits{display:none} /* hide credit counter — shown inside dashboard */
+  .nav-r .nav-user{max-width:80px;font-size:10px}
+  .nav-r .nav-signout{display:none}
+  .nav-cta{padding:6px 14px;font-size:9px}
+
+  /* Hero */
+  .hero{padding:80px 16px 48px}
+  .hero h1{font-size:clamp(22px,7vw,34px)}
+  .hero-sub{font-size:14px;margin-bottom:28px}
+  .hero-stats{gap:24px;flex-wrap:wrap;margin-top:28px}
+  .hs-v{font-size:22px}
+  .hero-acts{flex-direction:column;align-items:flex-start;gap:8px}
+  .btn-g,.btn-o{width:100%;text-align:center}
+
+  /* Sections */
+  section{padding:48px 16px}
+  .sec-h{font-size:clamp(20px,6vw,30px)}
+  .sec-p{font-size:13px}
+
+  /* Steps — single column */
+  .steps{grid-template-columns:1fr !important}
+
+  /* Tools showcase — single column */
+  .tools-grid{grid-template-columns:1fr !important}
+
+  /* Pricing — single column, scrollable */
+  #pricing > div[style*="repeat(5"]{grid-template-columns:1fr !important}
+  .pc-amt{font-size:32px}
+
+  /* Testimonials */
+  .testi-grid{grid-template-columns:1fr !important}
+
+  /* Chart area */
+  #chartArea{height:clamp(200px,58vw,300px) !important}
+
+  /* Drawing toolbar — hide on mobile, show via button */
+  #drawToolbar{width:36px}
+  #drawToolbar .tb-main{width:30px;height:30px}
+  #drawToolbar .tb-main svg{width:13px;height:13px}
+
+  /* Chart toolbar controls */
+  #chartToolsPanel input,#chartToolsPanel select{font-size:11px !important}
+  #pairIn{width:80px !important}
+
+  /* AI Controls row */
+  #aiCtrlRow{padding:6px 8px;gap:5px;flex-wrap:wrap}
+  #aiCtrlRow select{font-size:8px;padding:4px 5px}
+  #snapBtn{padding:5px 8px;font-size:8px;gap:3px}
+  .az-btn{padding:6px 10px;font-size:9px;letter-spacing:.05em}
+  #main-cost-badge{display:none} /* hide credit badge from main btn on phone */
+
+  /* AI tool cards — 2 per row, scrollable */
+  #aiToolGrid{
+    grid-template-columns:repeat(2,1fr);
+    overflow-x:visible;
   }
-  /* Toolbar row: compress + scroll */
-  #chartToolsPanel input, #chartToolsPanel select{ font-size:12px !important; }
-  #pairIn{ width:90px !important; }
-  #snapBtn, #azBtn{ padding:6px !important; font-size:10px !important; }
-  #aiToolsPanel{ overflow-x:hidden; }
-  #toolGrid{ overflow-x:auto; overflow-y:hidden; flex-wrap:nowrap; }
-  /* Flyout — anchored to toolbar right edge */
-  .tb-flyout{ left:44px !important; max-height:70vh !important; overflow-y:auto !important; }
-  .tb-tooltip{ left:48px !important; }
-  /* Live price compact */
-  #livePriceBar{ font-size:10px !important; }
+  .ai-tc{min-height:76px;padding:10px 11px 9px}
+  .ai-tc-name{font-size:9.5px}
+  .ai-tc-sub{display:none}
+  .ai-tc-icon{font-size:14px}
+  .ai-tc-cr{font-size:7px;padding:1px 5px}
+
+  /* Result panels */
+  .nd-metrics{grid-template-columns:1fr 1fr !important}
+  .nd-metric-v{font-size:13px}
+  .res-4col{grid-template-columns:1fr 1fr !important}
+  .res-3col{grid-template-columns:1fr !important}
+  .res-2col{grid-template-columns:1fr !important}
+
+  /* Side panel */
+  .nd-side-body{padding:8px}
+
+  /* Flyout anchored */
+  .tb-flyout{left:38px !important;max-height:70vh !important;overflow-y:auto !important;min-width:150px}
+  .tb-tooltip{left:40px !important}
+
+  /* Live price bar compact */
+  #livePriceBar{font-size:9px !important}
+  .live-price-hl{display:none}
+  .live-price-meta{display:none}
+
+  /* Context menu full-width on phone */
+  #ctxMenu{min-width:calc(100vw - 32px);left:16px !important;right:16px}
+
+  /* Usage bar */
+  .usage-bar{padding:6px 10px}
+  .usage-label{font-size:8px}
+
+  /* Footer */
+  footer{padding:20px 16px;font-size:11px}
 }
+
 /* ══ DRAWING TOOLBAR ══ */
 #drawToolbar{width:44px;background:#07090e;border-right:1px solid rgba(201,168,76,.15);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;flex-shrink:0;user-select:none}
 .tb-group{position:relative;width:36px}
