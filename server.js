@@ -405,8 +405,9 @@ app.post('/analyze', async (req, res) => {
 app.post('/bar-pattern', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 4); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Fractal bar self-similarity analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Find 2-3 self-similar bar sequences. Reply in ${rl(l)}. JSON only, no markdown, single-line strings.\n{"pair":"str","timeframe":"str","dominant_pattern":"str","fractal_dimension":"1.3","self_similarity_score":82,"bar_clusters":[{"id":1,"name":"str","description":"1-2 sentences","location_a":{"x1":0.05,"x2":0.25,"label":"str"},"location_b":{"x1":0.55,"x2":0.75,"label":"str"},"similarity_pct":84,"bar_sequence":[8 floats 0-1],"color":"#hex"}],"scale_levels":[{"level":"Macro|Mid|Micro","bars":20,"pattern":"str","strength":"high|medium|low"}],"trading_implication":"2 sentences","next_expected_sequence":[8 floats 0-1],"confidence":"high|medium|low","signal":"bullish|bearish|neutral"}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
 });
@@ -414,8 +415,9 @@ app.post('/bar-pattern', async (req, res) => {
 app.post('/weierstrass', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 4); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Weierstrass/time-series analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Decompose price. Reply in ${rl(l)}. JSON only, no markdown, single-line strings.\n{"pair":"str","timeframe":"str","hurst_exponent":0.67,"fractal_dimension":1.33,"roughness_index":"high|medium|low","market_regime":"trending|mean-reverting|random-walk","decomposition":{"trend":{"direction":"up|down|sideways","strength":0.72,"description":"1 sentence","path":[10 floats 0-1]},"cycle":{"period_bars":14,"amplitude":0.08,"phase":"rising|falling|peak|trough","description":"1 sentence","path":[10 floats]},"fractal_noise":{"intensity":0.31,"color":"pink|white|brown","weierstrass_a":0.7,"weierstrass_b":3,"description":"1 sentence","path":[10 floats]}},"weierstrass_fit":{"quality":"excellent|good|fair|poor","score":78,"description":"2 sentences","dominant_frequency":0.14,"harmonics":[{"n":1,"weight":0.8,"frequency":0.14},{"n":2,"weight":0.56,"frequency":0.28}]},"scale_invariance":{"confirmed":true,"description":"1-2 sentences"},"noise_signal":{"interpretation":"2 sentences","edge":"bullish|bearish|neutral","confidence":"high|medium|low"},"predicted_decomposed_path":[10 floats 0-1]}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
 });
@@ -425,7 +427,7 @@ app.post('/fibonacci', async (req, res) => {
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 5); } catch(e) { return res.status(402).json({ error: e.message }); }
+  try { await verifyAndDeduct(_token, 3); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Fibonacci analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. All Fib levels. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","swing_high":{"price":"str","x":0.85,"y":0.15},"swing_low":{"price":"str","x":0.2,"y":0.82},"trend":"uptrend|downtrend","retracements":[{"level":"0.236","price":"str","y":0.28,"strength":"weak|moderate|strong","color":"#3498db"},{"level":"0.382","price":"str","y":0.38,"strength":"weak|moderate|strong","color":"#2980b9"},{"level":"0.5","price":"str","y":0.48,"strength":"weak|moderate|strong","color":"#c9a84c"},{"level":"0.618","price":"str","y":0.57,"strength":"weak|moderate|strong","color":"#e67e22"},{"level":"0.786","price":"str","y":0.67,"strength":"weak|moderate|strong","color":"#e74c3c"}],"extensions":[{"level":"1.272","price":"str","y":0.05,"color":"#27ae60"},{"level":"1.618","price":"str","y":-0.05,"color":"#1abc9c"},{"level":"2.618","price":"str","y":-0.15,"color":"#16a085"}],"key_level":{"level":"str","price":"str","reason":"1 sentence"},"current_position":{"between_levels":"str","bias":"bullish|bearish|neutral","next_target":"str"},"analysis":"3 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
 });
@@ -435,7 +437,7 @@ app.post('/smc', async (req, res) => {
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 8); } catch(e) { return res.status(402).json({ error: e.message }); }
+  try { await verifyAndDeduct(_token, 4); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `SMC analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. BOS/CHoCH, order blocks, FVGs, liquidity. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","market_structure":"bullish|bearish|ranging","last_bos":{"type":"BOS|CHOCH","direction":"bullish|bearish","x":0.6,"y":0.4,"label":"str","description":"1 sentence"},"order_blocks":[{"type":"bullish|bearish","x1":0.1,"x2":0.25,"y1":0.6,"y2":0.7,"strength":"strong|medium|weak","description":"1 sentence","color":"#27ae60","mitigated":false}],"fvg":[{"type":"bullish|bearish","x1":0.3,"x2":0.5,"y1":0.35,"y2":0.42,"filled":false,"color":"#3498db"}],"liquidity_pools":[{"type":"buy-side|sell-side","y":0.2,"x1":0.0,"x2":1.0,"label":"str","color":"#c9a84c","swept":false}],"premium_discount":{"current_zone":"premium|discount|equilibrium","equilibrium_y":0.5},"bias":"bullish|bearish|neutral","poi":{"type":"str","x1":0.4,"x2":0.55,"y1":0.55,"y2":0.65,"label":"str","reason":"1 sentence"},"analysis":"4 sentences","entry_model":{"trigger":"str","entry":"str","sl":"str","tp1":"str","tp2":"str","rr":"1:3"},"signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2500, res);
 });
@@ -445,7 +447,7 @@ app.post('/volatility', async (req, res) => {
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 5); } catch(e) { return res.status(402).json({ error: e.message }); }
+  try { await verifyAndDeduct(_token, 3); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `Volatility analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Regime + position sizing. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","regime":"low|medium|high|extreme","regime_score":65,"atr_estimate":"str","volatility_percentile":72,"fractal_variance":0.34,"vol_path":[10 floats 0-1],"position_sizing":{"suggested_stop_pct":"str","max_position_size":"str","leverage_warning":"str"},"regime_characteristics":{"mean_reversion_probability":0.6,"trend_continuation_probability":0.4,"expected_daily_range":"str","breakout_likelihood":"low|medium|high"},"strategy_adaptation":{"recommended_approach":"str","avoid":"str"},"analysis":"3 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
   callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
 });
@@ -455,7 +457,7 @@ app.post('/mtf', async (req, res) => {
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 25); } catch(e) { return res.status(402).json({ error: e.message }); }
+  try { await verifyAndDeduct(_token, 8); } catch(e) { return res.status(402).json({ error: e.message }); }
   const p = `MTF fractal analyst. Chart: ${pair||'asset'}. Infer Weekly/Daily/H4. Reply in ${rl(l)}. JSON only.\n{"pair":"str","detected_timeframe":"str","timeframes":[{"tf":"Weekly","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.4,"path":[10 floats 0-1]},{"tf":"Daily","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.35,"path":[10 floats 0-1]},{"tf":"H4","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.25,"path":[10 floats 0-1]}],"confluence_score":78,"aligned":true,"confluence_zones":[{"price":"str","y":0.45,"strength":"high|medium|low","timeframes_aligned":["Weekly","Daily"],"color":"#c9a84c","label":"str"}],"dominant_bias":"bullish|bearish|neutral","fractal_alignment":"all-aligned|partially-aligned|divergent","analysis":"4 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low","entry":"str","stop_loss":"str","target":"str"}`;
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2500, res);
 });
