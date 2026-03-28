@@ -473,13 +473,6 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 #chartWatermark:hover{
   opacity:1 !important;
 }
-/* Pause logo animation by default, play on hover */
-#wmLogo * {
-  animation-play-state: paused !important;
-}
-#chartWatermark:hover #wmLogo * {
-  animation-play-state: running !important;
-}
 /* Drawing toolbar stays full chart height */
 #drawToolbar{
   height:100%;
@@ -968,7 +961,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
               
               <!-- Chart watermark logo (TradingView-style with reverse animation) -->
               <a href="https://fractalaiagent.com" target="_blank" id="chartWatermark" style="position:absolute;bottom:12px;left:12px;z-index:50;display:flex;align-items:center;gap:6px;text-decoration:none;opacity:0.75;transition:opacity 0.2s">
-                <img src="/logo-animated.svg" id="wmLogo" width="28" height="28" alt="Fractal AI Agent" style="display:block;transition:transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)">
+                <img src="/logo.svg" id="wmLogo" width="28" height="28" alt="Fractal AI Agent" style="display:block;transition:transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)">
                 <span id="wmText" style="font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:500;letter-spacing:0.02em;display:inline-block"></span>
               </a>
               
