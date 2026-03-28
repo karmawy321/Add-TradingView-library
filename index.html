@@ -473,6 +473,13 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 #chartWatermark:hover{
   opacity:1 !important;
 }
+/* Pause logo animation by default, play on hover */
+#wmLogo * {
+  animation-play-state: paused !important;
+}
+#chartWatermark:hover #wmLogo * {
+  animation-play-state: running !important;
+}
 /* Drawing toolbar stays full chart height */
 #drawToolbar{
   height:100%;
