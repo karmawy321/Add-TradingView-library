@@ -5216,9 +5216,9 @@ function initDrawEvents(){
     /* Only activate tool if a drawing tool is selected */
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot')return;
     e.stopPropagation(); /* prevent pan from firing */
-    if(activeItem.vline){if(!co.pixelOnly){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();}return;}
-    if(activeItem.hline){if(!co.pixelOnly){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();}return;}
-    if(activeItem.arrowmark){if(!co.pixelOnly){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();}return;}
+    if(activeItem.vline){if(!co.pixelOnly){saveUndo();drawings.push({type:'vline',bi:co.bi});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
+    if(activeItem.hline){if(!co.pixelOnly){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
+    if(activeItem.arrowmark){if(!co.pixelOnly){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
     if(activeItem.brush||activeItem.erbrush){isBrushing=true;brushPath=[{x:co.x,y:co.y}];return;}
     isDrawing=true; drawStart=co;
   },{passive:false});
@@ -5250,7 +5250,7 @@ function initDrawEvents(){
     var co2=getCoords(fake2); isDrawing=false;
     if(!co2||(Math.abs(co2.x-drawStart.x)<5&&Math.abs(co2.y-drawStart.y)<5)){drawStart=null;return;}
     saveUndo();drawings.push(makeDrawing(drawStart,co2));
-    drawStart=null; renderChart();
+    drawStart=null; if(!lockedDraw)pickItem(GROUPS[0].items[0]); renderChart();
   },{passive:false});
 
   cv.addEventListener('mousedown',function(e){
@@ -5440,9 +5440,9 @@ function initDrawEvents(){
       if(lbl){saveUndo();drawings.push({type:activeItem.id,price:co.price,bi:co.bi,label:lbl,callout:activeItem.callout});renderChart();}
       return;
     }
-    if(activeItem.vline){if(!co.pixelOnly){saveUndo();drawings.push({type:'vline',bi:co.bi});renderChart();}return;}
-    if(activeItem.hline){if(!co.pixelOnly){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});renderChart();}return;}
-    if(activeItem.arrowmark){if(!co.pixelOnly){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});renderChart();}return;}
+    if(activeItem.vline){if(!co.pixelOnly){saveUndo();drawings.push({type:'vline',bi:co.bi});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
+    if(activeItem.hline){if(!co.pixelOnly){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
+    if(activeItem.arrowmark){if(!co.pixelOnly){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
 
     /* ── Bar Pattern: two single-clicks, bar-top magnet snap ── */
     if(activeItem&&activeItem.barpattern){
@@ -5642,7 +5642,7 @@ function initDrawEvents(){
           saveUndo();drawings.push({type:'brush',path:smoothed,closed:dist<80,color:brushColor});
         }
       }
-      brushPath=[]; renderChart(); return;
+      brushPath=[]; if(!lockedDraw)pickItem(GROUPS[0].items[0]); renderChart(); return;
     }
     if(!isDrawing||!drawStart)return;
     var co=getCoords(e); isDrawing=false;
@@ -5650,10 +5650,8 @@ function initDrawEvents(){
     if(!lockedDraw){
       saveUndo();drawings.push(makeDrawing(drawStart,co));
       drawStart=null;
-      /* After drawing fib tools, auto-switch back to cursor */
-      if(activeItem&&activeItem.fibtype){
-        pickItem(GROUPS[0].items[0]);
-      }
+      /* All tools one-shot — switch back to cursor after drawing */
+      pickItem(GROUPS[0].items[0]);
       renderChart();
     } else {
       saveUndo();drawings.push(makeDrawing(drawStart,co));
@@ -6345,9 +6343,9 @@ function addFullscreen(){
   if(!toolbar||document.getElementById('fsBtn'))return;
   var btn=document.createElement('button');
   btn.id='fsBtn';
-  btn.title='Fullscreen';
-  btn.style.cssText='margin-left:auto;background:transparent;border:1px solid rgba(201,168,76,.2);color:rgba(201,168,76,.6);cursor:pointer;padding:4px 8px;font-size:11px;border-radius:2px;letter-spacing:.04em;font-family:DM Mono,monospace';
-  btn.innerHTML='⛶ FULLSCREEN';
+  btn.title='Fullscreen / Expand';
+  btn.style.cssText='margin-left:auto;background:transparent;border:1px solid rgba(201,168,76,.2);color:rgba(201,168,76,.6);cursor:pointer;padding:4px 8px;font-size:11px;border-radius:2px;letter-spacing:.04em;font-family:DM Mono,monospace;white-space:nowrap';
+  var isMobile=function(){ return window.innerWidth<=900; };
 
   function safeResize(){
     var dpr=window.devicePixelRatio||1;
@@ -6363,15 +6361,12 @@ function addFullscreen(){
     cv.style.width=cssW+'px';
     cv.style.height=cssH+'px';
     if(chartCtx)chartCtx.setTransform(dpr,0,0,dpr,0,0);
-    /* If an image is uploaded, redraw it; otherwise redraw chart */
     if(typeof _uploadedMode!=='undefined'&&_uploadedMode&&typeof dataUrl!=='undefined'&&dataUrl){
       var img=new Image();
       img.onload=function(){
         chartCtx.drawImage(img,0,0,cssW,cssH);
-        /* Re-apply any drawings on top */
         if(typeof drawAnnotations==='function'&&typeof PAD!=='undefined'){
-          drawAnnotations(chartCtx,{W:cssW,H:cssH,CW:cssW-PAD.l-PAD.r,CH:cssH-PAD.t-PAD.b-PAD.vol,
-            mn:0,rng:1,barW:10,si:0,visible:[]});
+          drawAnnotations(chartCtx,{W:cssW,H:cssH,CW:cssW-PAD.l-PAD.r,CH:cssH-PAD.t-PAD.b-PAD.vol,mn:0,rng:1,barW:10,si:0,visible:[]});
         }
       };
       img.src=dataUrl;
@@ -6380,23 +6375,65 @@ function addFullscreen(){
     }
   }
 
-  btn.onclick=function(){
+  /* ── CSS expand mode for mobile (iOS/Android don't support fullscreen API) ── */
+  var _expanded=false;
+  var _expandStyle=null;
+  function expandMobile(){
+    var panel=document.getElementById('chartToolsPanel');
+    if(!panel)return;
+    if(!_expanded){
+      _expanded=true;
+      _expandStyle=document.createElement('style');
+      _expandStyle.id='_fsStyle';
+      _expandStyle.textContent=
+        '#chartToolsPanel{position:fixed!important;inset:0!important;z-index:9000!important;overflow-y:auto!important;background:#06080d!important;}'+
+        '#chartArea{height:calc(100vh - 120px)!important;}'+
+        'nav,footer,section,#analyzer ~ *{display:none!important}';
+      document.head.appendChild(_expandStyle);
+      btn.innerHTML='✕ EXIT';
+      btn.style.color='#ef5350';
+      setTimeout(safeResize,100);
+      /* Scroll to top of panel */
+      panel.scrollTop=0;
+    } else {
+      _expanded=false;
+      var s=document.getElementById('_fsStyle');
+      if(s)s.remove();
+      btn.innerHTML='⛶ EXPAND';
+      btn.style.color='rgba(201,168,76,.6)';
+      setTimeout(safeResize,100);
+    }
+  }
+
+  /* ── Native fullscreen for desktop ── */
+  function expandDesktop(){
     var panel=document.getElementById('chartToolsPanel');
     if(!panel)return;
     if(!document.fullscreenElement){
-      (panel.requestFullscreen||panel.webkitRequestFullscreen||panel.mozRequestFullScreen).call(panel);
-      btn.innerHTML='✕ EXIT';
-      setTimeout(safeResize,300);
+      var req=panel.requestFullscreen||panel.webkitRequestFullscreen||panel.mozRequestFullScreen;
+      if(req){ req.call(panel); btn.innerHTML='✕ EXIT'; setTimeout(safeResize,300); }
+      else expandMobile(); /* fallback */
     } else {
-      (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen).call(document);
-      btn.innerHTML='⛶ FULLSCREEN';
+      var ex=document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen;
+      if(ex) ex.call(document);
+      btn.innerHTML='⛶ EXPAND';
       setTimeout(safeResize,300);
     }
-  };
+  }
+
+  btn.innerHTML='⛶ EXPAND';
+  btn.onclick=function(){ isMobile()?expandMobile():expandDesktop(); };
+
   document.addEventListener('fullscreenchange',function(){
-    if(!document.fullscreenElement)btn.innerHTML='⛶ FULLSCREEN';
+    if(!document.fullscreenElement){ btn.innerHTML='⛶ EXPAND'; btn.style.color='rgba(201,168,76,.6)'; }
     setTimeout(safeResize,100);
   });
+
+  /* Exit expand on Escape */
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&_expanded) expandMobile();
+  });
+
   toolbar.appendChild(btn);
 }
 
@@ -6877,7 +6914,7 @@ function init(){
   var cv=document.getElementById('chartCanvas');
   if(!cv){ setTimeout(init,400); return; }
 
-  /* Right-click → canvas menu */
+  /* Right-click → canvas menu (desktop) */
   cv.addEventListener('contextmenu',function(e){
     e.preventDefault();
     var fx=f(); if(!fx) return;
@@ -6886,11 +6923,10 @@ function init(){
     showCanvas(e.clientX, e.clientY, idx);
   });
 
-  /* Left-click on drawing → drawing sub-menu */
+  /* Left-click on drawing → drawing sub-menu (desktop) */
   var _mdX=0, _mdY=0;
   cv.addEventListener('mousedown',function(e){ _mdX=e.clientX; _mdY=e.clientY; }, true);
   cv.addEventListener('click',function(e){
-    /* Skip if it was a drag */
     if(Math.sqrt(Math.pow(e.clientX-_mdX,2)+Math.pow(e.clientY-_mdY,2))>5) return;
     var fx=f(); if(!fx) return;
     var ai=fx.activeItem;
@@ -6901,10 +6937,64 @@ function init(){
     showDrawing(idx, e.clientX+16, e.clientY);
   });
 
-  /* Close on outside click or Escape */
+  /* ── Long-press → context menu on mobile ── */
+  var _lpTimer=null;
+  var _lpX=0, _lpY=0, _lpMoved=false;
+  var LP_MS=520; /* ms to hold before menu appears */
+
+  cv.addEventListener('touchstart',function(e){
+    if(e.touches.length!==1) return;
+    _lpMoved=false;
+    _lpX=e.touches[0].clientX;
+    _lpY=e.touches[0].clientY;
+    _lpTimer=setTimeout(function(){
+      if(_lpMoved) return;
+      /* Vibrate if supported — gives tactile feedback */
+      if(navigator.vibrate) navigator.vibrate(40);
+      var fx=f(); if(!fx) return;
+      var hp=fx.hoverPoint;
+      var idx=(hp&&fx.nearestDrawing)?fx.nearestDrawing(hp):-1;
+      /* If cursor mode and near a drawing → drawing sub-menu */
+      var ai=fx.activeItem;
+      var cursorMode=!ai||(ai.id==='cursor'||ai.id==='arrow_cur'||ai.id==='dot');
+      if(cursorMode && idx>=0){
+        showDrawing(idx, _lpX, _lpY);
+      } else {
+        /* Otherwise → canvas menu */
+        showCanvas(_lpX, _lpY, idx);
+      }
+    }, LP_MS);
+  },{passive:true});
+
+  cv.addEventListener('touchmove',function(e){
+    if(!_lpTimer) return;
+    var dx=e.touches[0].clientX-_lpX;
+    var dy=e.touches[0].clientY-_lpY;
+    /* Cancel long-press if finger moved more than 8px */
+    if(Math.sqrt(dx*dx+dy*dy)>8){
+      _lpMoved=true;
+      clearTimeout(_lpTimer);
+      _lpTimer=null;
+    }
+  },{passive:true});
+
+  cv.addEventListener('touchend',function(){
+    clearTimeout(_lpTimer);
+    _lpTimer=null;
+  },{passive:true});
+
+  cv.addEventListener('touchcancel',function(){
+    clearTimeout(_lpTimer);
+    _lpTimer=null;
+  },{passive:true});
+
+  /* Close on outside tap/click or Escape */
   document.addEventListener('mousedown',function(e){
     if(_open&&!M.contains(e.target)) close();
   });
+  document.addEventListener('touchstart',function(e){
+    if(_open&&!M.contains(e.target)) close();
+  },{passive:true});
   document.addEventListener('keydown',function(e){
     if(e.key==='Escape') close();
   });
