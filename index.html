@@ -469,6 +469,10 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   height:100% !important;
   cursor:crosshair;
 }
+/* Chart watermark hover effect */
+#chartWatermark:hover{
+  opacity:1 !important;
+}
 /* Drawing toolbar stays full chart height */
 #drawToolbar{
   height:100%;
@@ -954,6 +958,13 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
 
               <canvas id="chartCanvas" style="display:block;width:100%;height:560px;cursor:crosshair"></canvas>
+              
+              <!-- Chart watermark logo (TradingView-style) -->
+              <a href="https://fractalaiagent.com" target="_blank" id="chartWatermark" style="position:absolute;bottom:12px;left:12px;z-index:50;display:flex;align-items:center;gap:6px;text-decoration:none;opacity:0.75;transition:opacity 0.2s">
+                <img src="/logo-animated.svg" width="28" height="28" alt="Fractal AI Agent" style="display:block">
+                <span style="font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:500;letter-spacing:0.02em">Fractal AI Agent</span>
+              </a>
+              
               <!-- Upload preview overlay -->
               <div class="img-pv" id="imgPv" style="display:none;position:absolute;inset:0;z-index:100">
                 <img id="prevImg" src="" alt="" style="width:100%;height:100%;object-fit:contain">
@@ -4120,9 +4131,32 @@ function renderChart() {
 
   }
 
-  /* Watermark */
-  chartCtx.save(); chartCtx.font='bold 11px DM Mono'; chartCtx.fillStyle='rgba(201,168,76,0.04)';
-  chartCtx.textAlign='center'; chartCtx.fillText('FRACTAL AI AGENT',W/2,H/2+6); chartCtx.restore();
+  /* Watermarks - 5 positions */
+  chartCtx.save(); 
+  chartCtx.font='bold 11px DM Mono'; 
+  chartCtx.fillStyle='rgba(201,168,76,0.04)';
+  
+  /* Central upper left */
+  chartCtx.textAlign='left'; 
+  chartCtx.fillText('FRACTAL AI AGENT', W*0.25, H*0.3);
+  
+  /* Center (original) */
+  chartCtx.textAlign='center'; 
+  chartCtx.fillText('FRACTAL AI AGENT', W/2, H/2+6);
+  
+  /* Upper right */
+  chartCtx.textAlign='right'; 
+  chartCtx.fillText('FRACTAL AI AGENT', W*0.75, H*0.3);
+  
+  /* Lower left */
+  chartCtx.textAlign='left'; 
+  chartCtx.fillText('FRACTAL AI AGENT', W*0.25, H*0.75);
+  
+  /* Lower right */
+  chartCtx.textAlign='right'; 
+  chartCtx.fillText('FRACTAL AI AGENT', W*0.75, H*0.75);
+  
+  chartCtx.restore();
 }
 
 /* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
