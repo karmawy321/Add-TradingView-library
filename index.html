@@ -959,10 +959,10 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 
               <canvas id="chartCanvas" style="display:block;width:100%;height:560px;cursor:crosshair"></canvas>
               
-              <!-- Chart watermark logo (TradingView-style) -->
+              <!-- Chart watermark logo (TradingView-style with reverse animation) -->
               <a href="https://fractalaiagent.com" target="_blank" id="chartWatermark" style="position:absolute;bottom:12px;left:12px;z-index:50;display:flex;align-items:center;gap:6px;text-decoration:none;opacity:0.75;transition:opacity 0.2s">
-                <img src="/logo-animated.svg" width="28" height="28" alt="Fractal AI Agent" style="display:block">
-                <span style="font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:500;letter-spacing:0.02em">Fractal AI Agent</span>
+                <img src="/logo-animated.svg" id="wmLogo" width="28" height="28" alt="Fractal AI Agent" style="display:block;transition:transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)">
+                <span id="wmText" style="font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:500;letter-spacing:0.02em;display:inline-block"></span>
               </a>
               
               <!-- Upload preview overlay -->
@@ -3679,6 +3679,53 @@ var DPR = 1; /* legacy compat — real DPR used per call */
 window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', function(){ setTimeout(resizeCanvas, 200); });
 setTimeout(resizeCanvas, 100);
+
+/* ── Watermark reverse-letter animation ── */
+(function(){
+  var wm = document.getElementById('chartWatermark');
+  var logo = document.getElementById('wmLogo');
+  var textEl = document.getElementById('wmText');
+  if (!wm || !logo || !textEl) return;
+  
+  var text = 'Fractal AI Agent';
+  var letters = text.split('').map(function(char, i){
+    var span = document.createElement('span');
+    span.textContent = char;
+    span.style.display = 'inline-block';
+    span.style.opacity = '1';
+    span.style.transition = 'opacity 0.03s ease-out';
+    span.style.transitionDelay = '0s';
+    textEl.appendChild(span);
+    return span;
+  });
+  
+  var hoverTimer;
+  wm.addEventListener('mouseenter', function(){
+    clearTimeout(hoverTimer);
+    /* Scale logo up */
+    logo.style.transform = 'scale(1.4)';
+    /* Hide letters from right to left (reverse order) */
+    for (var i = letters.length - 1; i >= 0; i--) {
+      var delay = (letters.length - 1 - i) * 0.015; /* 15ms per letter */
+      letters[i].style.transitionDelay = delay + 's';
+      letters[i].style.opacity = '0';
+    }
+  });
+  
+  wm.addEventListener('mouseleave', function(){
+    clearTimeout(hoverTimer);
+    /* Restore logo size */
+    logo.style.transform = 'scale(1)';
+    /* Show letters from left to right (normal order) */
+    hoverTimer = setTimeout(function(){
+      for (var i = 0; i < letters.length; i++) {
+        var delay = i * 0.015; /* 15ms per letter */
+        letters[i].style.transitionDelay = delay + 's';
+        letters[i].style.opacity = '1';
+      }
+    }, 50);
+  });
+})();
 
 function formatPrice(v) {
   if (!v && v !== 0) return '—';
