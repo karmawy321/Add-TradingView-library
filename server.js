@@ -18,6 +18,159 @@ const sbAdmin = SUPABASE_URL && SUPABASE_SERVICE
   : null;
 
 /* ═══════════════════════════════════════════════════
+   🆕 PREDICTION TRACKING - NEW!
+   ═══════════════════════════════════════════════════ */
+const cron = require('node-cron');
+const axios = require('axios');
+
+// Helper: Save prediction to database
+async function savePrediction(predictionData) {
+  if (!sbAdmin) return { success: false, error: 'Database not configured' };
+  
+  const {
+    userId,
+    toolName,
+    asset,
+    timeframe,
+    currentPrice,
+    predictedPrice,
+    targetDays,
+    fullResponse
+  } = predictionData;
+
+  const targetDate = new Date();
+  targetDate.setDate(targetDate.getDate() + (targetDays || 3));
+
+  const expectedDirection = predictedPrice > currentPrice ? 'up' : 'down';
+
+  const prediction = {
+    user_id: userId,
+    tool_name: toolName,
+    asset: asset.toUpperCase().replace('/', ''),
+    timeframe: timeframe || '1D',
+    current_price: currentPrice,
+    predicted_price: predictedPrice,
+    target_date: targetDate.toISOString(),
+    prediction_data: {
+      expected_direction: expectedDirection,
+      price_change_expected: ((predictedPrice - currentPrice) / currentPrice * 100).toFixed(2),
+      full_response: fullResponse
+    }
+  };
+
+  try {
+    const { data, error } = await sbAdmin
+      .from('predictions')
+      .insert([prediction])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Prediction] Save error:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Prediction] Saved: ${toolName} | ${asset} | Target: $${predictedPrice} in ${targetDays} days`);
+    return { success: true, predictionId: data.id, targetDate: targetDate };
+  } catch (e) {
+    console.error('[Prediction] Exception:', e);
+    return { success: false, error: e.message };
+  }
+}
+
+// Helper: Check predictions (called by cron)
+async function checkPredictions() {
+  if (!sbAdmin) return;
+  
+  console.log('🤖 [Prediction Check] Starting...');
+  
+  const now = new Date().toISOString();
+  
+  const { data: pendingPredictions, error: fetchError } = await sbAdmin
+    .from('predictions')
+    .select('*')
+    .eq('result', 'pending')
+    .lte('target_date', now)
+    .limit(100);
+
+  if (fetchError) {
+    console.error('[Prediction Check] Fetch error:', fetchError);
+    return;
+  }
+
+  if (!pendingPredictions || pendingPredictions.length === 0) {
+    console.log('✅ [Prediction Check] No predictions to check.');
+    return;
+  }
+
+  console.log(`📊 [Prediction Check] Checking ${pendingPredictions.length} predictions...`);
+
+  let checked = 0;
+  let errors = 0;
+
+  for (const prediction of pendingPredictions) {
+    try {
+      // Fetch actual price from Binance
+      const response = await axios.get(
+        `https://api.binance.com/api/v3/ticker/price?symbol=${prediction.asset}`
+      );
+      const actualPrice = parseFloat(response.data.price);
+
+      if (!actualPrice) {
+        console.error(`❌ [Prediction Check] Could not fetch price for ${prediction.asset}`);
+        errors++;
+        continue;
+      }
+
+      // Calculate accuracy (5% margin = correct)
+      const marginPercent = 5;
+      const difference = Math.abs(prediction.predicted_price - actualPrice);
+      const percentDiff = (difference / prediction.predicted_price) * 100;
+      const isCorrect = percentDiff <= marginPercent;
+      
+      const predictedDirection = prediction.predicted_price > prediction.current_price ? 'up' : 'down';
+      const actualDirection = actualPrice > prediction.current_price ? 'up' : 'down';
+      const directionCorrect = predictedDirection === actualDirection;
+      
+      const accuracyPercentage = Math.max(0, 100 - percentDiff).toFixed(2);
+
+      // Update database
+      const { error: updateError } = await sbAdmin
+        .from('predictions')
+        .update({
+          actual_price: actualPrice,
+          result: isCorrect ? 'correct' : 'wrong',
+          accuracy_percentage: accuracyPercentage,
+          price_direction_correct: directionCorrect,
+          checked_date: new Date().toISOString()
+        })
+        .eq('id', prediction.id);
+
+      if (updateError) {
+        console.error(`❌ [Prediction Check] Update error ${prediction.id}:`, updateError);
+        errors++;
+      } else {
+        checked++;
+        console.log(
+          `✅ ${prediction.asset}: Predicted $${prediction.predicted_price}, ` +
+          `Actual $${actualPrice} → ${isCorrect ? 'CORRECT' : 'WRONG'} ` +
+          `(${accuracyPercentage}% accurate)`
+        );
+      }
+
+      // Small delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+    } catch (error) {
+      console.error(`❌ [Prediction Check] Error processing ${prediction.id}:`, error.message);
+      errors++;
+    }
+  }
+
+  console.log(`\n📈 [Prediction Check] Complete: ${checked} checked, ${errors} errors\n`);
+}
+
+/* ═══════════════════════════════════════════════════
    STRIPE
    ═══════════════════════════════════════════════════ */
 const Stripe = require('stripe');
@@ -167,36 +320,34 @@ function stopBinancePolling(symbol) {
   if (binancePollers[symbol]) { clearInterval(binancePollers[symbol]); delete binancePollers[symbol]; }
 }
 
-function disconnectBinanceIfUnused(symbol) {
-  const lower = symbol.toLowerCase();
-  const key   = symbol.toUpperCase();
-  if (!sseClients[key] || sseClients[key].size === 0) {
-    if (binanceWs[lower]) { binanceWs[lower].terminate(); delete binanceWs[lower]; }
-    stopBinancePolling(key);
-  }
-}
-
 function fetchBinanceHistory(symbol) {
+  const tfMap = { '1m':'1m','5m':'5m','15m':'15m','1h':'1h','4h':'4h','1d':'1d' };
+  ensureSymbol(symbol);
   TIMEFRAMES.forEach(tf => {
-    const p = `/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
-    const req = https.request({ hostname: 'api.binance.com', path: p, method: 'GET' }, res => {
+    const binanceTf = tfMap[tf];
+    if (!binanceTf) return;
+    const path = `/api/v3/klines?symbol=${symbol}&interval=${binanceTf}&limit=500`;
+    const req = https.request({ hostname: 'api.binance.com', path, method: 'GET' }, res => {
       let data = '';
       res.on('data', c => { data += c; });
       res.on('end', () => {
         try {
-          const bars = JSON.parse(data);
-          if (!Array.isArray(bars)) return;
-          ensureSymbol(symbol);
-          bars.forEach(bar => {
-            const ts  = bar[0];
-            const bkt = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
+          const klines = JSON.parse(data);
+          if (Array.isArray(klines)) {
             const arr = candles[symbol][tf];
-            const lst = arr[arr.length - 1];
-            const [o,h,l,c,v] = [bar[1],bar[2],bar[3],bar[4],bar[5]].map(parseFloat);
-            if (!lst || lst.t !== bkt) { arr.push({ t: bkt, o, h, l, c, v }); if (arr.length > 500) arr.shift(); }
-            else { lst.h = Math.max(lst.h,h); lst.l = Math.min(lst.l,l); lst.c = c; lst.v += v; }
-          });
-          console.log(`[Binance] History loaded: ${symbol} ${tf} (${bars.length} bars)`);
+            arr.length = 0;
+            klines.forEach(k => {
+              arr.push({
+                t: k[0],
+                o: parseFloat(k[1]),
+                h: parseFloat(k[2]),
+                l: parseFloat(k[3]),
+                c: parseFloat(k[4]),
+                v: parseFloat(k[5])
+              });
+            });
+            console.log(`[Binance] Loaded ${arr.length} ${tf} candles for ${symbol}`);
+          }
         } catch(e) {}
       });
     });
@@ -204,262 +355,89 @@ function fetchBinanceHistory(symbol) {
   });
 }
 
-/* ═══════════════════════════════════════════════════
-   SYMBOL CLASSIFIER
-   ═══════════════════════════════════════════════════ */
-const CRYPTO_SUFFIXES = ['USDT','USDC','BUSD','BTC','ETH','BNB','XRP','SOL','ADA','DOGE'];
-function classifySymbol(sym) {
-  const s = sym.toUpperCase().replace('/','').replace('-','');
-  if (CRYPTO_SUFFIXES.some(q => s.endsWith(q))) return 'crypto';
-  return 'unknown';
-}
-function hasAnyCandles(sym) {
-  return candles[sym] && TIMEFRAMES.some(tf => candles[sym][tf] && candles[sym][tf].length > 0);
-}
+const app = express();
+const PORT = process.env.PORT || 8080;
+
+app.use(cors({ origin: true, credentials: true }));
+app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: Date.now() }));
+app.get('/profile', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  const prof  = await getUserProfile(token);
+  res.json(prof || { credits: 0, plan: 'free', userId: null });
+});
+
+app.get('/candles/:symbol/:timeframe', (req, res) => {
+  const { symbol, timeframe } = req.params;
+  const sym = symbol.toUpperCase();
+  connectBinance(sym);
+  ensureSymbol(sym);
+  const arr = candles[sym][timeframe] || [];
+  res.json(arr);
+});
+
+app.get('/subscribe-candles/:symbol', (req, res) => {
+  const sym = req.params.symbol.toUpperCase();
+  connectBinance(sym);
+  ensureSymbol(sym);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  sseClients[sym].add(res);
+  res.on('close', () => sseClients[sym].delete(res));
+  res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
+});
 
 /* ═══════════════════════════════════════════════════
-   ANTHROPIC HELPER
+   ANTHROPIC API
    ═══════════════════════════════════════════════════ */
-function callAnthropic(apiKey, model, prompt, image, mediaType, maxTokens, res) {
-  const body = JSON.stringify({
-    model, max_tokens: maxTokens || 2000,
-    messages: [{ role: 'user', content: [
-      { type: 'image', source: { type: 'base64', media_type: mediaType, data: image } },
-      { type: 'text',  text: prompt }
-    ]}]
-  });
-  const opts = {
-    hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': '2023-06-01',
-      'Content-Length': Buffer.byteLength(body)
-    }
+
+function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res) {
+  const messages = image
+    ? [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: image } }, { type: 'text', text: prompt }] }]
+    : [{ role: 'user', content: prompt }];
+
+  const reqBody = JSON.stringify({ model, max_tokens: maxTok, messages });
+  const options = {
+    hostname: 'api.anthropic.com',
+    path:     '/v1/messages',
+    method:   'POST',
+    headers:  { 'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','Content-Length':Buffer.byteLength(reqBody) }
   };
-  const req = https.request(opts, apiRes => {
+
+  const apiReq = https.request(options, apiRes => {
     let data = '';
     apiRes.on('data', c => { data += c; });
     apiRes.on('end', () => {
       try {
-        const parsed = JSON.parse(data);
-        if (apiRes.statusCode !== 200)
-          return res.status(apiRes.statusCode).json({ error: (parsed.error && parsed.error.message) || 'Anthropic error' });
-        let raw = parsed.content.map(c => c.text || '').join('').replace(/```json|```/g,'').trim();
-        const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-        if (s===-1||e===-1) return res.status(500).json({ error: 'No JSON in response' });
-        raw = raw.slice(s, e+1).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'');
-        let result;
-        try { result = JSON.parse(raw); }
-        catch(err) {
-          raw = raw.replace(/("(?:[^"\\]|\\.)*")/g, m => m.replace(/\n/g,' ').replace(/\r/g,'').replace(/\t/g,' '));
-          try { result = JSON.parse(raw); } catch(e2) { return res.status(422).json({ error: 'Could not parse AI response' }); }
-        }
-        res.json(result);
-      } catch(err) { res.status(500).json({ error: 'Processing error: ' + err.message }); }
+        const obj = JSON.parse(data);
+        if (obj.error) return res.status(500).json({ error: obj.error.message });
+        const text = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
+        res.json({ text });
+      } catch(e) {
+        res.status(500).json({ error: 'Failed to parse response' });
+      }
     });
   });
-  req.on('error', err => res.status(500).json({ error: 'Request failed: ' + err.message }));
-  req.write(body); req.end();
+  apiReq.on('error', e => res.status(500).json({ error: e.message }));
+  apiReq.write(reqBody);
+  apiReq.end();
 }
 
-function rl(l) { return l==='ar'?'Arabic':l==='pt'?'Portuguese':'English'; }
+const rl = l => l==='ar' ? 'Arabic' : l==='pt' ? 'Portuguese' : 'English';
 
-/* ═══════════════════════════════════════════════════
-   EXPRESS
-   ═══════════════════════════════════════════════════ */
-const app  = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'] }));
-
-/* Stripe webhook needs raw body — everything else gets JSON */
-app.use((req, res, next) => {
-  if (req.originalUrl === '/stripe-webhook') {
-    express.raw({ type: 'application/json' })(req, res, next);
-  } else {
-    express.json({ limit: '20mb' })(req, res, next);
-  }
-});
-
-app.use(function(req, res, next) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') { res.sendStatus(200); return; }
-  next();
-});
-
-/* ── Static assets ── */
-app.use('/charting_library', express.static(path.join(__dirname, 'charting_library'), { maxAge: '1d', setHeaders: (res) => res.setHeader('Access-Control-Allow-Origin', '*') }));
-app.get('/logo.svg',          (req, res) => { fs.readFile(path.resolve(__dirname, 'logo.svg'),          (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','image/svg+xml'); res.send(d); }); });
-app.get('/logo-animated.svg', (req, res) => { fs.readFile(path.resolve(__dirname, 'logo-animated.svg'), (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','image/svg+xml'); res.send(d); }); });
-app.get('/favicon.svg',       (req, res) => { fs.readFile(path.resolve(__dirname, 'favicon.svg'),       (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','image/svg+xml'); res.send(d); }); });
-app.get('/favicon.ico',       (req, res) => { fs.readFile(path.resolve(__dirname, 'favicon.svg'),       (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','image/svg+xml'); res.send(d); }); });
-app.get('/datafeed.js',       (req, res) => { fs.readFile(path.resolve(__dirname, 'datafeed.js'),       (err, d) => { if (err) return res.status(404).end(); res.setHeader('Content-Type','application/javascript'); res.send(d); }); });
-
-/* ── HTML pages ── */
-function sendPage(file, res) {
-  const p = path.join(__dirname, file);
-  if (fs.existsSync(p)) res.sendFile(p); else res.status(404).send('Page not found: ' + file);
-}
-app.get('/',        (req, res) => sendPage('index.html',   res));
-app.get('/auth',    (req, res) => sendPage('auth.html',    res));
-app.get('/profile', (req, res) => sendPage('profile.html', res));
-app.get('/terms',   (req, res) => sendPage('terms.html',   res));
-app.get('/privacy', (req, res) => sendPage('privacy.html', res));
-app.get('/health',  (req, res) => res.json({ status: 'ok', version: '3.1.0' }));
-app.get('/status',  (req, res) => res.json({ status: 'ok', hasKey: !!process.env.ANTHROPIC_API_KEY, cryptoActive: Object.keys(binanceWs), polling: Object.keys(binancePollers) }));
-app.get('/debug-files', (req, res) => { const files = fs.readdirSync(__dirname).filter(f => !f.startsWith('.')); res.json({ cwd: __dirname, files }); });
-
-/* ── Init profile ── */
-app.post('/init-profile', async (req, res) => {
-  const { token, username } = req.body;
-  if (!token) return res.status(400).json({ error: 'No token' });
-  try {
-    const { data: { user }, error } = await sbAdmin.auth.getUser(token);
-    if (error || !user) return res.status(401).json({ error: 'Invalid token' });
-    const { data: existing } = await sbAdmin.from('profiles').select('id').eq('id', user.id).single();
-    if (!existing) {
-      await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username: username || user.email.split('@')[0] });
-    }
-    res.json({ ok: true, credits: 50 });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-/* ── /me ── */
-app.get('/me', async (req, res) => {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
-  const profile = await getUserProfile(token);
-  if (!profile) return res.status(401).json({ error: 'Not authenticated' });
-  res.json({ credits: profile.credits, plan: profile.plan || 'free', username: profile.username });
-});
-
-/* ── Candles / Price / SSE ── */
-app.get('/symbols', (req, res) => res.json({ crypto: Object.keys(binanceWs).map(s => ({ symbol: s.toUpperCase(), type: 'crypto', live: true })), polling: Object.keys(binancePollers) }));
-
-app.get('/candles/:symbol', (req, res) => {
-  const sym = req.params.symbol.toUpperCase().replace('/','').replace('-','');
-  const tf  = req.query.tf || '1h';
-  if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0)
-    return res.json({ symbol: sym, tf, candles: candles[sym][tf] });
-  ensureSymbol(sym);
-  fetchBinanceHistory(sym);
-  let attempts = 0;
-  const wait = setInterval(() => {
-    attempts++;
-    if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) { clearInterval(wait); return res.json({ symbol: sym, tf, candles: candles[sym][tf] }); }
-    if (attempts >= 10) {
-      clearInterval(wait);
-      const tfs = ['1h','4h','1d','15m','5m','1m'];
-      for (const t of tfs) { if (candles[sym] && candles[sym][t] && candles[sym][t].length > 0) return res.json({ symbol: sym, tf: t, candles: candles[sym][t], note: 'fallback_tf' }); }
-      return res.status(404).json({ error: `No candles yet for ${sym} ${tf}` });
-    }
-  }, 500);
-});
-
-app.get('/subscribe/:symbol', (req, res) => {
-  const sym  = req.params.symbol.toUpperCase().replace('/','').replace('-','');
-  const type = classifySymbol(sym);
-  res.setHeader('Content-Type','text/event-stream'); res.setHeader('Cache-Control','no-cache'); res.setHeader('Connection','keep-alive'); res.setHeader('Access-Control-Allow-Origin','*'); res.flushHeaders();
-  ensureSymbol(sym); sseClients[sym].add(res);
-  if (type === 'crypto' || type === 'unknown') connectBinance(sym);
-  if (hasAnyCandles(sym)) { res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`); }
-  else {
-    res.write(`data: ${JSON.stringify({ symbol: sym, status: 'loading' })}\n\n`);
-    let attempts = 0;
-    const waitTimer = setInterval(() => { attempts++; if (hasAnyCandles(sym)) { clearInterval(waitTimer); try { res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`); } catch(e){} } else if (attempts >= 20) clearInterval(waitTimer); }, 1000);
-  }
-  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) { clearInterval(hb); } }, 20000);
-  req.on('close', () => { clearInterval(hb); sseClients[sym].delete(res); if (type === 'crypto') setTimeout(() => disconnectBinanceIfUnused(sym), 15000); });
-});
-
-app.get('/price/:symbol', (req, res) => {
-  const sym = req.params.symbol.toUpperCase().replace('/','').replace('-','');
-  const tfs = ['1m','5m','15m','1h','4h','1d'];
-  let arr = null;
-  for (const tf of tfs) { if (candles[sym] && candles[sym][tf] && candles[sym][tf].length > 0) { arr = candles[sym][tf]; break; } }
-  if (!arr) { fetchBinanceHistory(sym); return res.status(202).json({ error: 'Loading data for ' + sym + ' — retry in 3s' }); }
-  const last = arr[arr.length - 1];
-  const prev = arr.length > 1 ? arr[arr.length - 2].c : last.o;
-  res.json({ symbol: sym, price: last.c, open: last.o, high: last.h, low: last.l, change_pct: ((last.c - prev) / prev * 100).toFixed(4), ts: last.t });
-});
-
-/* ═══════════════════════════════════════════════════
-   AI ENDPOINTS
-   Credits: analyze=15, fib=5, smc=8, vol=5,
-            mtf=25, age=25, liq=8, journal=20, proj=25
-   ═══════════════════════════════════════════════════ */
-
-app.post('/analyze', async (req, res) => {
-  const k = process.env.ANTHROPIC_API_KEY;
-  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, focus, matches, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 15); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const nM = matches || 3;
-  const p = `Fractal analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Focus: ${focus||'fractal'}. Find ${nM} historical fractal matches. Reply in ${rl(l)}. JSON only, no markdown, single-line strings.\n{"signal":"bullish|bearish|neutral","pair":"str","timeframe":"str","pattern":"str","wave":"str","analysis":"5 sentences","entry":"price","stop_loss":"price","target_1":"price","target_2":"price","rr":"1:2.5","confidence":"high|medium|low","annotations":[{"type":"hline|arrow|zone|tline","label":"str","y":0.6,"color":"#hex","dashed":true,"x":0.5,"dir":"up|down","y1":0.6,"y2":0.7,"x1":0.1,"x2":0.9}],"matches":[{"id":1,"date":"str","pair":"str","timeframe":"str","similarity":88,"pattern_name":"str","setup_description":"2 sentences","outcome":"win|loss","outcome_detail":"str","price_path":[20 floats 0-1],"after_path":[10 floats 0-1]}],"win_rate":67,"avg_rr":"str","wins":2,"losses":1,"prediction_summary":"2 sentences","predicted_path":[20 floats 0-1]}\nRules: exactly ${nM} matches. y:0=top,1=bottom. x:0=left,1=right.`;
-  callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2500, res);
-});
-
-app.post('/bar-pattern', async (req, res) => {
+app.post('/mtf-confluence', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 4); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Fractal bar self-similarity analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Find 2-3 self-similar bar sequences. Reply in ${rl(l)}. JSON only, no markdown, single-line strings.\n{"pair":"str","timeframe":"str","dominant_pattern":"str","fractal_dimension":"1.3","self_similarity_score":82,"bar_clusters":[{"id":1,"name":"str","description":"1-2 sentences","location_a":{"x1":0.05,"x2":0.25,"label":"str"},"location_b":{"x1":0.55,"x2":0.75,"label":"str"},"similarity_pct":84,"bar_sequence":[8 floats 0-1],"color":"#hex"}],"scale_levels":[{"level":"Macro|Mid|Micro","bars":20,"pattern":"str","strength":"high|medium|low"}],"trading_implication":"2 sentences","next_expected_sequence":[8 floats 0-1],"confidence":"high|medium|low","signal":"bullish|bearish|neutral"}`;
-  callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
-});
-
-app.post('/weierstrass', async (req, res) => {
-  const k = process.env.ANTHROPIC_API_KEY;
-  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 4); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Weierstrass/time-series analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Decompose price. Reply in ${rl(l)}. JSON only, no markdown, single-line strings.\n{"pair":"str","timeframe":"str","hurst_exponent":0.67,"fractal_dimension":1.33,"roughness_index":"high|medium|low","market_regime":"trending|mean-reverting|random-walk","decomposition":{"trend":{"direction":"up|down|sideways","strength":0.72,"description":"1 sentence","path":[10 floats 0-1]},"cycle":{"period_bars":14,"amplitude":0.08,"phase":"rising|falling|peak|trough","description":"1 sentence","path":[10 floats]},"fractal_noise":{"intensity":0.31,"color":"pink|white|brown","weierstrass_a":0.7,"weierstrass_b":3,"description":"1 sentence","path":[10 floats]}},"weierstrass_fit":{"quality":"excellent|good|fair|poor","score":78,"description":"2 sentences","dominant_frequency":0.14,"harmonics":[{"n":1,"weight":0.8,"frequency":0.14},{"n":2,"weight":0.56,"frequency":0.28}]},"scale_invariance":{"confirmed":true,"description":"1-2 sentences"},"noise_signal":{"interpretation":"2 sentences","edge":"bullish|bearish|neutral","confidence":"high|medium|low"},"predicted_decomposed_path":[10 floats 0-1]}`;
-  callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
-});
-
-app.post('/fibonacci', async (req, res) => {
-  const k = process.env.ANTHROPIC_API_KEY;
-  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 3); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Fibonacci analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. All Fib levels. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","swing_high":{"price":"str","x":0.85,"y":0.15},"swing_low":{"price":"str","x":0.2,"y":0.82},"trend":"uptrend|downtrend","retracements":[{"level":"0.236","price":"str","y":0.28,"strength":"weak|moderate|strong","color":"#3498db"},{"level":"0.382","price":"str","y":0.38,"strength":"weak|moderate|strong","color":"#2980b9"},{"level":"0.5","price":"str","y":0.48,"strength":"weak|moderate|strong","color":"#c9a84c"},{"level":"0.618","price":"str","y":0.57,"strength":"weak|moderate|strong","color":"#e67e22"},{"level":"0.786","price":"str","y":0.67,"strength":"weak|moderate|strong","color":"#e74c3c"}],"extensions":[{"level":"1.272","price":"str","y":0.05,"color":"#27ae60"},{"level":"1.618","price":"str","y":-0.05,"color":"#1abc9c"},{"level":"2.618","price":"str","y":-0.15,"color":"#16a085"}],"key_level":{"level":"str","price":"str","reason":"1 sentence"},"current_position":{"between_levels":"str","bias":"bullish|bearish|neutral","next_target":"str"},"analysis":"3 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
-  callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
-});
-
-app.post('/smc', async (req, res) => {
-  const k = process.env.ANTHROPIC_API_KEY;
-  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 4); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `SMC analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. BOS/CHoCH, order blocks, FVGs, liquidity. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","market_structure":"bullish|bearish|ranging","last_bos":{"type":"BOS|CHOCH","direction":"bullish|bearish","x":0.6,"y":0.4,"label":"str","description":"1 sentence"},"order_blocks":[{"type":"bullish|bearish","x1":0.1,"x2":0.25,"y1":0.6,"y2":0.7,"strength":"strong|medium|weak","description":"1 sentence","color":"#27ae60","mitigated":false}],"fvg":[{"type":"bullish|bearish","x1":0.3,"x2":0.5,"y1":0.35,"y2":0.42,"filled":false,"color":"#3498db"}],"liquidity_pools":[{"type":"buy-side|sell-side","y":0.2,"x1":0.0,"x2":1.0,"label":"str","color":"#c9a84c","swept":false}],"premium_discount":{"current_zone":"premium|discount|equilibrium","equilibrium_y":0.5},"bias":"bullish|bearish|neutral","poi":{"type":"str","x1":0.4,"x2":0.55,"y1":0.55,"y2":0.65,"label":"str","reason":"1 sentence"},"analysis":"4 sentences","entry_model":{"trigger":"str","entry":"str","sl":"str","tp1":"str","tp2":"str","rr":"1:3"},"signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
-  callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2500, res);
-});
-
-app.post('/volatility', async (req, res) => {
-  const k = process.env.ANTHROPIC_API_KEY;
-  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 3); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Volatility analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Regime + position sizing. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","regime":"low|medium|high|extreme","regime_score":65,"atr_estimate":"str","volatility_percentile":72,"fractal_variance":0.34,"vol_path":[10 floats 0-1],"position_sizing":{"suggested_stop_pct":"str","max_position_size":"str","leverage_warning":"str"},"regime_characteristics":{"mean_reversion_probability":0.6,"trend_continuation_probability":0.4,"expected_daily_range":"str","breakout_likelihood":"low|medium|high"},"strategy_adaptation":{"recommended_approach":"str","avoid":"str"},"analysis":"3 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
-  callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2000, res);
-});
-
-app.post('/mtf', async (req, res) => {
-  const k = process.env.ANTHROPIC_API_KEY;
-  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 8); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `MTF fractal analyst. Chart: ${pair||'asset'}. Infer Weekly/Daily/H4. Reply in ${rl(l)}. JSON only.\n{"pair":"str","detected_timeframe":"str","timeframes":[{"tf":"Weekly","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.4,"path":[10 floats 0-1]},{"tf":"Daily","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.35,"path":[10 floats 0-1]},{"tf":"H4","bias":"bullish|bearish|neutral","fractal_phase":"str","key_level":"str","weight":0.25,"path":[10 floats 0-1]}],"confluence_score":78,"aligned":true,"confluence_zones":[{"price":"str","y":0.45,"strength":"high|medium|low","timeframes_aligned":["Weekly","Daily"],"color":"#c9a84c","label":"str"}],"dominant_bias":"bullish|bearish|neutral","fractal_alignment":"all-aligned|partially-aligned|divergent","analysis":"4 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low","entry":"str","stop_loss":"str","target":"str"}`;
-  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2500, res);
+  try { await verifyAndDeduct(_token, 20); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `MTF confluence analyzer. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","macro_tf":"D or W","mid_tf":"H or 4H","micro_tf":"m or H","macro":{"trend":"bullish|bearish|neutral","key_level":"price str","pattern":"str","confidence":"high|medium|low"},"mid":{"trend":"bullish|bearish|neutral","key_level":"price str","pattern":"str","confluence":"confirmed|weak|divergent"},"micro":{"structure":"impulse|correction|consolidation","entry_signal":"bool","risk_reward":"str"},"verdict":"bullish|bearish|neutral","strength":0-100,"entry_zone":{"from":"str","to":"str"},"stop_loss":"str","targets":["str","str"],"rationale":"3 sentences"}`;
+  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res);
 });
 
 app.post('/fractal-age', async (req, res) => {
@@ -467,28 +445,38 @@ app.post('/fractal-age', async (req, res) => {
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 25); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Fractal cycle timing analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Maturity + urgency. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","fractal_age":{"bars_into_pattern":34,"estimated_total_bars":55,"completion_pct":62,"age_label":"Mature|Young|Aging|Early","phase":"impulse|correction|distribution|accumulation"},"cycle_position":{"current_phase":"str","phases_completed":["str"],"phases_remaining":["str"],"cycle_path":[20 floats 0-1]},"time_projections":[{"scenario":"Base","bars_to_resolution":21,"direction":"bullish|bearish","probability":0.55,"target_price":"str"},{"scenario":"Bear","bars_to_resolution":13,"direction":"bearish","probability":0.3,"target_price":"str"},{"scenario":"Extended","bars_to_resolution":34,"direction":"bullish","probability":0.15,"target_price":"str"}],"urgency":"now|soon|wait|early","best_entry_window":"str","analysis":"4 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low"}`;
-  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2500, res);
+  try { await verifyAndDeduct(_token, 15); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `Fractal age analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","current_fractal":{"age":"young|mid|mature|exhausted","bars_since_origin":0,"strength":0-100,"self_similarity":"high|medium|low"},"macro_cycle":{"position":"early|mid|late","bars_total":0,"expected_remaining":0},"mid_cycle":{"position":"early|mid|late","bars_total":0},"verdict":"extend|reverse|consolidate","reasoning":"3 sentences","zones":[{"type":"support|resistance","price":"str","strength":"high|medium|low"}]}`;
+  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res);
 });
 
-app.post('/liquidity', async (req, res) => {
+app.post('/bar-pattern', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 8); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Liquidity analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Stop clusters, pools, hunt targets. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","liquidity_pools":[{"type":"buy-stops|sell-stops|equal-highs|equal-lows","price":"str","y":0.15,"size":"large|medium|small","swept":false,"x_position":0.8,"label":"str","color":"#e74c3c","description":"1 sentence"}],"stop_clusters":[{"type":"retail-longs|retail-shorts","price":"str","y":0.72,"concentration":"high|medium|low","x1":0.0,"x2":1.0,"color":"rgba(231,76,60,0.15)"}],"hunt_targets":[{"label":"str","price":"str","y":0.1,"probability":"high|medium|low","color":"#c9a84c","direction":"up|down","bars_estimate":8}],"smart_money_direction":"bullish|bearish|neutral","analysis":"4 sentences","signal":"bullish|bearish|neutral","confidence":"high|medium|low","next_likely_sweep":"str"}`;
-  callAnthropic(k, 'claude-sonnet-4-20250514', p, image, mediaType, 2500, res);
+  try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `Bar pattern analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","pattern":"str","structure":"bullish|bearish|neutral","confidence":"high|medium|low","last_bar":{"type":"bullish|bearish|doji|etc","close_position":"high|mid|low"},"projection":"continue|reverse|range","entry":"str","stop":"str","target":"str","rationale":"3 sentences"}`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
 });
 
-app.post('/journal', async (req, res) => {
+app.post('/axis-gates', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, trade_notes, outcome, pnl, _token } = req.body;
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 20); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Trading coach. Chart: ${pair||'asset'} ${timeframe||'auto'}. Notes:"${trade_notes||'none'}". Outcome:${outcome||'unknown'}. P&L:${pnl||'unknown'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","overall_grade":"A|B|C|D|F","grade_score":72,"categories":{"entry_quality":{"score":80,"comment":"1 sentence","improvement":"1 sentence"},"fractal_alignment":{"score":65,"comment":"1 sentence","improvement":"1 sentence"},"risk_management":{"score":70,"comment":"1 sentence","improvement":"1 sentence"},"timing":{"score":60,"comment":"1 sentence","improvement":"1 sentence"},"patience":{"score":75,"comment":"1 sentence","improvement":"1 sentence"}},"what_went_right":["str","str"],"what_went_wrong":["str","str"],"missed_fractal_signals":["str","str"],"coach_message":"3 sentences","key_lesson":"1 sentence","next_focus":"str"}`;
+  try { await verifyAndDeduct(_token, 10); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `Axis gates analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","axis_200":{"price":"str","slope":"up|down|flat"},"axis_400":{"price":"str","slope":"up|down|flat"},"crossover":"bullish|bearish|none","distance_from_200":"pct str","distance_from_400":"pct str","verdict":"above|below|between","strength":0-100,"rationale":"3 sentences"}`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
+});
+
+app.post('/trade-journal', async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
+  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 15); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `Trade journal analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","setup":"str","entry":"str","stop":"str","target":"str","risk_reward":"str","probability":"high|medium|low","notes":"4 sentences covering context, thesis, invalidation, lesson"}`;
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res);
 });
 
@@ -497,9 +485,394 @@ app.post('/projection', async (req, res) => {
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  try { await verifyAndDeduct(_token, 25); } catch(e) { return res.status(402).json({ error: e.message }); }
+  
+  // 🆕 Get user ID for prediction tracking
+  let userId = null;
+  try {
+    const verifyResult = await verifyAndDeduct(_token, 25);
+    userId = verifyResult.userId;
+  } catch(e) {
+    return res.status(402).json({ error: e.message });
+  }
+  
   const p = `Price projection analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. 3 forward scenarios. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","current_price":"str","last_candle_y":0.45,"signal":"bullish|bearish|neutral","confidence":"high|medium|low","fractal_basis":"1 sentence","scenarios":[{"label":"Base Case","probability":0.55,"direction":"bullish|bearish","color":"#27ae60","bars":30,"target_price":"str","target_y":0.3,"path":[30 floats],"invalidation_price":"str","invalidation_y":0.55},{"label":"Bear Case","probability":0.30,"direction":"bearish","color":"#e74c3c","bars":20,"target_price":"str","target_y":0.65,"path":[20 floats],"invalidation_price":"str","invalidation_y":0.35},{"label":"Extended","probability":0.15,"direction":"bullish","color":"#9b8fe8","bars":40,"target_price":"str","target_y":0.05,"path":[40 floats],"invalidation_price":"str","invalidation_y":0.55}],"analysis":"4 sentences","entry_zone":{"price_from":"str","price_to":"str","y1":0.42,"y2":0.48},"stop_loss":{"price":"str","y":0.55},"chart_context":{"trend":"uptrend|downtrend|sideways","last_pattern":"str","wave_position":"str"}}`;
-  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 3000, res);
+  
+  // Call Anthropic API
+  const messages = [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: image } }, { type: 'text', text: p }] }];
+  const reqBody = JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 3000, messages });
+  const options = {
+    hostname: 'api.anthropic.com',
+    path: '/v1/messages',
+    method: 'POST',
+    headers: { 'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','Content-Length':Buffer.byteLength(reqBody) }
+  };
+
+  const apiReq = https.request(options, apiRes => {
+    let data = '';
+    apiRes.on('data', c => { data += c; });
+    apiRes.on('end', async () => {
+      try {
+        const obj = JSON.parse(data);
+        if (obj.error) return res.status(500).json({ error: obj.error.message });
+        const text = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
+        
+        // 🆕 PREDICTION TRACKING - Extract and save prediction
+        try {
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch && userId) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            
+            // Extract prediction data
+            if (parsed.current_price && parsed.scenarios && parsed.scenarios[0]) {
+              const currentPrice = parseFloat(parsed.current_price.replace(/[^0-9.]/g, ''));
+              const targetPrice = parseFloat(parsed.scenarios[0].target_price.replace(/[^0-9.]/g, ''));
+              const bars = parseInt(parsed.scenarios[0].bars) || 30;
+              
+              // Convert bars to days based on timeframe
+              let targetDays = 3; // default
+              if (timeframe && timeframe.includes('h')) {
+                const hours = parseInt(timeframe);
+                targetDays = Math.ceil((bars * hours) / 24);
+              } else if (timeframe && timeframe.includes('d')) {
+                targetDays = bars;
+              } else if (timeframe && timeframe.includes('m')) {
+                targetDays = Math.ceil(bars / (24 * 60));
+              }
+              
+              if (currentPrice && targetPrice && !isNaN(currentPrice) && !isNaN(targetPrice)) {
+                await savePrediction({
+                  userId: userId,
+                  toolName: 'Price Path Projection',
+                  asset: pair || 'UNKNOWN',
+                  timeframe: timeframe || '1D',
+                  currentPrice: currentPrice,
+                  predictedPrice: targetPrice,
+                  targetDays: Math.max(1, Math.min(targetDays, 30)), // 1-30 days range
+                  fullResponse: text
+                });
+              }
+            }
+          }
+        } catch (predErr) {
+          console.error('[Prediction] Save error (non-fatal):', predErr.message);
+          // Don't fail the request if prediction save fails
+        }
+        
+        res.json({ text });
+      } catch(e) {
+        res.status(500).json({ error: 'Failed to parse response' });
+      }
+    });
+  });
+  apiReq.on('error', e => res.status(500).json({ error: e.message }));
+  apiReq.write(reqBody);
+  apiReq.end();
+});
+
+/* ═══════════════════════════════════════════════════
+   🆕 PREDICTION TRACKING API ROUTES - NEW!
+   ═══════════════════════════════════════════════════ */
+
+// Get public aggregate stats
+app.get('/api/predictions/stats', async (req, res) => {
+  if (!sbAdmin) return res.status(500).json({ error: 'Database not configured' });
+  
+  try {
+    const { data: allPredictions, error } = await sbAdmin
+      .from('predictions')
+      .select('tool_name, asset, result, accuracy_percentage, price_direction_correct');
+
+    if (error) throw error;
+
+    // Calculate overall stats
+    const verified = allPredictions.filter(p => p.result !== 'pending');
+    const correct = verified.filter(p => p.result === 'correct').length;
+    const wrong = verified.filter(p => p.result === 'wrong').length;
+    const pending = allPredictions.filter(p => p.result === 'pending').length;
+
+    const overall = {
+      total: allPredictions.length,
+      correct: correct,
+      wrong: wrong,
+      pending: pending,
+      accuracy: verified.length > 0 ? ((correct / verified.length) * 100).toFixed(2) : '0.00'
+    };
+
+    // Group by tool and asset
+    const byTool = {};
+    allPredictions.forEach(p => {
+      const key = `${p.tool_name}|${p.asset}`;
+      if (!byTool[key]) {
+        byTool[key] = {
+          tool_name: p.tool_name,
+          asset: p.asset,
+          total_predictions: 0,
+          correct_count: 0,
+          wrong_count: 0,
+          pending_count: 0
+        };
+      }
+      byTool[key].total_predictions++;
+      if (p.result === 'correct') byTool[key].correct_count++;
+      if (p.result === 'wrong') byTool[key].wrong_count++;
+      if (p.result === 'pending') byTool[key].pending_count++;
+    });
+
+    const byToolArray = Object.values(byTool).map(stat => {
+      const verified = stat.correct_count + stat.wrong_count;
+      return {
+        ...stat,
+        accuracy_percentage: verified > 0 ? ((stat.correct_count / verified) * 100).toFixed(2) : '0.00'
+      };
+    });
+
+    res.json({
+      success: true,
+      overall,
+      byTool: byToolArray
+    });
+
+  } catch (error) {
+    console.error('[Prediction Stats] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Manual check trigger (for testing)
+app.post('/api/predictions/check-now', async (req, res) => {
+  try {
+    await checkPredictions();
+    res.json({ success: true, message: 'Prediction check completed' });
+  } catch (error) {
+    console.error('[Manual Check] Error:', error);
+    res.status(500).json({ error: 'Check failed' });
+  }
+});
+
+// 🆕 ADMIN STATS PAGE - Simple HTML page to view predictions
+app.get('/admin/stats', async (req, res) => {
+  if (!sbAdmin) return res.status(500).send('Database not configured');
+  
+  try {
+    const { data: predictions } = await sbAdmin
+      .from('predictions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    const { data: stats } = await sbAdmin
+      .from('predictions')
+      .select('result');
+
+    const verified = stats.filter(p => p.result !== 'pending');
+    const correct = verified.filter(p => p.result === 'correct').length;
+    const wrong = verified.filter(p => p.result === 'wrong').length;
+    const pending = stats.filter(p => p.result === 'pending').length;
+    const accuracy = verified.length > 0 ? ((correct / verified.length) * 100).toFixed(2) : 0;
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>🔒 Admin - Prediction Stats</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Courier New', monospace; 
+      background: #0a0c14; 
+      color: #f0f4fa; 
+      padding: 20px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { 
+      color: #c9a84c; 
+      margin-bottom: 10px; 
+      font-size: 24px;
+      border-bottom: 2px solid #c9a84c;
+      padding-bottom: 10px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .stat-card {
+      background: rgba(201, 168, 76, 0.1);
+      border: 1px solid rgba(201, 168, 76, 0.3);
+      border-radius: 8px;
+      padding: 15px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #c9a84c;
+      margin-bottom: 5px;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: rgba(240, 244, 250, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .green { color: #4ade80 !important; }
+    .red { color: #f87171 !important; }
+    .orange { color: #fb923c !important; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 12px;
+    }
+    th {
+      background: rgba(201, 168, 76, 0.2);
+      padding: 12px 8px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid #c9a84c;
+    }
+    td {
+      padding: 10px 8px;
+      border-bottom: 1px solid rgba(201, 168, 76, 0.1);
+    }
+    tr:hover {
+      background: rgba(201, 168, 76, 0.05);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .badge-correct { background: #4ade80; color: #0a0c14; }
+    .badge-wrong { background: #f87171; color: #0a0c14; }
+    .badge-pending { background: #fb923c; color: #0a0c14; }
+    .refresh-btn {
+      background: #c9a84c;
+      color: #0a0c14;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    .refresh-btn:hover { background: #d4b560; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔒 Admin Dashboard - Prediction Tracking</h1>
+    <p style="color: rgba(240,244,250,0.6); margin-bottom: 20px; font-size: 12px;">
+      Private view - Only visible to you • Data updates automatically
+    </p>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value">${accuracy}%</div>
+        <div class="stat-label">Overall Accuracy</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${stats.length}</div>
+        <div class="stat-label">Total Predictions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value green">${correct}</div>
+        <div class="stat-label">Correct</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value red">${wrong}</div>
+        <div class="stat-label">Wrong</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value orange">${pending}</div>
+        <div class="stat-label">Pending</div>
+      </div>
+    </div>
+
+    <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Data</button>
+    <button class="refresh-btn" onclick="checkNow()">⚡ Check Predictions Now</button>
+
+    <h2 style="color: #c9a84c; margin: 30px 0 15px; font-size: 18px;">Recent Predictions (Last 100)</h2>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Asset</th>
+          <th>Current</th>
+          <th>Predicted</th>
+          <th>Actual</th>
+          <th>Target Date</th>
+          <th>Result</th>
+          <th>Accuracy</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${predictions.map(p => `
+          <tr>
+            <td>${p.tool_name}</td>
+            <td><strong>${p.asset}</strong></td>
+            <td>$${parseFloat(p.current_price).toLocaleString()}</td>
+            <td>$${parseFloat(p.predicted_price).toLocaleString()}</td>
+            <td>${p.actual_price ? '$' + parseFloat(p.actual_price).toLocaleString() : '—'}</td>
+            <td>${new Date(p.target_date).toLocaleDateString()}</td>
+            <td>
+              <span class="badge badge-${p.result}">
+                ${p.result === 'correct' ? '✓ CORRECT' : p.result === 'wrong' ? '✗ WRONG' : '⏳ PENDING'}
+              </span>
+            </td>
+            <td>${p.accuracy_percentage ? p.accuracy_percentage + '%' : '—'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <p style="margin-top: 30px; color: rgba(240,244,250,0.4); font-size: 11px; text-align: center;">
+      💡 Don't publish stats publicly until accuracy is consistently above 70%
+    </p>
+  </div>
+
+  <script>
+    async function checkNow() {
+      if (!confirm('Run prediction check now? This will check all pending predictions.')) return;
+      
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = '⏳ Checking...';
+      
+      try {
+        const res = await fetch('/api/predictions/check-now', { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.success) {
+          alert('✅ Prediction check completed! Refreshing page...');
+          location.reload();
+        } else {
+          alert('❌ Check failed: ' + (data.error || 'Unknown error'));
+          btn.disabled = false;
+          btn.textContent = '⚡ Check Predictions Now';
+        }
+      } catch (e) {
+        alert('❌ Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = '⚡ Check Predictions Now';
+      }
+    }
+  </script>
+</body>
+</html>
+    `;
+
+    res.send(html);
+  } catch (error) {
+    console.error('[Admin Stats] Error:', error);
+    res.status(500).send('Error loading stats');
+  }
 });
 
 /* ═══════════════════════════════════════════════════
@@ -647,11 +1020,18 @@ app.post('/stripe-webhook', async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════
-   START
+   🆕 START SERVER + CRON JOB - NEW!
    ═══════════════════════════════════════════════════ */
 app.listen(PORT, () => {
   console.log(`\n=== Fractal AI Agent v3.1 — port ${PORT} ===`);
   console.log('Anthropic key:', !!process.env.ANTHROPIC_API_KEY);
   console.log('Stripe:',        !!stripe);
   console.log('Supabase:',      !!sbAdmin);
+  
+  // 🆕 Schedule prediction checks to run daily at 2:00 AM
+  cron.schedule('0 2 * * *', () => {
+    console.log('\n⏰ [Scheduled] Running daily prediction check...');
+    checkPredictions();
+  });
+  console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
 });
