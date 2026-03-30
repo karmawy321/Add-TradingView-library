@@ -393,6 +393,47 @@ app.get('/subscribe-candles/:symbol', (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════
+   COMPATIBILITY ROUTES (for old index.html)
+   ═══════════════════════════════════════════════════ */
+
+// /candles/:symbol?tf=timeframe (query param version)
+app.get('/candles/:symbol', (req, res) => {
+  const { symbol } = req.params;
+  const tf = req.query.tf || '1h';
+  const sym = symbol.toUpperCase();
+  connectBinance(sym);
+  ensureSymbol(sym);
+  const arr = candles[sym][tf] || [];
+  res.json(arr);
+});
+
+// /price/:symbol (current price endpoint)
+app.get('/price/:symbol', (req, res) => {
+  const sym = req.params.symbol.toUpperCase();
+  connectBinance(sym);
+  ensureSymbol(sym);
+  // Get latest candle close price from any available timeframe
+  const tf = '1m';
+  const arr = candles[sym][tf] || [];
+  const lastCandle = arr[arr.length - 1];
+  res.json({ price: lastCandle ? lastCandle.c : 0 });
+});
+
+// /subscribe/:symbol (alias for subscribe-candles)
+app.get('/subscribe/:symbol', (req, res) => {
+  const sym = req.params.symbol.toUpperCase();
+  connectBinance(sym);
+  ensureSymbol(sym);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  sseClients[sym].add(res);
+  res.on('close', () => sseClients[sym].delete(res));
+  res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
+});
+
+/* ═══════════════════════════════════════════════════
    ANTHROPIC API
    ═══════════════════════════════════════════════════ */
 
@@ -567,6 +608,29 @@ app.post('/projection', async (req, res) => {
   apiReq.on('error', e => res.status(500).json({ error: e.message }));
   apiReq.write(reqBody);
   apiReq.end();
+});
+
+/* ═══════════════════════════════════════════════════
+   LEGACY TOOL ENDPOINTS (for old index.html)
+   ═══════════════════════════════════════════════════ */
+
+// /analyze - Maps to bar-pattern tool
+app.post('/analyze', async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
+  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `Bar pattern analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","pattern":"str","structure":"bullish|bearish|neutral","confidence":"high|medium|low","last_bar":{"type":"bullish|bearish|doji|etc","close_position":"high|mid|low"},"projection":"continue|reverse|range","entry":"str","stop":"str","target":"str","rationale":"3 sentences"}`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
+});
+
+// /weierstrass - Deprecated tool (returns error)
+app.post('/weierstrass', async (req, res) => {
+  res.status(410).json({ 
+    error: 'This tool has been deprecated. Please use the updated analysis tools instead.',
+    text: '{"error": "Weierstrass tool has been deprecated. Please refresh the page to see updated tools."}'
+  });
 });
 
 /* ═══════════════════════════════════════════════════
