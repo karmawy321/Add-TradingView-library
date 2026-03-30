@@ -1020,6 +1020,14 @@ app.post('/stripe-webhook', async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════
+   PAGE REDIRECTS (for URLs without .html extension)
+   ═══════════════════════════════════════════════════ */
+app.get('/auth', (req, res) => res.redirect('/auth.html'));
+app.get('/profile', (req, res) => res.redirect('/profile.html'));
+app.get('/privacy', (req, res) => res.redirect('/privacy.html'));
+app.get('/terms', (req, res) => res.redirect('/terms.html'));
+
+/* ═══════════════════════════════════════════════════
    🆕 START SERVER + CRON JOB - NEW!
    ═══════════════════════════════════════════════════ */
 app.listen(PORT, () => {
