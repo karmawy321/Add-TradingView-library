@@ -3634,6 +3634,169 @@ var _origRenderChart = null;
   }, 200);
 })();
 
+/* ── Curtain drag — click & drag the curtain line directly on the canvas ── */
+(function initCurtainDrag() {
+  var _dragging = false;
+  var _dragOffsetBars = 0; /* offset from cursor to curtain in bars */
+
+  function _getCurtainX() {
+    /* Returns pixel x of curtain line, or -1 if not active */
+    if (!_btActive || !_btHiddenCandles || !_btHiddenCandles.length) return -1;
+    var cv = document.getElementById('chartCanvas');
+    if (!cv || !chartCandles || !chartCandles.length) return -1;
+    var dpr = window.devicePixelRatio || 1;
+    var W   = cv.width / dpr;
+    var CW  = W - 8 - 75;
+    var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
+    var rightGapBars = Math.max(4, Math.round(n * 0.08));
+    var barW = CW / (n + rightGapBars);
+    return 8 + n * barW;
+  }
+
+  function _xToVisibleCount(clientX) {
+    /* Convert mouse clientX → how many candles should be visible */
+    var cv = document.getElementById('chartCanvas');
+    if (!cv) return _btCutoffIdx;
+    var rect = cv.getBoundingClientRect();
+    var dpr  = window.devicePixelRatio || 1;
+    var W    = cv.width / dpr;
+    var CW   = W - 8 - 75;
+    var mouseX = (clientX - rect.left);
+    /* Estimate barW from current state */
+    var full = _btAllCandles || chartCandles;
+    var totalFull = full.length;
+    /* We need approximate barW — use full candle count */
+    var n = Math.max(20, Math.floor(totalFull / chartView.zoom));
+    var rightGapBars = Math.max(4, Math.round(n * 0.08));
+    var barW = CW / (n + rightGapBars);
+    var bars = Math.round((mouseX - 8) / barW);
+    bars = Math.max(10, Math.min(totalFull - 3, bars));
+    return bars;
+  }
+
+  var _waitForCanvas = setInterval(function() {
+    var cv = document.getElementById('chartCanvas');
+    if (!cv) return;
+    clearInterval(_waitForCanvas);
+
+    cv.addEventListener('mousedown', function(e) {
+      if (!_btActive || e.button !== 0) return;
+      var curtainX = _getCurtainX();
+      if (curtainX < 0) return;
+      var rect = cv.getBoundingClientRect();
+      var mouseX = e.clientX - rect.left;
+      /* Hit test: within 12px of curtain line */
+      if (Math.abs(mouseX - curtainX) <= 12) {
+        _dragging = true;
+        cv.style.cursor = 'col-resize';
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true); /* capture phase so it fires before drawing tools */
+
+    document.addEventListener('mousemove', function(e) {
+      if (!_btActive) return;
+      /* Change cursor when hovering near curtain */
+      if (!_dragging) {
+        var curtainX = _getCurtainX();
+        if (curtainX < 0) return;
+        var rect = cv.getBoundingClientRect();
+        var mouseX = e.clientX - rect.left;
+        if (Math.abs(mouseX - curtainX) <= 12) {
+          cv.style.cursor = 'col-resize';
+        } else if (cv.style.cursor === 'col-resize') {
+          cv.style.cursor = 'crosshair';
+        }
+        return;
+      }
+      /* Dragging — update curtain position */
+      var newCount = _xToVisibleCount(e.clientX);
+      var full = _btAllCandles || chartCandles;
+      if (!full) return;
+      _btCutoffIdx     = newCount;
+      _btHiddenCandles = full.slice(newCount);
+      chartCandles     = full.slice(0, newCount);
+      chartView.offset = 0;
+      /* Update slider and labels */
+      var sliderPct = Math.round((newCount / full.length) * 100);
+      var sliderEl  = document.getElementById('btSlider');
+      if (sliderEl) sliderEl.value = sliderPct;
+      var cutCandle = full[newCount - 1];
+      if (cutCandle) {
+        var d = new Date(cutCandle.t);
+        document.getElementById('btDateLbl').textContent =
+          'Cut: ' + d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+        document.getElementById('btCandlesLeft').textContent =
+          _btHiddenCandles.length + ' bars hidden';
+      }
+      renderChart();
+    });
+
+    document.addEventListener('mouseup', function(e) {
+      if (!_dragging) return;
+      _dragging = false;
+      cv.style.cursor = 'crosshair';
+      /* Capture AI screenshot at final position */
+      var cvEl = document.getElementById('chartCanvas');
+      if (cvEl) {
+        dataUrl = cvEl.toDataURL('image/png');
+        if (typeof buildToolGrid === 'function') buildToolGrid();
+      }
+    });
+
+    /* Touch support */
+    cv.addEventListener('touchstart', function(e) {
+      if (!_btActive) return;
+      var curtainX = _getCurtainX();
+      if (curtainX < 0) return;
+      var rect = cv.getBoundingClientRect();
+      var touch = e.touches[0];
+      var mouseX = touch.clientX - rect.left;
+      if (Math.abs(mouseX - curtainX) <= 20) {
+        _dragging = true;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, { passive: false, capture: true });
+
+    document.addEventListener('touchmove', function(e) {
+      if (!_dragging || !_btActive) return;
+      var touch = e.touches[0];
+      var newCount = _xToVisibleCount(touch.clientX);
+      var full = _btAllCandles || chartCandles;
+      if (!full) return;
+      _btCutoffIdx     = newCount;
+      _btHiddenCandles = full.slice(newCount);
+      chartCandles     = full.slice(0, newCount);
+      chartView.offset = 0;
+      var sliderPct = Math.round((newCount / full.length) * 100);
+      var sliderEl  = document.getElementById('btSlider');
+      if (sliderEl) sliderEl.value = sliderPct;
+      var cutCandle = full[newCount - 1];
+      if (cutCandle) {
+        var d = new Date(cutCandle.t);
+        document.getElementById('btDateLbl').textContent =
+          'Cut: ' + d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+        document.getElementById('btCandlesLeft').textContent =
+          _btHiddenCandles.length + ' bars hidden';
+      }
+      renderChart();
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchend', function() {
+      if (!_dragging) return;
+      _dragging = false;
+      var cvEl = document.getElementById('chartCanvas');
+      if (cvEl) {
+        dataUrl = cvEl.toDataURL('image/png');
+        if (typeof buildToolGrid === 'function') buildToolGrid();
+      }
+    });
+
+  }, 300);
+})();
+
 /* session init handled by initSupabase() above */
 
 
