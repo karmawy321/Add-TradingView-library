@@ -3414,7 +3414,7 @@ var _btActive      = false;  /* is backtest mode on? */
 var _btCutoffIdx   = -1;     /* index into chartCandles where curtain falls */
 var _btHiddenCandles = [];   /* saved hidden candles for reveal */
 var _btPredictions = [];     /* predictions made during backtest session */
-var _btCurtainBarIdx = -1;   /* which bar the curtain line is at (for dragging) */
+var _btCurtainTimestamp = -1; /* timestamp of the candle where curtain is locked */
 var _btAllCandles  = null;   /* full candle set before hiding */
 
 function toggleBacktestMode() {
@@ -3430,9 +3430,10 @@ function toggleBacktestMode() {
   _btAllCandles = chartCandles.slice();
   /* Default curtain: hide last 20% of candles */
   var defaultPct = 70;
-  _btCurtainBarIdx = Math.floor(chartCandles.length * defaultPct / 100);
-  _btCutoffIdx = _btCurtainBarIdx;
-  _btHiddenCandles = chartCandles.slice(_btCurtainBarIdx);
+  var curtainIdx = Math.floor(chartCandles.length * defaultPct / 100);
+  _btCutoffIdx = curtainIdx;
+  _btCurtainTimestamp = chartCandles[curtainIdx] ? chartCandles[curtainIdx].t : -1;
+  _btHiddenCandles = chartCandles.slice(curtainIdx);
   onBtSlider(defaultPct);
   document.getElementById('btSlider').value = defaultPct;
 }
@@ -3440,7 +3441,7 @@ function toggleBacktestMode() {
 function exitBacktestMode() {
   _btActive = false;
   _btCutoffIdx = -1;
-  _btCurtainBarIdx = -1;
+  _btCurtainTimestamp = -1;
   _btHiddenCandles = [];
   _btPredictions = [];
   document.getElementById('btModeBtn').classList.remove('active');
@@ -3471,11 +3472,8 @@ function onBtSlider(pct) {
   visibleCount = Math.max(10, Math.min(total - 3, visibleCount));
 
   _btCutoffIdx     = visibleCount;
-  _btCurtainBarIdx = visibleCount;
+  _btCurtainTimestamp = full[visibleCount] ? full[visibleCount].t : -1;
   _btHiddenCandles = full.slice(visibleCount);
-  /* DON'T slice chartCandles - keep all bars visible, just move the curtain */
-  /* chartCandles stays as _btAllCandles */
-  chartCandles = _btAllCandles;
 
   /* Update labels */
   var cutCandle = full[visibleCount - 1];
@@ -3596,8 +3594,34 @@ var _origRenderChart = null;
     clearInterval(_checkInterval);
     var _orig = renderChart;
     renderChart = function() {
+      /* First, hide bars after curtain BEFORE rendering */
+      var tempHiddenBars = null;
+      if (_btActive && _btCurtainTimestamp > 0 && chartCandles && chartCandles.length) {
+        /* Find curtain index by timestamp */
+        var curtainIdx = -1;
+        for (var i = 0; i < chartCandles.length; i++) {
+          if (chartCandles[i].t >= _btCurtainTimestamp) {
+            curtainIdx = i;
+            break;
+          }
+        }
+        if (curtainIdx >= 0) {
+          /* Temporarily hide bars after curtain */
+          tempHiddenBars = chartCandles.slice(curtainIdx);
+          chartCandles = chartCandles.slice(0, curtainIdx);
+        }
+      }
+      
+      /* Render chart with hidden bars */
       _orig.apply(this, arguments);
-      if (!_btActive || _btCurtainBarIdx < 0 || !_btAllCandles) return;
+      
+      /* Restore full candles for next frame */
+      if (tempHiddenBars) {
+        chartCandles = chartCandles.concat(tempHiddenBars);
+      }
+      
+      /* Draw curtain line */
+      if (!_btActive || _btCurtainTimestamp <= 0) return;
       var cv  = document.getElementById('chartCanvas');
       var ctx = cv && cv.getContext('2d');
       if (!ctx || !chartCandles || !chartCandles.length) return;
@@ -3607,14 +3631,24 @@ var _origRenderChart = null;
       
       var PAD = { l:8, r:75, t:16, b:56 };
       var CW  = W - PAD.l - PAD.r;
+      
+      /* Find curtain visible index by timestamp */
+      var curtainIdx = -1;
+      for (var i = 0; i < chartCandles.length; i++) {
+        if (chartCandles[i].t >= _btCurtainTimestamp) {
+          curtainIdx = i;
+          break;
+        }
+      }
+      if (curtainIdx < 0) return;
+      
       var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
       var rightGapBars = Math.max(4, Math.round(n * 0.08));
       var barW = CW / (n + rightGapBars);
       
-      /* Calculate curtain X position based on _btCurtainBarIdx */
-      /* Map curtain bar index to visible bar index */
+      /* Calculate curtain X position */
       var firstVisibleIdx = chartView.offset;
-      var curtainVisibleIdx = _btCurtainBarIdx - firstVisibleIdx;
+      var curtainVisibleIdx = curtainIdx - firstVisibleIdx;
       
       /* If curtain is off-screen, don't draw it */
       if (curtainVisibleIdx < 0 || curtainVisibleIdx > n) return;
@@ -3622,12 +3656,6 @@ var _origRenderChart = null;
       var x = PAD.l + curtainVisibleIdx * barW;
       
       ctx.save();
-      
-      /* Dim bars after curtain */
-      if (curtainVisibleIdx < n) {
-        ctx.fillStyle = 'rgba(10, 12, 20, 0.75)';
-        ctx.fillRect(x, PAD.t, W - x - PAD.r, H - PAD.t - PAD.b);
-      }
       
       /* Red dashed curtain line */
       ctx.strokeStyle = '#e74c3c';
@@ -3648,7 +3676,7 @@ var _origRenderChart = null;
       ctx.fillText('◀ CURTAIN', x, PAD.t + 10);
       
       /* Hidden bars pill */
-      var hiddenCount = _btAllCandles.length - _btCurtainBarIdx;
+      var hiddenCount = _btAllCandles ? (_btAllCandles.length - curtainIdx) : 0;
       var lbl = hiddenCount + ' bars hidden';
       var lw  = ctx.measureText(lbl).width + 10;
       ctx.fillStyle = 'rgba(231,76,60,0.22)';
@@ -3667,9 +3695,20 @@ var _origRenderChart = null;
 
   function _getCurtainX() {
     /* Returns pixel x of curtain line, or -1 if not active */
-    if (!_btActive || _btCurtainBarIdx < 0 || !_btAllCandles) return -1;
+    if (!_btActive || _btCurtainTimestamp <= 0 || !chartCandles) return -1;
     var cv = document.getElementById('chartCanvas');
     if (!cv || !chartCandles || !chartCandles.length) return -1;
+    
+    /* Find curtain index by timestamp */
+    var curtainIdx = -1;
+    for (var i = 0; i < chartCandles.length; i++) {
+      if (chartCandles[i].t >= _btCurtainTimestamp) {
+        curtainIdx = i;
+        break;
+      }
+    }
+    if (curtainIdx < 0) return -1;
+    
     var dpr = window.devicePixelRatio || 1;
     var W   = cv.width / dpr;
     var PAD = { l:8, r:75 };
@@ -3679,17 +3718,17 @@ var _origRenderChart = null;
     var barW = CW / (n + rightGapBars);
     
     var firstVisibleIdx = chartView.offset;
-    var curtainVisibleIdx = _btCurtainBarIdx - firstVisibleIdx;
+    var curtainVisibleIdx = curtainIdx - firstVisibleIdx;
     
     if (curtainVisibleIdx < 0 || curtainVisibleIdx > n) return -1;
     
     return PAD.l + curtainVisibleIdx * barW;
   }
 
-  function _xToCurtainBarIdx(clientX) {
-    /* Convert mouse clientX → absolute bar index in _btAllCandles */
+  function _xToCurtainTimestamp(clientX) {
+    /* Convert mouse clientX → candle timestamp */
     var cv = document.getElementById('chartCanvas');
-    if (!cv || !_btAllCandles) return _btCurtainBarIdx;
+    if (!cv || !chartCandles || !chartCandles.length) return _btCurtainTimestamp;
     var rect = cv.getBoundingClientRect();
     var dpr  = window.devicePixelRatio || 1;
     var W    = cv.width / dpr;
@@ -3710,9 +3749,10 @@ var _origRenderChart = null;
     var absoluteBarIdx = firstVisibleIdx + visibleBarIdx;
     
     /* Clamp to valid range */
-    absoluteBarIdx = Math.max(10, Math.min(_btAllCandles.length - 3, absoluteBarIdx));
+    absoluteBarIdx = Math.max(10, Math.min(chartCandles.length - 3, absoluteBarIdx));
     
-    return absoluteBarIdx;
+    /* Return timestamp of that candle */
+    return chartCandles[absoluteBarIdx] ? chartCandles[absoluteBarIdx].t : _btCurtainTimestamp;
   }
 
   var _waitForCanvas = setInterval(function() {
@@ -3750,17 +3790,28 @@ var _origRenderChart = null;
         }
         return;
       }
-      /* Dragging — update curtain position */
-      var newBarIdx = _xToCurtainBarIdx(e.clientX);
-      _btCurtainBarIdx = newBarIdx;
-      _btCutoffIdx = newBarIdx;
-      _btHiddenCandles = _btAllCandles.slice(newBarIdx);
+      /* Dragging — update curtain timestamp */
+      var newTimestamp = _xToCurtainTimestamp(e.clientX);
+      _btCurtainTimestamp = newTimestamp;
+      
+      /* Find index for this timestamp */
+      var curtainIdx = -1;
+      for (var i = 0; i < chartCandles.length; i++) {
+        if (chartCandles[i].t >= newTimestamp) {
+          curtainIdx = i;
+          break;
+        }
+      }
+      if (curtainIdx < 0) curtainIdx = chartCandles.length - 1;
+      
+      _btCutoffIdx = curtainIdx;
+      _btHiddenCandles = _btAllCandles ? _btAllCandles.slice(curtainIdx) : [];
       
       /* Update slider and labels */
-      var sliderPct = Math.round((newBarIdx / _btAllCandles.length) * 100);
+      var sliderPct = _btAllCandles ? Math.round((curtainIdx / _btAllCandles.length) * 100) : 70;
       var sliderEl  = document.getElementById('btSlider');
       if (sliderEl) sliderEl.value = sliderPct;
-      var cutCandle = _btAllCandles[newBarIdx - 1];
+      var cutCandle = chartCandles[curtainIdx - 1];
       if (cutCandle) {
         var d = new Date(cutCandle.t);
         document.getElementById('btDateLbl').textContent =
@@ -3801,15 +3852,25 @@ var _origRenderChart = null;
     document.addEventListener('touchmove', function(e) {
       if (!_dragging || !_btActive) return;
       var touch = e.touches[0];
-      var newBarIdx = _xToCurtainBarIdx(touch.clientX);
-      _btCurtainBarIdx = newBarIdx;
-      _btCutoffIdx = newBarIdx;
-      _btHiddenCandles = _btAllCandles.slice(newBarIdx);
+      var newTimestamp = _xToCurtainTimestamp(touch.clientX);
+      _btCurtainTimestamp = newTimestamp;
       
-      var sliderPct = Math.round((newBarIdx / _btAllCandles.length) * 100);
+      var curtainIdx = -1;
+      for (var i = 0; i < chartCandles.length; i++) {
+        if (chartCandles[i].t >= newTimestamp) {
+          curtainIdx = i;
+          break;
+        }
+      }
+      if (curtainIdx < 0) curtainIdx = chartCandles.length - 1;
+      
+      _btCutoffIdx = curtainIdx;
+      _btHiddenCandles = _btAllCandles ? _btAllCandles.slice(curtainIdx) : [];
+      
+      var sliderPct = _btAllCandles ? Math.round((curtainIdx / _btAllCandles.length) * 100) : 70;
       var sliderEl  = document.getElementById('btSlider');
       if (sliderEl) sliderEl.value = sliderPct;
-      var cutCandle = _btAllCandles[newBarIdx - 1];
+      var cutCandle = chartCandles[curtainIdx - 1];
       if (cutCandle) {
         var d = new Date(cutCandle.t);
         document.getElementById('btDateLbl').textContent =
