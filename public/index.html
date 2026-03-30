@@ -3604,121 +3604,71 @@ var _origRenderChart = null;
       var W   = cv.width / dpr;
       var H   = cv.height / dpr;
       
+      /* TradingView-style replay line: draw at the end of visible data */
       var PAD = { l:8, r:75, t:16, b:56 };
       var CW  = W - PAD.l - PAD.r;
       var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
       var rightGapBars = Math.max(4, Math.round(n * 0.08));
       var barW = CW / (n + rightGapBars);
       
-      /* Calculate curtain X position - always at the END of visible chartCandles */
+      /* Find where the replay line should be drawn */
       var firstVisibleIdx = chartView.offset;
-      var lastVisibleIdx = firstVisibleIdx + n;
+      var replayBarIdx = chartCandles.length - 1; // Last bar in the sliced data
+      var replayVisibleIdx = replayBarIdx - firstVisibleIdx;
       
-      /* Curtain is at the end of chartCandles (last bar before hidden section) */
-      var curtainAbsoluteIdx = chartCandles.length; // This is where data ends
-      
-      /* If curtain is within the visible range, draw it */
-      var curtainVisibleIdx = curtainAbsoluteIdx - firstVisibleIdx;
-      
-      /* Draw curtain if it's within or near the visible window */
-      var x;
-      var isOffScreen = false;
-      
-      if (curtainVisibleIdx < 0) {
-        /* Curtain is off-screen to the left */
-        x = PAD.l;
-        isOffScreen = 'left';
-      } else if (curtainVisibleIdx > n + rightGapBars) {
-        /* Curtain is off-screen to the right */
-        x = W - PAD.r;
-        isOffScreen = 'right';
-      } else {
-        /* Curtain is visible on screen */
-        x = PAD.l + curtainVisibleIdx * barW;
-      }
-      
-      ctx.save();
-      
-      /* Red dashed curtain line */
-      ctx.strokeStyle = '#e74c3c';
-      ctx.lineWidth   = 2;
-      ctx.globalAlpha = 0.9;
-      ctx.setLineDash([6, 4]);
-      ctx.beginPath();
-      ctx.moveTo(x, PAD.t);
-      ctx.lineTo(x, H - PAD.b);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
-      
-      /* Label based on whether curtain is on/off screen */
-      ctx.fillStyle = '#e74c3c';
-      ctx.font      = 'bold 8px DM Mono';
-      ctx.textAlign = 'center';
-      
-      if (isOffScreen === 'left') {
-        ctx.fillText('CURTAIN ▶', x + 35, PAD.t + 10);
-      } else if (isOffScreen === 'right') {
-        ctx.fillText('◀ CURTAIN', x - 35, PAD.t + 10);
-      } else {
-        ctx.fillText('◀ CURTAIN', x, PAD.t + 10);
-      }
-      
-      /* Hidden bars pill */
-      var hiddenCount = _btHiddenCandles.length;
-      if (hiddenCount > 0 && !isOffScreen) {
-        var lbl = hiddenCount + ' bars hidden';
-        var lw  = ctx.measureText(lbl).width + 10;
-        ctx.fillStyle = 'rgba(231,76,60,0.22)';
-        ctx.fillRect(x - lw/2, PAD.t + 14, lw, 13);
+      /* Only draw if replay bar is within visible range */
+      if (replayVisibleIdx >= 0 && replayVisibleIdx <= n) {
+        var x = PAD.l + (replayVisibleIdx + 1) * barW; // +1 to draw after the last bar
+        
+        ctx.save();
+        
+        /* Red solid vertical line */
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth   = 2;
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, PAD.t);
+        ctx.lineTo(x, H - PAD.b);
+        ctx.stroke();
+        
+        /* Circle handle at top */
         ctx.fillStyle = '#e74c3c';
-        ctx.font      = '7px DM Mono';
-        ctx.fillText(lbl, x, PAD.t + 23);
+        ctx.beginPath();
+        ctx.arc(x, PAD.t + 8, 4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        /* Hidden bars count */
+        var hiddenCount = _btHiddenCandles.length;
+        if (hiddenCount > 0) {
+          ctx.fillStyle = '#e74c3c';
+          ctx.font = 'bold 9px DM Mono';
+          ctx.textAlign = 'center';
+          ctx.fillText(hiddenCount + ' hidden', x, PAD.t + 22);
+        }
+        
+        ctx.restore();
       }
-      ctx.restore();
     };
   }, 200);
 })();
 
-/* ── Curtain drag — click & drag the curtain line directly on the canvas ── */
-(function initCurtainDrag() {
+/* ── TradingView-style Replay Drag ── */
+(function initReplayDrag() {
   var _dragging = false;
 
-  function _getCurtainX() {
-    /* Returns pixel x of curtain line, or -1 if not active */
-    if (!_btActive || !_btAllCandles || !chartCandles) return -1;
+  function _updateReplayPosition(clientX) {
+    /* Convert mouse X to bar index and update replay position */
     var cv = document.getElementById('chartCanvas');
-    if (!cv || !chartCandles.length) return -1;
-    var dpr = window.devicePixelRatio || 1;
-    var W   = cv.width / dpr;
-    var PAD = { l:8, r:75 };
-    var CW  = W - PAD.l - PAD.r;
-    var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
-    var rightGapBars = Math.max(4, Math.round(n * 0.08));
-    var barW = CW / (n + rightGapBars);
+    if (!cv || !_btAllCandles) return;
     
-    /* Curtain is at the end of chartCandles */
-    var curtainAbsoluteIdx = chartCandles.length;
-    var firstVisibleIdx = chartView.offset;
-    var curtainVisibleIdx = curtainAbsoluteIdx - firstVisibleIdx;
-    
-    if (curtainVisibleIdx < 0 || curtainVisibleIdx > n + rightGapBars) return -1;
-    
-    return PAD.l + curtainVisibleIdx * barW;
-  }
-
-  function _xToCurtainBarIdx(clientX) {
-    /* Convert mouse clientX → absolute bar index in _btAllCandles */
-    var cv = document.getElementById('chartCanvas');
-    if (!cv || !_btAllCandles) return _btCurtainBarIdx;
     var rect = cv.getBoundingClientRect();
     var dpr  = window.devicePixelRatio || 1;
     var W    = cv.width / dpr;
     var PAD  = { l:8, r:75 };
     var CW   = W - PAD.l - PAD.r;
-    var mouseX = (clientX - rect.left);
+    var mouseX = clientX - rect.left;
     
-    /* Calculate barW from current visible range */
+    /* Calculate current visible range */
     var n = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
     var rightGapBars = Math.max(4, Math.round(n * 0.08));
     var barW = CW / (n + rightGapBars);
@@ -3726,14 +3676,34 @@ var _origRenderChart = null;
     /* Mouse X to visible bar index */
     var visibleBarIdx = Math.floor((mouseX - PAD.l) / barW);
     
-    /* Convert to absolute bar index */
+    /* Convert to absolute bar index in _btAllCandles */
     var firstVisibleIdx = chartView.offset;
     var absoluteBarIdx = firstVisibleIdx + visibleBarIdx;
     
     /* Clamp to valid range */
-    absoluteBarIdx = Math.max(10, Math.min(_btAllCandles.length - 3, absoluteBarIdx));
+    absoluteBarIdx = Math.max(10, Math.min(_btAllCandles.length - 1, absoluteBarIdx));
     
-    return absoluteBarIdx;
+    /* Update replay state */
+    _btCurtainBarIdx = absoluteBarIdx;
+    _btCutoffIdx = absoluteBarIdx;
+    _btHiddenCandles = _btAllCandles.slice(absoluteBarIdx);
+    chartCandles = _btAllCandles.slice(0, absoluteBarIdx);
+    
+    /* Update UI labels */
+    var sliderPct = Math.round((absoluteBarIdx / _btAllCandles.length) * 100);
+    var sliderEl = document.getElementById('btSlider');
+    if (sliderEl) sliderEl.value = sliderPct;
+    
+    var cutCandle = _btAllCandles[absoluteBarIdx - 1];
+    if (cutCandle) {
+      var d = new Date(cutCandle.t);
+      document.getElementById('btDateLbl').textContent =
+        'Cut: ' + d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+      document.getElementById('btCandlesLeft').textContent =
+        _btHiddenCandles.length + ' bars hidden';
+    }
+    
+    renderChart();
   }
 
   var _waitForCanvas = setInterval(function() {
@@ -3741,64 +3711,31 @@ var _origRenderChart = null;
     if (!cv) return;
     clearInterval(_waitForCanvas);
 
+    /* Mouse down - start dragging */
     cv.addEventListener('mousedown', function(e) {
       if (!_btActive || e.button !== 0) return;
-      var curtainX = _getCurtainX();
-      if (curtainX < 0) return;
-      var rect = cv.getBoundingClientRect();
-      var mouseX = e.clientX - rect.left;
-      /* Hit test: within 12px of curtain line */
-      if (Math.abs(mouseX - curtainX) <= 12) {
-        _dragging = true;
-        cv.style.cursor = 'col-resize';
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }, true); /* capture phase so it fires before drawing tools */
+      _dragging = true;
+      cv.style.cursor = 'ew-resize';
+      _updateReplayPosition(e.clientX);
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
 
+    /* Mouse move - update replay position while dragging */
     document.addEventListener('mousemove', function(e) {
-      if (!_btActive) return;
-      /* Change cursor when hovering near curtain */
-      if (!_dragging) {
-        var curtainX = _getCurtainX();
-        if (curtainX < 0) return;
-        var rect = cv.getBoundingClientRect();
-        var mouseX = e.clientX - rect.left;
-        if (Math.abs(mouseX - curtainX) <= 12) {
-          cv.style.cursor = 'col-resize';
-        } else if (cv.style.cursor === 'col-resize') {
-          cv.style.cursor = 'crosshair';
-        }
-        return;
-      }
-      /* Dragging — update curtain position */
-      var newBarIdx = _xToCurtainBarIdx(e.clientX);
-      _btCurtainBarIdx = newBarIdx;
-      _btCutoffIdx = newBarIdx;
-      _btHiddenCandles = _btAllCandles.slice(newBarIdx);
-      /* Actually hide bars after new curtain position */
-      chartCandles = _btAllCandles.slice(0, newBarIdx);
-      
-      /* Update slider and labels */
-      var sliderPct = Math.round((newBarIdx / _btAllCandles.length) * 100);
-      var sliderEl  = document.getElementById('btSlider');
-      if (sliderEl) sliderEl.value = sliderPct;
-      var cutCandle = _btAllCandles[newBarIdx - 1];
-      if (cutCandle) {
-        var d = new Date(cutCandle.t);
-        document.getElementById('btDateLbl').textContent =
-          'Cut: ' + d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
-        document.getElementById('btCandlesLeft').textContent =
-          _btHiddenCandles.length + ' bars hidden';
-      }
-      renderChart();
+      if (!_dragging || !_btActive) return;
+      _updateReplayPosition(e.clientX);
+      e.preventDefault();
     });
 
+    /* Mouse up - stop dragging */
     document.addEventListener('mouseup', function(e) {
       if (!_dragging) return;
       _dragging = false;
-      cv.style.cursor = 'crosshair';
-      /* Capture AI screenshot at final position */
+      var cv = document.getElementById('chartCanvas');
+      if (cv) cv.style.cursor = 'crosshair';
+      
+      /* Capture final screenshot for AI */
       var cvEl = document.getElementById('chartCanvas');
       if (cvEl) {
         dataUrl = cvEl.toDataURL('image/png');
@@ -3809,46 +3746,25 @@ var _origRenderChart = null;
     /* Touch support */
     cv.addEventListener('touchstart', function(e) {
       if (!_btActive) return;
-      var curtainX = _getCurtainX();
-      if (curtainX < 0) return;
-      var rect = cv.getBoundingClientRect();
+      _dragging = true;
       var touch = e.touches[0];
-      var mouseX = touch.clientX - rect.left;
-      if (Math.abs(mouseX - curtainX) <= 20) {
-        _dragging = true;
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      _updateReplayPosition(touch.clientX);
+      e.preventDefault();
+      e.stopPropagation();
     }, { passive: false, capture: true });
 
     document.addEventListener('touchmove', function(e) {
       if (!_dragging || !_btActive) return;
       var touch = e.touches[0];
-      var newBarIdx = _xToCurtainBarIdx(touch.clientX);
-      _btCurtainBarIdx = newBarIdx;
-      _btCutoffIdx = newBarIdx;
-      _btHiddenCandles = _btAllCandles.slice(newBarIdx);
-      /* Actually hide bars after new curtain position */
-      chartCandles = _btAllCandles.slice(0, newBarIdx);
-      
-      var sliderPct = Math.round((newBarIdx / _btAllCandles.length) * 100);
-      var sliderEl  = document.getElementById('btSlider');
-      if (sliderEl) sliderEl.value = sliderPct;
-      var cutCandle = _btAllCandles[newBarIdx - 1];
-      if (cutCandle) {
-        var d = new Date(cutCandle.t);
-        document.getElementById('btDateLbl').textContent =
-          'Cut: ' + d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
-        document.getElementById('btCandlesLeft').textContent =
-          _btHiddenCandles.length + ' bars hidden';
-      }
-      renderChart();
+      _updateReplayPosition(touch.clientX);
       e.preventDefault();
     }, { passive: false });
 
     document.addEventListener('touchend', function() {
       if (!_dragging) return;
       _dragging = false;
+      
+      /* Capture final screenshot for AI */
       var cvEl = document.getElementById('chartCanvas');
       if (cvEl) {
         dataUrl = cvEl.toDataURL('image/png');
