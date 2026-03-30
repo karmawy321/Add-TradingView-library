@@ -4880,6 +4880,16 @@ function executeTool(tool,imgData){
   if(!imgData){showErr('Load a chart first');return;}
   dataUrl=imgData;
   if(btn){btn.setAttribute('disabled',true);resetCard('…','rgba(201,168,76,.8)');}
+
+  /* Show spinner on the tool-result-hd row + auto-open panel */
+  var _statusEl = document.getElementById(tool.id+'-status');
+  var _bodyEl   = document.getElementById(tool.id+'-body');
+  var _chevEl   = document.getElementById(tool.id+'-chev');
+  var _runBtn   = document.getElementById(tool.id+'-btn');
+  if(_statusEl){ _statusEl.style.display='flex'; _statusEl.className='ud-sec-status'; _statusEl.innerHTML='<div class="ud-spin"></div>'; }
+  if(_bodyEl && !_bodyEl.classList.contains('open')){ _bodyEl.classList.add('open'); if(_chevEl)_chevEl.classList.add('open'); }
+  if(_runBtn) _runBtn.disabled = true;
+
   var pair=currentSymbol||(document.getElementById('pairIn')||{}).value||'';
   var token=localStorage.getItem('fractal_token');
   var langVal=localStorage.getItem('fractal_lang')||'en';
@@ -4887,7 +4897,13 @@ function executeTool(tool,imgData){
   var _smaCtx = (typeof smaContextStr !== 'undefined') ? smaContextStr : '';
   callBackend(tool.endpoint,{image:b64,mediaType:mType,pair:pair,timeframe:currentInterval,language:langVal,_token:token,sma_context:_smaCtx})
   .then(function(result){
-    if(result&&result.error){showErr(result.error);if(btn)btn.removeAttribute('disabled');resetCard('','');return;}
+    if(result&&result.error){
+      showErr(result.error);
+      if(btn)btn.removeAttribute('disabled');resetCard('','');
+      if(_statusEl){ _statusEl.style.display='none'; }
+      if(_runBtn) _runBtn.disabled = false;
+      return;
+    }
     drawToolResultOnChart(tool.id,result);
     if(tool.id==='fib'&&typeof renderFibonacci==='function')renderFibonacci(result);
     else if(tool.id==='smc'&&typeof renderSMC==='function')renderSMC(result);
@@ -4901,12 +4917,25 @@ function executeTool(tool,imgData){
     var re=document.getElementById('rEmpty2');if(re)re.style.display='none';
     if(btn)btn.removeAttribute('disabled');
     resetCard('✓','#27ae60');
-    setTimeout(function(){resetCard('','');},3000);
+    /* Update status to Done and scroll result into view */
+    if(_statusEl){ _statusEl.className='ud-sec-status ud-done'; _statusEl.innerHTML='✓ Done'; }
+    if(_runBtn) _runBtn.disabled = false;
+    var _sec = document.getElementById('sec-'+tool.id);
+    if(_sec) setTimeout(function(){ _sec.scrollIntoView({behavior:'smooth',block:'nearest'}); },120);
+    setTimeout(function(){
+      resetCard('','');
+      if(_statusEl){ _statusEl.style.display='none'; _statusEl.innerHTML='<div class="ud-spin"></div>'; }
+    },4000);
   })
   .catch(function(e){
     showErr(tool.label+' failed: '+e.message);
     if(btn)btn.removeAttribute('disabled');
     resetCard('','');
+    if(_statusEl){ _statusEl.style.display='flex'; _statusEl.className='ud-sec-status'; _statusEl.style.color='#e74c3c'; _statusEl.innerHTML='✗ Failed'; }
+    if(_runBtn) _runBtn.disabled = false;
+    setTimeout(function(){
+      if(_statusEl){ _statusEl.style.display='none'; _statusEl.style.color=''; _statusEl.innerHTML='<div class="ud-spin"></div>'; }
+    },4000);
   });
 }
 
