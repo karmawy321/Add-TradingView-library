@@ -4479,8 +4479,11 @@ function captureChart(){
   if(typeof showCapturePrompt==='function')showCapturePrompt();
 }
 function captureForTool(){
+  /* 1. Prefer live chart canvas if candles are loaded */
   var cv=document.getElementById('chartCanvas');
   if(cv&&chartCandles&&chartCandles.length>0)return cv.toDataURL('image/png');
+  /* 2. Fall back to uploaded image or previously snapped dataUrl */
+  if(typeof dataUrl!=='undefined'&&dataUrl)return dataUrl;
   return null;
 }
 function captureAndStore(){
@@ -4881,7 +4884,8 @@ function executeTool(tool,imgData){
   var token=localStorage.getItem('fractal_token');
   var langVal=localStorage.getItem('fractal_lang')||'en';
   var b64=imgData.split(',')[1], mType=imgData.split(';')[0].split(':')[1];
-  callBackend(tool.endpoint,{image:b64,mediaType:mType,pair:pair,timeframe:currentInterval,language:langVal,_token:token,sma_context:smaContextStr})
+  var _smaCtx = (typeof smaContextStr !== 'undefined') ? smaContextStr : '';
+  callBackend(tool.endpoint,{image:b64,mediaType:mType,pair:pair,timeframe:currentInterval,language:langVal,_token:token,sma_context:_smaCtx})
   .then(function(result){
     if(result&&result.error){showErr(result.error);if(btn)btn.removeAttribute('disabled');resetCard('','');return;}
     drawToolResultOnChart(tool.id,result);
