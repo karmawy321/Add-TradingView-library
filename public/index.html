@@ -4496,6 +4496,7 @@ function takeSnapshot(){
   if(txt)txt.textContent='✓ Chart captured';
   if(btn){btn.style.borderColor='rgba(39,174,96,.4)';btn.style.color='#27ae60';}
   if(azBtn)azBtn.disabled=false;
+  if(typeof buildToolGrid==='function') buildToolGrid();
 }
 
 function loadChart(symbol,interval){
@@ -4534,6 +4535,7 @@ function loadChart(symbol,interval){
         lwChartInstance=true;
         var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
         autoBarPattern();
+        if(typeof buildToolGrid==='function') buildToolGrid();
       } else {
         if(isForexSymbol(sym)) fetchTwelveDataFallback(sym,currentInterval);
         else fetchBinanceFallback(sym,currentInterval);
@@ -4560,6 +4562,7 @@ function loadChart(symbol,interval){
       showLivePrice({symbol:sym,price:last.c,change_24h:((last.c-prev)/prev*100).toFixed(3),trend_24h:last.c>=prev?'up':'dn'});
       lwChartInstance=true;
       var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
+      if(typeof buildToolGrid==='function') buildToolGrid();
     }catch(err){}
   };
   chartSSE.onerror=function(){console.warn('[SSE] error for',sym);};
@@ -4598,6 +4601,7 @@ function fetchTwelveDataFallback(sym, tf) {
           autoBarPattern();
           lwChartInstance = true;
           var btn=document.getElementById('azBtn'); if(btn) btn.disabled=false;
+          if(typeof buildToolGrid==='function') buildToolGrid();
           if(sym===currentSymbol){
             var last=d.candles[d.candles.length-1], prev=d.candles.length>1?d.candles[d.candles.length-2].c:last.o;
             showLivePrice({symbol:sym,price:last.c,change_24h:((last.c-prev)/prev*100).toFixed(3),trend_24h:last.c>=prev?'up':'dn'});
@@ -4651,6 +4655,7 @@ function fetchBinanceFallback(sym, tf) {
       autoBarPattern();
       lwChartInstance = true;
       var btn = document.getElementById('azBtn'); if(btn) btn.disabled=false;
+      if(typeof buildToolGrid==='function') buildToolGrid();
       /* Show source label */
 
     })
