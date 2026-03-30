@@ -448,6 +448,14 @@ function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res) {
         const obj = JSON.parse(data);
         if (obj.error) return res.status(500).json({ error: obj.error.message });
         const text = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
+        // Parse JSON string from AI and return the object directly so frontend render functions work
+        try {
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            return res.json(parsed);
+          }
+        } catch(parseErr) { /* fall through to raw text */ }
         res.json({ text });
       } catch(e) {
         res.status(500).json({ error: 'Failed to parse response' });
@@ -465,34 +473,41 @@ const rl = l => l==='ar' ? 'Arabic' : l==='pt' ? 'Portuguese' : 'English';
    AI TOOL ENDPOINTS
    ═══════════════════════════════════════════════════ */
 
-// /analyze - General analysis tool
+// /analyze - General fractal analysis (fields match renderFractal in frontend)
 app.post('/analyze', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
   try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Bar pattern analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","pattern":"str","structure":"bullish|bearish|neutral","confidence":"high|medium|low","last_bar":{"type":"bullish|bearish|doji|etc","close_position":"high|mid|low"},"projection":"continue|reverse|range","entry":"str","stop":"str","target":"str","rationale":"3 sentences"}`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
+  const p = `You are a fractal market analyst. Analyze this chart for ${pair||'the asset'} on ${timeframe||'auto-detected'} timeframe. Reply in ${rl(l)}. Respond with ONLY a valid JSON object using exactly these field names:
+{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","pattern":"str","wave":"str","confidence":"high|medium|low","rr":"str e.g. 1:2.5","analysis":"3-4 sentence fractal analysis","entry":"price str","stop_loss":"price str","target_1":"price str","target_2":"price str","prediction_summary":"2 sentence forward outlook","annotations":[{"type":"hline","y":0.0-1.0,"color":"#hex","label":"str","dashed":true|false},{"type":"arrow","x":0.0-1.0,"y":0.0-1.0,"dir":"up|down","color":"#hex","label":"str"},{"type":"zone","y1":0.0-1.0,"y2":0.0-1.0,"color":"#hex","label":"str"},{"type":"tline","x1":0.0-1.0,"y1":0.0-1.0,"x2":0.0-1.0,"y2":0.0-1.0,"color":"#hex","label":"str"}],"predicted_path":[8-12 floats 0.0-1.0 showing price path from right edge],"matches":[{"date":"YYYY-MM","pair":"str","timeframe":"str","similarity":75,"pattern_name":"str","outcome":"win|loss","outcome_detail":"str","setup_description":"str","price_path":[10 floats],"after_path":[10 floats]}],"win_rate":65,"avg_rr":"1:2.1","wins":2,"losses":1}
+Annotations y=0 is top of chart, y=1 is bottom. Include 3-6 meaningful annotations (key levels, entry zone, stop zone, trend lines). Include 1-3 historical matches. Make predicted_path show realistic forward price movement.`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 2500, res);
 });
 
-// /bar-pattern
+// /bar-pattern - Bar pattern self-similarity (fields match renderBarPattern in frontend)
 app.post('/bar-pattern', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
   try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Bar pattern analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","pattern":"str","structure":"bullish|bearish|neutral","confidence":"high|medium|low","last_bar":{"type":"bullish|bearish|doji|etc","close_position":"high|mid|low"},"projection":"continue|reverse|range","entry":"str","stop":"str","target":"str","rationale":"3 sentences"}`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
+  const p = `You are a bar pattern self-similarity analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object using exactly these field names:
+{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","dominant_pattern":"str","confidence":"high|medium|low","self_similarity_score":0-100,"fractal_dimension":"1.2-1.9 as str","trading_implication":"str","scale_levels":[{"level":"Macro|Mid|Micro","bars":50,"pattern":"str","strength":"high|medium|low"}],"bar_clusters":[{"id":1,"name":"str","color":"#hex","similarity_pct":75,"description":"str","bar_sequence":[10 floats 0-1],"location_a":{"label":"Earlier","x1":0.1,"x2":0.35},"location_b":{"label":"Current","x1":0.6,"x2":0.9}}]}
+Include 2-3 bar clusters showing self-similar patterns found at different locations on the chart.`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1800, res);
 });
 
-// /weierstrass - Deprecated
-app.post('/weierstrass', (req, res) => {
-  res.status(410).json({ 
-    error: 'This tool has been deprecated.',
-    text: '{"error": "Weierstrass tool has been deprecated. Please use updated tools."}'
-  });
+// /weierstrass - Weierstrass decomposition (fields match renderWeierstrass in frontend)
+app.post('/weierstrass', async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
+  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `You are a Weierstrass fractal decomposition analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown, no explanation. Use exactly these fields: {"pair":"str","timeframe":"str","hurst_exponent":"0.55","fractal_dimension":"1.45","roughness_index":"0.62","market_regime":"trending|mean-reverting|random-walk","scale_invariance":{"confirmed":true,"ratio":"1:3.2"},"decomposition":{"trend":{"direction":"bullish|bearish|neutral","strength":"high|medium|low","description":"str"},"cycle":{"phase":"accumulation|expansion|distribution|contraction","period_bars":20,"amplitude":"str","description":"str"},"fractal_noise":{"color":"red|pink|white|blue","weierstrass_a":0.72,"weierstrass_b":3.1,"description":"str"}},"weierstrass_fit":{"score":78,"quality":"good|fair|poor","dominant_frequency":"str","harmonics":[0.8,0.6,0.4,0.25,0.15,0.08,0.04,0.02],"weierstrass_a":0.72,"weierstrass_b":3.1,"description":"str"},"noise_signal":{"edge":"bullish|bearish|neutral","confidence":"high|medium|low","interpretation":"2 sentence trading interpretation"}}`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 2000, res);
 });
 
 // /mtf (MTF Confluence)
@@ -502,7 +517,8 @@ app.post('/mtf', async (req, res) => {
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
   try { await verifyAndDeduct(_token, 20); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `MTF confluence analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","macro_tf":"D or W","mid_tf":"H or 4H","micro_tf":"m or H","macro":{"trend":"bullish|bearish|neutral","key_level":"price str","pattern":"str","confidence":"high|medium|low"},"mid":{"trend":"bullish|bearish|neutral","key_level":"price str","pattern":"str","confluence":"confirmed|weak|divergent"},"micro":{"structure":"impulse|correction|consolidation","entry_signal":"bool","risk_reward":"str"},"verdict":"bullish|bearish|neutral","strength":0-100,"entry_zone":{"from":"str","to":"str"},"stop_loss":"str","targets":["str","str"],"rationale":"3 sentences"}`;
+  const p = `You are an MTF (Multi-Timeframe) confluence analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields: {"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","confluence_score":72,"analysis":"3 sentence MTF confluence analysis","timeframes":[{"tf":"Weekly","bias":"bullish|bearish|neutral","fractal_phase":"str e.g. Impulse wave 3","path":[0.7,0.65,0.55,0.48,0.42,0.38,0.35,0.38,0.42,0.4]},{"tf":"Daily","bias":"bullish|bearish|neutral","fractal_phase":"str","path":[0.55,0.52,0.48,0.45,0.43,0.42,0.44,0.46,0.43,0.41]},{"tf":"H4","bias":"bullish|bearish|neutral","fractal_phase":"str","path":[0.48,0.46,0.44,0.43,0.42,0.41,0.42,0.43,0.41,0.4]}],"confluence_zones":[{"label":"Key Support","price":"str","y":0.55,"color":"#27ae60","strength":"strong","timeframes_aligned":["Weekly","Daily"]},{"label":"Resistance","price":"str","y":0.25,"color":"#e74c3c","strength":"medium","timeframes_aligned":["Daily","H4"]}]}
+path arrays must have exactly 10 floats (0=top, 1=bottom of chart).`;
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res);
 });
 
@@ -513,7 +529,8 @@ app.post('/fractal-age', async (req, res) => {
   const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
   if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
   try { await verifyAndDeduct(_token, 15); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `Fractal age analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","current_fractal":{"age":"young|mid|mature|exhausted","bars_since_origin":0,"strength":0-100,"self_similarity":"high|medium|low"},"macro_cycle":{"position":"early|mid|late","bars_total":0,"expected_remaining":0},"mid_cycle":{"position":"early|mid|late","bars_total":0},"verdict":"extend|reverse|consolidate","reasoning":"3 sentences","zones":[{"type":"support|resistance","price":"str","strength":"high|medium|low"}]}`;
+  const p = `You are a fractal cycle age analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields: {"pair":"str","timeframe":"str","urgency":"critical|high|medium|low","analysis":"3 sentence fractal age analysis","fractal_age":{"completion_pct":67,"phase":"young|developing|mature|exhausted","bars_elapsed":45,"bars_estimated_total":70},"cycle_position":{"position":"early|mid|late","cycle_path":[0.5,0.48,0.45,0.42,0.4,0.38,0.37,0.36,0.37,0.38,0.4,0.42,0.44,0.46,0.45,0.44,0.43,0.42,0.41,0.4]},"time_projections":[{"scenario":"Base — Continuation","probability":0.55,"direction":"bullish|bearish","bars_to_resolution":18,"target_price":"str"},{"scenario":"Reversal","probability":0.30,"direction":"bearish|bullish","bars_to_resolution":8,"target_price":"str"},{"scenario":"Extended","probability":0.15,"direction":"bullish|bearish","bars_to_resolution":35,"target_price":"str"}]}
+cycle_path must have 20 floats showing historical + projected cycle (0=top, 1=bottom).`;
   callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res);
 });
 
@@ -550,11 +567,11 @@ app.post('/projection', async (req, res) => {
       try {
         const obj = JSON.parse(data);
         if (obj.error) return res.status(500).json({ error: obj.error.message });
-        const text = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
+        const rawText = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
         
         // Save prediction for tracking
         try {
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
           if (jsonMatch && userId) {
             const parsed = JSON.parse(jsonMatch[0]);
             
@@ -582,7 +599,7 @@ app.post('/projection', async (req, res) => {
                   currentPrice: currentPrice,
                   predictedPrice: targetPrice,
                   targetDays: Math.max(1, Math.min(targetDays, 30)),
-                  fullResponse: text
+                  fullResponse: rawText
                 });
               }
             }
@@ -591,7 +608,12 @@ app.post('/projection', async (req, res) => {
           console.error('[Prediction] Save error (non-fatal):', predErr.message);
         }
         
-        res.json({ text });
+        // Parse JSON from AI and return object directly so renderProjection works
+        try {
+          const jsonMatch2 = rawText.match(/\{[\s\S]*\}/);
+          if (jsonMatch2) return res.json(JSON.parse(jsonMatch2[0]));
+        } catch(e2) {}
+        res.json({ text: rawText });
       } catch(e) {
         res.status(500).json({ error: 'Failed to parse response' });
       }
@@ -600,6 +622,76 @@ app.post('/projection', async (req, res) => {
   apiReq.on('error', e => res.status(500).json({ error: e.message }));
   apiReq.write(reqBody);
   apiReq.end();
+});
+
+/* ═══════════════════════════════════════════════════
+   MISSING TOOL ENDPOINTS — Fibonacci, SMC, Volatility, Liquidity, Journal
+   ═══════════════════════════════════════════════════ */
+
+// /fibonacci - Fibonacci retracements & extensions (fields match renderFibonacci)
+app.post('/fibonacci', async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
+  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `You are a Fibonacci analysis expert. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","trend":"uptrend|downtrend|sideways","confidence":"high|medium|low","analysis":"3 sentence Fibonacci analysis","swing_high":{"price":"str","x":0.15,"y":0.08},"swing_low":{"price":"str","x":0.55,"y":0.82},"key_level":{"level":"0.618","price":"str","y":0.45,"reason":"strongest confluence level"},"retracements":[{"level":"0.236","price":"str","y":0.2,"color":"#3498db","strength":"weak|medium|strong"},{"level":"0.382","price":"str","y":0.35,"color":"#9b8fe8","strength":"medium"},{"level":"0.5","price":"str","y":0.45,"color":"#c9a84c","strength":"strong"},{"level":"0.618","price":"str","y":0.55,"color":"#e67e22","strength":"strong"},{"level":"0.786","price":"str","y":0.68,"color":"#e74c3c","strength":"medium"}],"extensions":[{"level":"1.272","price":"str","y":0.1,"color":"#2ecc71","strength":"medium"},{"level":"1.618","price":"str","y":0.05,"color":"#27ae60","strength":"strong"}]}
+All y values are 0.0 (top of chart) to 1.0 (bottom). x values are 0.0 (left) to 1.0 (right).`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 2000, res);
+});
+
+// /smc - Smart Money Concepts (fields match renderSMC)
+app.post('/smc', async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
+  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 16); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `You are a Smart Money Concepts analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","market_structure":"bullish|bearish|ranging","bias":"bullish|bearish|neutral","analysis":"3 sentence SMC analysis","premium_discount":{"current_zone":"premium|discount|equilibrium","equilibrium_price":"str"},"last_bos":{"type":"BOS|CHoCH","direction":"bullish|bearish","x":0.6,"y":0.45},"order_blocks":[{"type":"bullish|bearish","x1":0.3,"x2":0.45,"y1":0.55,"y2":0.65,"color":"#27ae60","label":"Bullish OB"},{"type":"bearish","x1":0.55,"x2":0.7,"y1":0.2,"y2":0.3,"color":"#e74c3c","label":"Bearish OB"}],"fvg":[{"x1":0.5,"x2":0.6,"y1":0.35,"y2":0.42,"color":"#3498db","filled":false}],"poi":{"label":"POI","x1":0.3,"x2":0.5,"y1":0.52,"y2":0.62},"entry_model":{"trigger":"str","entry":"str","sl":"str","tp1":"str","tp2":"str","rr":"1:2.5"}}
+x values 0-1 (left to right), y values 0-1 (top to bottom).`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 2000, res);
+});
+
+// /volatility - Volatility regime & position sizing (fields match renderVolatility)
+app.post('/volatility', async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { image, mediaType, pair, timeframe, language: l, account_size, risk_pct, _token } = req.body;
+  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const acct = account_size || 10000;
+  const riskP = risk_pct || 1;
+  const p = `You are a volatility regime analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Account size: $${acct}, Risk: ${riskP}%. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+{"pair":"str","timeframe":"str","regime":"low|medium|high|extreme","regime_score":55,"analysis":"3 sentence volatility analysis","regime_characteristics":{"mean_reversion_probability":0.65,"trend_continuation_probability":0.35,"expected_daily_range":"str e.g. 1.8%","breakout_likelihood":"low|medium|high"},"position_sizing":{"max_position_size":"str e.g. 2.3 units","risk_amount":${(acct * riskP / 100).toFixed(2)},"leverage_warning":"str advice"},"strategy_adaptation":{"recommended_approach":"str e.g. Reduce size, widen stops"}}`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
+});
+
+// /liquidity - Liquidity map & stop hunt targets (fields match renderLiquidity)
+app.post('/liquidity', async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
+  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 20); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const p = `You are a liquidity mapping analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+{"pair":"str","timeframe":"str","smart_money_direction":"bullish|bearish|neutral","analysis":"3 sentence liquidity analysis","liquidity_imbalance":{"buy_side_weight":0.65,"sell_side_weight":0.35},"liquidity_pools":[{"label":"Equal Highs","price":"str","y":0.18,"x_position":0.75,"color":"#e74c3c","swept":false},{"label":"BSL","price":"str","y":0.12,"x_position":0.5,"color":"#e74c3c","swept":false},{"label":"SSL","price":"str","y":0.85,"x_position":0.6,"color":"#27ae60","swept":false}],"stop_clusters":[{"price":"str","y":0.2,"color":"rgba(231,76,60,0.18)","size":"large|medium|small"},{"price":"str","y":0.8,"color":"rgba(39,174,96,0.18)","size":"medium"}],"hunt_targets":[{"label":"Target 1","price":"str","y":0.15,"direction":"up","bars_estimate":"8-12","probability":"65%"},{"label":"Target 2","price":"str","y":0.82,"direction":"down","bars_estimate":"15-20","probability":"35%"}]}
+y values 0=top 1=bottom.`;
+  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res);
+});
+
+// /journal - AI Trade Journal grader (fields match renderJournal)
+app.post('/journal', async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { image, mediaType, pair, timeframe, language: l, trade_notes, outcome, pnl, _token } = req.body;
+  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  try { await verifyAndDeduct(_token, 20); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const context = [trade_notes&&`Notes: ${trade_notes}`, outcome&&`Outcome: ${outcome}`, pnl&&`P&L: ${pnl}`].filter(Boolean).join('. ');
+  const p = `You are an expert trading coach grading a trade. Chart: ${pair||'asset'} ${timeframe||'auto'}. ${context}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+{"pair":"str","timeframe":"str","overall_grade":"A|B|C|D|F","key_lesson":"one most important lesson from this trade","coach_message":"2-3 sentence personal coaching message from the AI coach","categories":{"entry_timing":{"score":75,"improvement":"str specific improvement tip"},"risk_management":{"score":80,"improvement":"str"},"trade_management":{"score":60,"improvement":"str"},"psychology":{"score":70,"improvement":"str"},"setup_quality":{"score":85,"improvement":"str"}}}`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
 });
 
 /* ═══════════════════════════════════════════════════
