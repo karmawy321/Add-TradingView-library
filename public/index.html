@@ -3458,18 +3458,17 @@ function onBtSlider(pct) {
   if (!_btAllCandles) _btAllCandles = chartCandles.slice();
 
   pct = parseInt(pct);
-  /* pct = % of candles visible before the curtain (left side of line) */
-  var minVisible = 10;
-  var minHidden  = 3;
   var total = full.length;
   var visibleCount = Math.round((pct / 100) * total);
-  visibleCount = Math.max(minVisible, Math.min(total - minHidden, visibleCount));
+  visibleCount = Math.max(10, Math.min(total - 3, visibleCount));
 
-  /* Store cutoff — DO NOT slice chartCandles, keep full chart rendered */
   _btCutoffIdx     = visibleCount;
   _btHiddenCandles = full.slice(visibleCount);
-  /* Restore full candles so chart renders everything */
-  chartCandles = full;
+  /* Actually slice the chart — bars to the right disappear */
+  chartCandles = full.slice(0, visibleCount);
+
+  /* Reset offset so we're always looking at the right edge */
+  chartView.offset = 0;
 
   /* Update labels */
   var cutCandle = full[visibleCount - 1];
@@ -3479,25 +3478,13 @@ function onBtSlider(pct) {
   document.getElementById('btCandlesLeft').textContent =
     _btHiddenCandles.length + ' bars hidden';
 
-  /* Capture screenshot with curtain drawn, for AI (only shows bars up to cutoff) */
   renderChart();
-  _btCaptureForAI();
-}
-
-function _btCaptureForAI() {
-  /* Snapshot only the visible (pre-curtain) portion for the AI */
-  var full = _btAllCandles || chartCandles;
-  if (!full || _btCutoffIdx < 1) return;
+  /* Screenshot what the AI will see */
   var cv = document.getElementById('chartCanvas');
-  if (!cv) return;
-  /* Temporarily slice, snapshot, restore */
-  var saved = chartCandles;
-  chartCandles = full.slice(0, _btCutoffIdx);
-  renderChart();
-  dataUrl = cv.toDataURL('image/png');
-  chartCandles = saved;
-  renderChart();
-  if (typeof buildToolGrid === 'function') buildToolGrid();
+  if (cv) {
+    dataUrl = cv.toDataURL('image/png');
+    if (typeof buildToolGrid === 'function') buildToolGrid();
+  }
 }
 
 function revealBacktest() {
@@ -3603,36 +3590,25 @@ var _origRenderChart = null;
     var _orig = renderChart;
     renderChart = function() {
       _orig.apply(this, arguments);
-      if (!_btActive || _btCutoffIdx < 1 || !_btHiddenCandles || !_btHiddenCandles.length) return;
+      if (!_btActive || !_btHiddenCandles || !_btHiddenCandles.length) return;
       var cv  = document.getElementById('chartCanvas');
       var ctx = cv && cv.getContext('2d');
       if (!ctx || !chartCandles || !chartCandles.length) return;
       var dpr = window.devicePixelRatio || 1;
       var W   = cv.width / dpr;
       var H   = cv.height / dpr;
-      /* Mirror renderChart layout exactly */
+      /* chartCandles is already sliced — curtain sits at right edge of last bar */
       var PAD = { l:8, r:75, t:16, b:56 };
       var CW  = W - PAD.l - PAD.r;
-      var totalCandles = chartCandles.length;
-      var visibleBars  = Math.max(20, Math.floor(totalCandles / chartView.zoom));
-      var startIdx     = Math.max(0, totalCandles - visibleBars - chartView.offset);
-      var endIdx       = Math.min(totalCandles, startIdx + visibleBars);
-      var nVisible     = endIdx - startIdx;
-      var rightGapBars = Math.max(4, Math.round(nVisible * 0.08));
-      var barW         = CW / (nVisible + rightGapBars);
-      /* Convert _btCutoffIdx (absolute) → position within visible window */
-      var cutoffInView = _btCutoffIdx - startIdx;
-      /* Only draw if the curtain is within the visible area */
-      if (cutoffInView < 0 || cutoffInView > nVisible + rightGapBars) return;
-      var x = PAD.l + cutoffInView * barW;
+      var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
+      var rightGapBars = Math.max(4, Math.round(n * 0.08));
+      var barW = CW / (n + rightGapBars);
+      var x    = PAD.l + n * barW;
       ctx.save();
-      /* Grey-out the "future" zone (right of curtain) */
-      ctx.fillStyle = 'rgba(6,8,13,0.55)';
-      ctx.fillRect(x, PAD.t, W - x - PAD.r, H - PAD.t - PAD.b);
       /* Red dashed curtain line */
       ctx.strokeStyle = '#e74c3c';
       ctx.lineWidth   = 2;
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 0.9;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
       ctx.moveTo(x, PAD.t);
@@ -3640,7 +3616,7 @@ var _origRenderChart = null;
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
-      /* CURTAIN label */
+      /* Label */
       ctx.fillStyle = '#e74c3c';
       ctx.font      = 'bold 8px DM Mono';
       ctx.textAlign = 'center';
@@ -3648,7 +3624,7 @@ var _origRenderChart = null;
       /* Hidden bars pill */
       var lbl = _btHiddenCandles.length + ' bars hidden';
       var lw  = ctx.measureText(lbl).width + 10;
-      ctx.fillStyle = 'rgba(231,76,60,0.25)';
+      ctx.fillStyle = 'rgba(231,76,60,0.22)';
       ctx.fillRect(x - lw/2, PAD.t + 14, lw, 13);
       ctx.fillStyle = '#e74c3c';
       ctx.font      = '7px DM Mono';
