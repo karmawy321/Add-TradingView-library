@@ -3453,38 +3453,51 @@ function exitBacktestMode() {
 var _btAllCandles = null;
 
 function onBtSlider(pct) {
-  if (!chartCandles && !_btAllCandles) return;
-  /* Work from the full uncut candles */
   var full = _btAllCandles || chartCandles;
+  if (!full || !full.length) return;
   if (!_btAllCandles) _btAllCandles = chartCandles.slice();
 
   pct = parseInt(pct);
-  /* pct = how much of history is VISIBLE (0=only 10 candles, 100=all) */
-  /* Clamp: always show at least 30 bars, always hide at least 5 */
-  var minVisible = 30;
-  var minHidden  = 5;
-  var maxVisible = full.length - minHidden;
-  var visibleCount = Math.round((pct / 100) * full.length);
-  visibleCount = Math.max(minVisible, Math.min(maxVisible, visibleCount));
+  /* pct = % of candles visible before the curtain (left side of line) */
+  var minVisible = 10;
+  var minHidden  = 3;
+  var total = full.length;
+  var visibleCount = Math.round((pct / 100) * total);
+  visibleCount = Math.max(minVisible, Math.min(total - minHidden, visibleCount));
 
-  _btCutoffIdx   = visibleCount;
-  chartCandles   = full.slice(0, visibleCount);
+  /* Store cutoff — DO NOT slice chartCandles, keep full chart rendered */
+  _btCutoffIdx     = visibleCount;
   _btHiddenCandles = full.slice(visibleCount);
+  /* Restore full candles so chart renders everything */
+  chartCandles = full;
 
-  /* Update label */
-  var lastVisible = chartCandles[chartCandles.length - 1];
-  var d = new Date(lastVisible.t);
-  var dateStr = d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
-  document.getElementById('btDateLbl').textContent = 'Cut: ' + dateStr;
-  document.getElementById('btCandlesLeft').textContent = _btHiddenCandles.length + ' bars hidden';
+  /* Update labels */
+  var cutCandle = full[visibleCount - 1];
+  var d = new Date(cutCandle.t);
+  document.getElementById('btDateLbl').textContent =
+    'Cut: ' + d.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('btCandlesLeft').textContent =
+    _btHiddenCandles.length + ' bars hidden';
 
-  /* Snap screenshot of curtailed chart for AI */
+  /* Capture screenshot with curtain drawn, for AI (only shows bars up to cutoff) */
   renderChart();
+  _btCaptureForAI();
+}
+
+function _btCaptureForAI() {
+  /* Snapshot only the visible (pre-curtain) portion for the AI */
+  var full = _btAllCandles || chartCandles;
+  if (!full || _btCutoffIdx < 1) return;
   var cv = document.getElementById('chartCanvas');
-  if (cv) {
-    dataUrl = cv.toDataURL('image/png');
-    if (typeof buildToolGrid === 'function') buildToolGrid();
-  }
+  if (!cv) return;
+  /* Temporarily slice, snapshot, restore */
+  var saved = chartCandles;
+  chartCandles = full.slice(0, _btCutoffIdx);
+  renderChart();
+  dataUrl = cv.toDataURL('image/png');
+  chartCandles = saved;
+  renderChart();
+  if (typeof buildToolGrid === 'function') buildToolGrid();
 }
 
 function revealBacktest() {
@@ -3590,8 +3603,7 @@ var _origRenderChart = null;
     var _orig = renderChart;
     renderChart = function() {
       _orig.apply(this, arguments);
-      if (!_btActive || !_btHiddenCandles || !_btHiddenCandles.length) return;
-      /* Draw curtain line — right edge of last visible candle */
+      if (!_btActive || _btCutoffIdx < 1 || !_btHiddenCandles || !_btHiddenCandles.length) return;
       var cv  = document.getElementById('chartCanvas');
       var ctx = cv && cv.getContext('2d');
       if (!ctx || !chartCandles || !chartCandles.length) return;
@@ -3601,35 +3613,42 @@ var _origRenderChart = null;
       /* Mirror renderChart layout exactly */
       var PAD = { l:8, r:75, t:16, b:56 };
       var CW  = W - PAD.l - PAD.r;
-      var n   = chartCandles.length;  /* sliced visible count */
-      var rightGapBars = Math.max(4, Math.round(n * 0.08));
-      var barW = CW / (n + rightGapBars);
-      /* x = right edge of the last visible bar */
-      var x = PAD.l + n * barW;
+      var totalCandles = chartCandles.length;
+      var visibleBars  = Math.max(20, Math.floor(totalCandles / chartView.zoom));
+      var startIdx     = Math.max(0, totalCandles - visibleBars - chartView.offset);
+      var endIdx       = Math.min(totalCandles, startIdx + visibleBars);
+      var nVisible     = endIdx - startIdx;
+      var rightGapBars = Math.max(4, Math.round(nVisible * 0.08));
+      var barW         = CW / (nVisible + rightGapBars);
+      /* Convert _btCutoffIdx (absolute) → position within visible window */
+      var cutoffInView = _btCutoffIdx - startIdx;
+      /* Only draw if the curtain is within the visible area */
+      if (cutoffInView < 0 || cutoffInView > nVisible + rightGapBars) return;
+      var x = PAD.l + cutoffInView * barW;
       ctx.save();
-      /* Red shaded zone from curtain to right edge */
-      ctx.fillStyle = 'rgba(231,76,60,0.07)';
+      /* Grey-out the "future" zone (right of curtain) */
+      ctx.fillStyle = 'rgba(6,8,13,0.55)';
       ctx.fillRect(x, PAD.t, W - x - PAD.r, H - PAD.t - PAD.b);
-      /* Dashed vertical curtain line */
-      ctx.strokeStyle  = '#e74c3c';
-      ctx.lineWidth    = 1.8;
-      ctx.globalAlpha  = 0.9;
+      /* Red dashed curtain line */
+      ctx.strokeStyle = '#e74c3c';
+      ctx.lineWidth   = 2;
+      ctx.globalAlpha = 0.95;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
       ctx.moveTo(x, PAD.t);
       ctx.lineTo(x, H - PAD.b);
       ctx.stroke();
       ctx.setLineDash([]);
-      /* "CURTAIN" label at top of line */
       ctx.globalAlpha = 1;
-      ctx.fillStyle   = '#e74c3c';
-      ctx.font        = 'bold 8px DM Mono';
-      ctx.textAlign   = 'center';
+      /* CURTAIN label */
+      ctx.fillStyle = '#e74c3c';
+      ctx.font      = 'bold 8px DM Mono';
+      ctx.textAlign = 'center';
       ctx.fillText('◀ CURTAIN', x, PAD.t + 10);
-      /* Hidden bar count pill below label */
-      var lbl = _btHiddenCandles.length + ' bars hidden ▶';
+      /* Hidden bars pill */
+      var lbl = _btHiddenCandles.length + ' bars hidden';
       var lw  = ctx.measureText(lbl).width + 10;
-      ctx.fillStyle = 'rgba(231,76,60,0.22)';
+      ctx.fillStyle = 'rgba(231,76,60,0.25)';
       ctx.fillRect(x - lw/2, PAD.t + 14, lw, 13);
       ctx.fillStyle = '#e74c3c';
       ctx.font      = '7px DM Mono';
