@@ -3590,44 +3590,50 @@ var _origRenderChart = null;
     var _orig = renderChart;
     renderChart = function() {
       _orig.apply(this, arguments);
-      if (!_btActive || _btCutoffIdx < 0) return;
-      /* Draw vertical curtain line */
+      if (!_btActive || !_btHiddenCandles || !_btHiddenCandles.length) return;
+      /* Draw curtain line — right edge of last visible candle */
       var cv  = document.getElementById('chartCanvas');
       var ctx = cv && cv.getContext('2d');
       if (!ctx || !chartCandles || !chartCandles.length) return;
       var dpr = window.devicePixelRatio || 1;
       var W   = cv.width / dpr;
       var H   = cv.height / dpr;
-      var PAD_R = 75, PAD_B = 56;
-      /* Curtain is at the right edge of visible candles */
-      var chartW = W - 8 - PAD_R;
-      var x = 8 + chartW; /* right edge of candle area */
-      /* Dashed red line */
+      /* Mirror renderChart layout exactly */
+      var PAD = { l:8, r:75, t:16, b:56 };
+      var CW  = W - PAD.l - PAD.r;
+      var n   = chartCandles.length;  /* sliced visible count */
+      var rightGapBars = Math.max(4, Math.round(n * 0.08));
+      var barW = CW / (n + rightGapBars);
+      /* x = right edge of the last visible bar */
+      var x = PAD.l + n * barW;
       ctx.save();
-      ctx.strokeStyle = '#e74c3c';
-      ctx.lineWidth   = 1.5;
-      ctx.setLineDash([5, 4]);
-      ctx.globalAlpha = 0.75;
+      /* Red shaded zone from curtain to right edge */
+      ctx.fillStyle = 'rgba(231,76,60,0.07)';
+      ctx.fillRect(x, PAD.t, W - x - PAD.r, H - PAD.t - PAD.b);
+      /* Dashed vertical curtain line */
+      ctx.strokeStyle  = '#e74c3c';
+      ctx.lineWidth    = 1.8;
+      ctx.globalAlpha  = 0.9;
+      ctx.setLineDash([6, 4]);
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, H - PAD_B);
+      ctx.moveTo(x, PAD.t);
+      ctx.lineTo(x, H - PAD.b);
       ctx.stroke();
       ctx.setLineDash([]);
-      /* Label */
+      /* "CURTAIN" label at top of line */
       ctx.globalAlpha = 1;
       ctx.fillStyle   = '#e74c3c';
       ctx.font        = 'bold 8px DM Mono';
       ctx.textAlign   = 'center';
-      ctx.fillText('CURTAIN', x, 10);
-      /* Hidden bar count badge */
-      if (_btHiddenCandles.length > 0) {
-        ctx.fillStyle = 'rgba(231,76,60,.18)';
-        ctx.fillRect(x, 0, 75, 18);
-        ctx.fillStyle = '#e74c3c';
-        ctx.font = '7px DM Mono';
-        ctx.textAlign = 'left';
-        ctx.fillText(_btHiddenCandles.length + ' bars hidden ▶', x + 4, 12);
-      }
+      ctx.fillText('◀ CURTAIN', x, PAD.t + 10);
+      /* Hidden bar count pill below label */
+      var lbl = _btHiddenCandles.length + ' bars hidden ▶';
+      var lw  = ctx.measureText(lbl).width + 10;
+      ctx.fillStyle = 'rgba(231,76,60,0.22)';
+      ctx.fillRect(x - lw/2, PAD.t + 14, lw, 13);
+      ctx.fillStyle = '#e74c3c';
+      ctx.font      = '7px DM Mono';
+      ctx.fillText(lbl, x, PAD.t + 23);
       ctx.restore();
     };
   }, 200);
