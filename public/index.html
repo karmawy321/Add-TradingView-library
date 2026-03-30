@@ -3473,9 +3473,8 @@ function onBtSlider(pct) {
   _btCutoffIdx     = visibleCount;
   _btCurtainBarIdx = visibleCount;
   _btHiddenCandles = full.slice(visibleCount);
-  /* DON'T slice chartCandles - keep all bars visible, just move the curtain */
-  /* chartCandles stays as _btAllCandles */
-  chartCandles = _btAllCandles;
+  /* Actually hide bars after curtain for AI testing */
+  chartCandles = full.slice(0, visibleCount);
 
   /* Update labels */
   var cutCandle = full[visibleCount - 1];
@@ -3611,23 +3610,34 @@ var _origRenderChart = null;
       var rightGapBars = Math.max(4, Math.round(n * 0.08));
       var barW = CW / (n + rightGapBars);
       
-      /* Calculate curtain X position based on _btCurtainBarIdx */
-      /* Map curtain bar index to visible bar index */
+      /* Calculate curtain X position - always at the END of visible chartCandles */
       var firstVisibleIdx = chartView.offset;
-      var curtainVisibleIdx = _btCurtainBarIdx - firstVisibleIdx;
+      var lastVisibleIdx = firstVisibleIdx + n;
       
-      /* If curtain is off-screen, don't draw it */
-      if (curtainVisibleIdx < 0 || curtainVisibleIdx > n) return;
+      /* Curtain is at the end of chartCandles (last bar before hidden section) */
+      var curtainAbsoluteIdx = chartCandles.length; // This is where data ends
       
-      var x = PAD.l + curtainVisibleIdx * barW;
+      /* If curtain is within the visible range, draw it */
+      var curtainVisibleIdx = curtainAbsoluteIdx - firstVisibleIdx;
+      
+      /* Draw curtain if it's within or near the visible window */
+      var x;
+      var isOffScreen = false;
+      
+      if (curtainVisibleIdx < 0) {
+        /* Curtain is off-screen to the left */
+        x = PAD.l;
+        isOffScreen = 'left';
+      } else if (curtainVisibleIdx > n + rightGapBars) {
+        /* Curtain is off-screen to the right */
+        x = W - PAD.r;
+        isOffScreen = 'right';
+      } else {
+        /* Curtain is visible on screen */
+        x = PAD.l + curtainVisibleIdx * barW;
+      }
       
       ctx.save();
-      
-      /* Dim bars after curtain */
-      if (curtainVisibleIdx < n) {
-        ctx.fillStyle = 'rgba(10, 12, 20, 0.75)';
-        ctx.fillRect(x, PAD.t, W - x - PAD.r, H - PAD.t - PAD.b);
-      }
       
       /* Red dashed curtain line */
       ctx.strokeStyle = '#e74c3c';
@@ -3641,21 +3651,30 @@ var _origRenderChart = null;
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
       
-      /* Label */
+      /* Label based on whether curtain is on/off screen */
       ctx.fillStyle = '#e74c3c';
       ctx.font      = 'bold 8px DM Mono';
       ctx.textAlign = 'center';
-      ctx.fillText('◀ CURTAIN', x, PAD.t + 10);
+      
+      if (isOffScreen === 'left') {
+        ctx.fillText('CURTAIN ▶', x + 35, PAD.t + 10);
+      } else if (isOffScreen === 'right') {
+        ctx.fillText('◀ CURTAIN', x - 35, PAD.t + 10);
+      } else {
+        ctx.fillText('◀ CURTAIN', x, PAD.t + 10);
+      }
       
       /* Hidden bars pill */
-      var hiddenCount = _btAllCandles.length - _btCurtainBarIdx;
-      var lbl = hiddenCount + ' bars hidden';
-      var lw  = ctx.measureText(lbl).width + 10;
-      ctx.fillStyle = 'rgba(231,76,60,0.22)';
-      ctx.fillRect(x - lw/2, PAD.t + 14, lw, 13);
-      ctx.fillStyle = '#e74c3c';
-      ctx.font      = '7px DM Mono';
-      ctx.fillText(lbl, x, PAD.t + 23);
+      var hiddenCount = _btHiddenCandles.length;
+      if (hiddenCount > 0 && !isOffScreen) {
+        var lbl = hiddenCount + ' bars hidden';
+        var lw  = ctx.measureText(lbl).width + 10;
+        ctx.fillStyle = 'rgba(231,76,60,0.22)';
+        ctx.fillRect(x - lw/2, PAD.t + 14, lw, 13);
+        ctx.fillStyle = '#e74c3c';
+        ctx.font      = '7px DM Mono';
+        ctx.fillText(lbl, x, PAD.t + 23);
+      }
       ctx.restore();
     };
   }, 200);
@@ -3667,9 +3686,9 @@ var _origRenderChart = null;
 
   function _getCurtainX() {
     /* Returns pixel x of curtain line, or -1 if not active */
-    if (!_btActive || _btCurtainBarIdx < 0 || !_btAllCandles) return -1;
+    if (!_btActive || !_btAllCandles || !chartCandles) return -1;
     var cv = document.getElementById('chartCanvas');
-    if (!cv || !chartCandles || !chartCandles.length) return -1;
+    if (!cv || !chartCandles.length) return -1;
     var dpr = window.devicePixelRatio || 1;
     var W   = cv.width / dpr;
     var PAD = { l:8, r:75 };
@@ -3678,10 +3697,12 @@ var _origRenderChart = null;
     var rightGapBars = Math.max(4, Math.round(n * 0.08));
     var barW = CW / (n + rightGapBars);
     
+    /* Curtain is at the end of chartCandles */
+    var curtainAbsoluteIdx = chartCandles.length;
     var firstVisibleIdx = chartView.offset;
-    var curtainVisibleIdx = _btCurtainBarIdx - firstVisibleIdx;
+    var curtainVisibleIdx = curtainAbsoluteIdx - firstVisibleIdx;
     
-    if (curtainVisibleIdx < 0 || curtainVisibleIdx > n) return -1;
+    if (curtainVisibleIdx < 0 || curtainVisibleIdx > n + rightGapBars) return -1;
     
     return PAD.l + curtainVisibleIdx * barW;
   }
@@ -3755,6 +3776,8 @@ var _origRenderChart = null;
       _btCurtainBarIdx = newBarIdx;
       _btCutoffIdx = newBarIdx;
       _btHiddenCandles = _btAllCandles.slice(newBarIdx);
+      /* Actually hide bars after new curtain position */
+      chartCandles = _btAllCandles.slice(0, newBarIdx);
       
       /* Update slider and labels */
       var sliderPct = Math.round((newBarIdx / _btAllCandles.length) * 100);
@@ -3805,6 +3828,8 @@ var _origRenderChart = null;
       _btCurtainBarIdx = newBarIdx;
       _btCutoffIdx = newBarIdx;
       _btHiddenCandles = _btAllCandles.slice(newBarIdx);
+      /* Actually hide bars after new curtain position */
+      chartCandles = _btAllCandles.slice(0, newBarIdx);
       
       var sliderPct = Math.round((newBarIdx / _btAllCandles.length) * 100);
       var sliderEl  = document.getElementById('btSlider');
