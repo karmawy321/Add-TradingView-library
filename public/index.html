@@ -4730,8 +4730,8 @@ if(chartCanvas){
     var W=chartCanvas.width/dpr;
     var PADl=8, PADr=75;
     var CW=W-PADl-PADr;
-    /* How far along the chart is the cursor (0=left, 1=right) */
-    var cursorRatio=Math.max(0,Math.min(1,(cssX-PADl)/CW));
+    /* Default anchor focus point on the current/rightmost price bar */
+    var cursorRatio=1;
     /* Direct bar-level zoom manipulation for instant tick response (fixes integer boundary lag) */
     var n=chartCandles.length;
     var oldZoom=chartView.zoom;
