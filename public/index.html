@@ -4719,15 +4719,14 @@ if(chartCanvas){
     var CW=W-PADl-PADr;
     /* How far along the chart is the cursor (0=left, 1=right) */
     var cursorRatio=Math.max(0,Math.min(1,(cssX-PADl)/CW));
-    /* smoother zoom based on deltaY magnitude */
-    var zoomFactor=Math.exp(-e.deltaY*0.002);
-    /* clamp zoom boundaries a bit wider for flexibility */
-    var oldZoom=chartView.zoom;
-    var newZoom=Math.max(0.1,Math.min(50,oldZoom*zoomFactor));
-    /* Keep the bar under cursor fixed during zoom */
+    /* Direct bar-level zoom manipulation for instant tick response (fixes integer boundary lag) */
     var n=chartCandles.length;
+    var oldZoom=chartView.zoom;
     var oldVis=Math.floor(n/oldZoom);
-    var newVis=Math.floor(n/newZoom);
+    
+    var deltaBars=Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) * 0.03));
+    var newVis=Math.max(10, Math.min(n, oldVis + deltaBars));
+    var newZoom=n/newVis;
     var oldSi=Math.max(0,n-oldVis-chartView.offset);
     /* Bar index under cursor in full candles array */
     var cursorBar=Math.round(oldSi+cursorRatio*oldVis);
@@ -4823,27 +4822,13 @@ if(chartCanvas){
   },{passive:false});
 
   /* Pan — left click (crosshair) or middle click */
+  /* Pan — middle click */
   var _panStart=null, _panOffset=0;
   chartCanvas.addEventListener('mousedown',function(e){
-    var isCursor = (typeof activeItem !== 'undefined' && activeItem && (activeItem.id==='cursor' || activeItem.id==='arrow_cur' || activeItem.id==='dot'));
-    if(e.button!==1 && !(e.button===0 && isCursor)) return;
-    
-    e.preventDefault(); /* Must prevent default to stop middle-click auto-scroll and selection */
-    
-    var sX = e.clientX;
-    var sBtn = e.button;
-    var sOff = chartView.offset;
-
-    /* Defer slightly to let drawing drags in initDrawEvents take precedence left click */
-    setTimeout(function() {
-      if (sBtn === 0) {
-        if (typeof _ghostDrag !== 'undefined' && _ghostDrag !== null) return;
-        if (typeof _ghostResize !== 'undefined' && _ghostResize !== null) return;
-        if (typeof _drawDrag !== 'undefined' && _drawDrag !== null) return;
-      }
-      _panStart = sX; _panOffset = sOff;
-      chartCanvas.style.cursor='grabbing';
-    }, 0);
+    if(e.button!==1) return;
+    e.preventDefault();
+    _panStart = e.clientX; _panOffset = chartView.offset;
+    chartCanvas.style.cursor='grabbing';
   });
   document.addEventListener('mousemove',function(e){
     if(_panStart===null) return;
@@ -6008,7 +5993,16 @@ function initDrawEvents(){
     if(activeItem&&activeItem.undotool){ doUndo(); return; }
     if(activeItem&&activeItem.redotool){ doRedo(); return; }
     if(activeItem&&activeItem.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart(); return; }
-    if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') return;
+    
+    /* Crosshair Left-Click Panning */
+    if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') {
+      window._panStart = e.clientX;
+      window._panOffset = chartView.offset;
+      cv.style.cursor = 'grabbing';
+      return;
+    }
+    
+    /* Text tool */
     if(activeItem.textdraw){
       var lbl=prompt(activeItem.callout?'Callout text:':'Label:');
       if(lbl){saveUndo();drawings.push({type:activeItem.id,price:co.price,bi:co.bi,label:lbl,callout:activeItem.callout});renderChart();}
