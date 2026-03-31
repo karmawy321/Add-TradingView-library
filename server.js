@@ -492,12 +492,17 @@ function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, tra
     let data = '';
     apiRes.on('data', c => { data += c; });
     apiRes.on('end', () => {
+      console.log(`[Anthropic] model=${model} status=${apiRes.statusCode} body=${data.slice(0,200)}`);
       try {
         const obj = JSON.parse(data);
-        /* Overloaded — immediately fall back to Sonnet if we were on Opus */
-        if (obj.error && obj.error.type === 'overloaded_error') {
+        /* Overloaded: HTTP 529, or error type/message contains overload */
+        const isOverload = apiRes.statusCode === 529
+          || (obj.error && obj.error.type === 'overloaded_error')
+          || (obj.error && obj.error.message && obj.error.message.toLowerCase().includes('overload'));
+        if (isOverload) {
           const fallback = 'claude-sonnet-4-6';
           if (model !== fallback) {
+            console.log(`[Anthropic] Overloaded on ${model}, falling back to ${fallback}`);
             return callAnthropic(apiKey, fallback, prompt, image, mediaType, maxTok, res, trackFn, 1);
           }
           return res.status(500).json({ error: 'Overloaded' });
