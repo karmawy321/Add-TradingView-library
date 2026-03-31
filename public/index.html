@@ -700,9 +700,11 @@ if (isEmbedded) {
   document.write(`
     <style>
       nav, header, footer, #how, #about, #aiToolsPanel, .az-bar, .gate-overlay, #chartWatermark, #layoutIn, #drawToolbar, .nav-credits { display: none !important; }
+      #chartToolsPanel > div > div:first-child, #liveTicker { display: none !important; } 
       body, #analyzer { padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
-      .az-box, .az-wrap, #chartToolsPanel, .nd-chart-area { border: none !important; padding: 0 !important; max-width: 100% !important; margin: 0 !important; border-radius: 0 !important; height: 100vh !important; background: #000 !important; }
-      #chartCanvas { height: calc(100vh - 46px) !important; }
+      .az-box, .az-wrap, #chartToolsPanel, #chartToolsPanel > div, .nd-chart-area, #chartArea { border: none !important; padding: 0 !important; max-width: 100% !important; margin: 0 !important; border-radius: 0 !important; height: 100vh !important; background: #000 !important; }
+      #chartCanvasWrap { height: 100vh !important; }
+      #chartCanvas { height: 100vh !important; }
     </style>
   `);
   
@@ -717,22 +719,20 @@ if (isEmbedded) {
 var activeIframeId = null;
 
 function switchLayout(panels) {
-  var ctp = document.getElementById('chartToolsPanel');
+  var wrap = document.getElementById('chartCanvasWrap');
   var multi = document.getElementById('multiLayout');
-  var tb = document.getElementById('drawToolbar');
   var activeSym = window.currentSymbol || document.getElementById('pairIn').value || '';
   
   if (panels == 1) {
-    ctp.style.display = 'flex';
+    wrap.style.display = 'block';
     if(multi) multi.remove();
     activeIframeId = null;
-    if(tb) tb.style.display = 'flex';
   } else {
-    ctp.style.display = 'none';
+    wrap.style.display = 'none';
     if (!multi) {
       multi = document.createElement('div');
       multi.id = 'multiLayout';
-      ctp.parentNode.insertBefore(multi, ctp.nextSibling);
+      wrap.parentNode.insertBefore(multi, wrap.nextSibling);
     }
     multi.className = 'multi-layout layout-' + panels;
     multi.style.height = 'calc(100vh - 100px)';
