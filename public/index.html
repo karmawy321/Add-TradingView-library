@@ -2893,17 +2893,22 @@ function setToolRunning(tool, running){
 function runTool(tool){
   if(!dataUrl){ alert('Upload a chart first.'); return; }
   if(!tierAllows(tool)){ scrollToPricing(); return; }
-  /* If no chart uploaded, use a 1x1 transparent PNG as placeholder */
-  /* The live price context in the prompt compensates for no image */
-  var base64, mType;
-  if(dataUrl){
-    base64 = dataUrl.split(',')[1];
-    mType  = dataUrl.split(';')[0].split(':')[1];
-  } else {
-    /* Minimal transparent PNG */
-    base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-    mType  = 'image/png';
-  }
+  /* Capture screenshot for outCanvas background (preserves visual style) */
+  captureAndStore();
+
+  /* Capture visible candle data for accurate AI analysis */
+  var _tvBars = Math.max(20, Math.floor(chartCandles.length / chartView.zoom));
+  var _tsIdx  = Math.max(0, chartCandles.length - _tvBars - chartView.offset);
+  var _teIdx  = Math.min(chartCandles.length, _tsIdx + _tvBars);
+  var _tvisC  = chartCandles.slice(_tsIdx, _teIdx);
+  var _tpMin  = Math.min.apply(null, _tvisC.map(function(c){ return c.l; }));
+  var _tpMax  = Math.max.apply(null, _tvisC.map(function(c){ return c.h; }));
+  var _trng   = _tpMax - _tpMin;
+  _tpMin -= _trng * 0.05; _tpMax += _trng * 0.05;
+  window._lastVisiblePriceMin    = _tpMin;
+  window._lastVisiblePriceMax    = _tpMax;
+  window._lastVisibleCandleCount = _tvisC.length;
+
   var pair   = document.getElementById('pairIn').value||'the asset';
   var tf     = document.getElementById('tfIn').value||'auto-detected';
 
@@ -2913,7 +2918,7 @@ function runTool(tool){
   var chev = document.getElementById(tool+'-chev');
   if(body && !body.classList.contains('open')){ body.classList.add('open'); if(chev) chev.classList.add('open'); }
 
-  var payload = { image: base64, mediaType: mType, pair: pair, timeframe: tf, language: lang };
+  var payload = { candles: _tvisC, priceMin: _tpMin, priceMax: _tpMax, pair: pair, timeframe: tf, language: lang };
 
   if(tool === 'vol'){
     payload.account_size = parseFloat(document.getElementById('vol-acct').value)||10000;

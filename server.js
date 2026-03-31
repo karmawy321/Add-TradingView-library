@@ -595,35 +595,49 @@ Respond with ONLY a valid JSON object, no markdown, no explanation. Use exactly 
 app.post('/mtf', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _mtfUserId = null;
   try { const _mtfR = await verifyAndDeduct(_token, 20); _mtfUserId = _mtfR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `You are an MTF (Multi-Timeframe) confluence analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields: {"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","confluence_score":72,"analysis":"3 sentence MTF confluence analysis","timeframes":[{"tf":"Weekly","bias":"bullish|bearish|neutral","fractal_phase":"str e.g. Impulse wave 3","path":[0.7,0.65,0.55,0.48,0.42,0.38,0.35,0.38,0.42,0.4]},{"tf":"Daily","bias":"bullish|bearish|neutral","fractal_phase":"str","path":[0.55,0.52,0.48,0.45,0.43,0.42,0.44,0.46,0.43,0.41]},{"tf":"H4","bias":"bullish|bearish|neutral","fractal_phase":"str","path":[0.48,0.46,0.44,0.43,0.42,0.41,0.42,0.43,0.41,0.4]}],"confluence_zones":[{"label":"Key Support","price":"str","y":0.55,"color":"#27ae60","strength":"strong","timeframes_aligned":["Weekly","Daily"]},{"label":"Resistance","price":"str","y":0.25,"color":"#e74c3c","strength":"medium","timeframes_aligned":["Daily","H4"]}]}
-path arrays must have exactly 10 floats (0=top, 1=bottom of chart).`;
-  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res, (txt)=>trySavePrediction('MTF Confluence',txt,pair,timeframe,_mtfUserId));
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are an MTF (Multi-Timeframe) confluence analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","confluence_score":72,"analysis":"3 sentence MTF confluence analysis","timeframes":[{"tf":"Weekly","bias":"bullish|bearish|neutral","fractal_phase":"str e.g. Impulse wave 3","path":[0.7,0.65,0.55,0.48,0.42,0.38,0.35,0.38,0.42,0.4]},{"tf":"Daily","bias":"bullish|bearish|neutral","fractal_phase":"str","path":[0.55,0.52,0.48,0.45,0.43,0.42,0.44,0.46,0.43,0.41]},{"tf":"H4","bias":"bullish|bearish|neutral","fractal_phase":"str","path":[0.48,0.46,0.44,0.43,0.42,0.41,0.42,0.43,0.41,0.4]}],"confluence_zones":[{"label":"Key Support","price":2040,"color":"#27ae60","strength":"strong","timeframes_aligned":["Weekly","Daily"]},{"label":"Resistance","price":2200,"color":"#e74c3c","strength":"medium","timeframes_aligned":["Daily","H4"]}]}
+path arrays must have exactly 10 floats (0=top, 1=bottom) — these are shape indicators not price values. confluence_zones price must be a real number from the data.`;
+  callAnthropic(k, 'claude-opus-4-5', p, null, null, 2000, res, (txt)=>trySavePrediction('MTF Confluence',txt,pair,timeframe,_mtfUserId));
 });
 
 // /fractal-age
 app.post('/fractal-age', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _ageUserId = null;
   try { const _ageR = await verifyAndDeduct(_token, 15); _ageUserId = _ageR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `You are a fractal cycle age analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields: {"pair":"str","timeframe":"str","urgency":"critical|high|medium|low","analysis":"3 sentence fractal age analysis","fractal_age":{"completion_pct":67,"phase":"young|developing|mature|exhausted","bars_elapsed":45,"bars_estimated_total":70},"cycle_position":{"position":"early|mid|late","cycle_path":[0.5,0.48,0.45,0.42,0.4,0.38,0.37,0.36,0.37,0.38,0.4,0.42,0.44,0.46,0.45,0.44,0.43,0.42,0.41,0.4]},"time_projections":[{"scenario":"Base — Continuation","probability":0.55,"direction":"bullish|bearish","bars_to_resolution":18,"target_price":"str"},{"scenario":"Reversal","probability":0.30,"direction":"bearish|bullish","bars_to_resolution":8,"target_price":"str"},{"scenario":"Extended","probability":0.15,"direction":"bullish|bearish","bars_to_resolution":35,"target_price":"str"}]}
-cycle_path must have 20 floats showing historical + projected cycle (0=top, 1=bottom).`;
-  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res, (txt)=>trySavePrediction('Fractal Age',txt,pair,timeframe,_ageUserId));
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are a fractal cycle age analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+{"pair":"str","timeframe":"str","urgency":"critical|high|medium|low","analysis":"3 sentence fractal age analysis","fractal_age":{"completion_pct":67,"phase":"young|developing|mature|exhausted","bars_elapsed":45,"bars_estimated_total":70},"cycle_position":{"position":"early|mid|late","cycle_path":[0.5,0.48,0.45,0.42,0.4,0.38,0.37,0.36,0.37,0.38,0.4,0.42,0.44,0.46,0.45,0.44,0.43,0.42,0.41,0.4]},"time_projections":[{"scenario":"Base — Continuation","probability":0.55,"direction":"bullish|bearish","bars_to_resolution":18,"target_price":2200},{"scenario":"Reversal","probability":0.30,"direction":"bearish|bullish","bars_to_resolution":8,"target_price":2012},{"scenario":"Extended","probability":0.15,"direction":"bullish|bearish","bars_to_resolution":35,"target_price":2350}]}
+cycle_path must have 20 floats (0=top, 1=bottom) — shape indicator only. target_price must be a real number from the data.`;
+  callAnthropic(k, 'claude-opus-4-5', p, null, null, 2000, res, (txt)=>trySavePrediction('Fractal Age',txt,pair,timeframe,_ageUserId));
 });
 
 // /projection - WITH PREDICTION TRACKING
 app.post('/projection', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
-  
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
+
   let userId = null;
   try {
     const verifyResult = await verifyAndDeduct(_token, 25);
@@ -631,80 +645,37 @@ app.post('/projection', async (req, res) => {
   } catch(e) {
     return res.status(402).json({ error: e.message });
   }
-  
-  const p = `Price projection analyst. Chart: ${pair||'asset'} ${timeframe||'auto'}. 3 forward scenarios. Reply in ${rl(l)}. JSON only.\n{"pair":"str","timeframe":"str","current_price":"str","last_candle_y":0.45,"signal":"bullish|bearish|neutral","confidence":"high|medium|low","fractal_basis":"1 sentence","scenarios":[{"label":"Base Case","probability":0.55,"direction":"bullish|bearish","color":"#27ae60","bars":30,"target_price":"str","target_y":0.3,"path":[30 floats],"invalidation_price":"str","invalidation_y":0.55},{"label":"Bear Case","probability":0.30,"direction":"bearish","color":"#e74c3c","bars":20,"target_price":"str","target_y":0.65,"path":[20 floats],"invalidation_price":"str","invalidation_y":0.35},{"label":"Extended","probability":0.15,"direction":"bullish","color":"#9b8fe8","bars":40,"target_price":"str","target_y":0.05,"path":[40 floats],"invalidation_price":"str","invalidation_y":0.55}],"analysis":"4 sentences","entry_zone":{"price_from":"str","price_to":"str","y1":0.42,"y2":0.48},"stop_loss":{"price":"str","y":0.55},"chart_context":{"trend":"uptrend|downtrend|sideways","last_pattern":"str","wave_position":"str"}}`;
-  
-  const messages = [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: image } }, { type: 'text', text: p }] }];
-  const reqBody = JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 3000, messages });
-  const options = {
-    hostname: 'api.anthropic.com',
-    path: '/v1/messages',
-    method: 'POST',
-    headers: { 'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','Content-Length':Buffer.byteLength(reqBody) }
-  };
 
-  const apiReq = https.request(options, apiRes => {
-    let data = '';
-    apiRes.on('data', c => { data += c; });
-    apiRes.on('end', async () => {
-      try {
-        const obj = JSON.parse(data);
-        if (obj.error) return res.status(500).json({ error: obj.error.message });
-        const rawText = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
-        
-        // Save prediction for tracking
-        try {
-          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-          if (jsonMatch && userId) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            
-            if (parsed.current_price && parsed.scenarios && parsed.scenarios[0]) {
-              const currentPrice = parseFloat(parsed.current_price.replace(/[^0-9.]/g, ''));
-              const targetPrice = parseFloat(parsed.scenarios[0].target_price.replace(/[^0-9.]/g, ''));
-              const bars = parseInt(parsed.scenarios[0].bars) || 30;
-              
-              let targetDays = 3;
-              if (timeframe && timeframe.includes('h')) {
-                const hours = parseInt(timeframe);
-                targetDays = Math.ceil((bars * hours) / 24);
-              } else if (timeframe && timeframe.includes('d')) {
-                targetDays = bars;
-              } else if (timeframe && timeframe.includes('m')) {
-                targetDays = Math.ceil(bars / (24 * 60));
-              }
-              
-              if (currentPrice && targetPrice && !isNaN(currentPrice) && !isNaN(targetPrice)) {
-                await savePrediction({
-                  userId: userId,
-                  toolName: 'Price Path Projection',
-                  asset: pair || 'UNKNOWN',
-                  timeframe: timeframe || '1D',
-                  currentPrice: currentPrice,
-                  predictedPrice: targetPrice,
-                  targetDays: Math.max(1, Math.min(targetDays, 30)),
-                  fullResponse: rawText
-                });
-              }
-            }
-          }
-        } catch (predErr) {
-          console.error('[Prediction] Save error (non-fatal):', predErr.message);
-        }
-        
-        // Parse JSON from AI and return object directly so renderProjection works
-        try {
-          const jsonMatch2 = rawText.match(/\{[\s\S]*\}/);
-          if (jsonMatch2) return res.json(JSON.parse(jsonMatch2[0]));
-        } catch(e2) {}
-        res.json({ text: rawText });
-      } catch(e) {
-        res.status(500).json({ error: 'Failed to parse response' });
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const lastClose = candles[candles.length - 1].c;
+  const p = `You are a price projection analyst. Analyze this OHLCV data for ${pair||'asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}, current price: ${lastClose}). 3 forward scenarios. Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+JSON only. All prices must be real numbers from the data:
+{"pair":"str","timeframe":"str","current_price":${lastClose},"signal":"bullish|bearish|neutral","confidence":"high|medium|low","fractal_basis":"1 sentence","scenarios":[{"label":"Base Case","probability":0.55,"direction":"bullish|bearish","color":"#27ae60","bars":30,"target_price":2200,"path":[30 real price values],"invalidation_price":2012},{"label":"Bear Case","probability":0.30,"direction":"bearish","color":"#e74c3c","bars":20,"target_price":1950,"path":[20 real price values],"invalidation_price":2150},{"label":"Extended","probability":0.15,"direction":"bullish","color":"#9b8fe8","bars":40,"target_price":2400,"path":[40 real price values],"invalidation_price":2012}],"analysis":"4 sentences","entry_zone":{"price_from":2090,"price_to":2110},"stop_loss":{"price":2012},"chart_context":{"trend":"uptrend|downtrend|sideways","last_pattern":"str","wave_position":"str"}}
+path arrays must start near current price (${lastClose}) and project forward as real prices. barIndex 0=${candles.length-1} (most recent candle).`;
+
+  callAnthropic(k, 'claude-opus-4-5', p, null, null, 3000, res, async (txt) => {
+    try {
+      const jsonMatch = txt.match(/\{[\s\S]*\}/);
+      if (!jsonMatch || !userId) return;
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (!parsed.current_price || !parsed.scenarios || !parsed.scenarios[0]) return;
+      const currentPrice = parseFloat(parsed.current_price);
+      const targetPrice  = parseFloat(parsed.scenarios[0].target_price);
+      const bars = parseInt(parsed.scenarios[0].bars) || 30;
+      let targetDays = 3;
+      if (timeframe && timeframe.includes('h')) targetDays = Math.ceil((bars * parseInt(timeframe)) / 24);
+      else if (timeframe && timeframe.includes('d')) targetDays = bars;
+      else if (timeframe && timeframe.includes('m')) targetDays = Math.ceil(bars / (24 * 60));
+      if (currentPrice && targetPrice && !isNaN(currentPrice) && !isNaN(targetPrice)) {
+        await savePrediction({ userId, toolName:'Price Path Projection', asset:pair||'UNKNOWN', timeframe:timeframe||'1D',
+          currentPrice, predictedPrice:targetPrice, targetDays:Math.max(1,Math.min(targetDays,30)), fullResponse:txt });
       }
-    });
+    } catch(e) { console.error('[Prediction] Save error (non-fatal):', e.message); }
   });
-  apiReq.on('error', e => res.status(500).json({ error: e.message }));
-  apiReq.write(reqBody);
-  apiReq.end();
 });
 
 /* ═══════════════════════════════════════════════════
@@ -715,69 +686,98 @@ app.post('/projection', async (req, res) => {
 app.post('/fibonacci', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _fibUserId = null;
   try { const _fibR = await verifyAndDeduct(_token, 12); _fibUserId = _fibR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `You are a Fibonacci analysis expert. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
-{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","trend":"uptrend|downtrend|sideways","confidence":"high|medium|low","analysis":"3 sentence Fibonacci analysis","swing_high":{"price":"str","x":0.15,"y":0.08},"swing_low":{"price":"str","x":0.55,"y":0.82},"key_level":{"level":"0.618","price":"str","y":0.45,"reason":"strongest confluence level"},"retracements":[{"level":"0.236","price":"str","y":0.2,"color":"#3498db","strength":"weak|medium|strong"},{"level":"0.382","price":"str","y":0.35,"color":"#9b8fe8","strength":"medium"},{"level":"0.5","price":"str","y":0.45,"color":"#c9a84c","strength":"strong"},{"level":"0.618","price":"str","y":0.55,"color":"#e67e22","strength":"strong"},{"level":"0.786","price":"str","y":0.68,"color":"#e74c3c","strength":"medium"}],"extensions":[{"level":"1.272","price":"str","y":0.1,"color":"#2ecc71","strength":"medium"},{"level":"1.618","price":"str","y":0.05,"color":"#27ae60","strength":"strong"}]}
-All y values are 0.0 (top of chart) to 1.0 (bottom). x values are 0.0 (left) to 1.0 (right).`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 2000, res, (txt)=>trySavePrediction('Smart Money',txt,pair,timeframe,_smcUserId));
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are a Fibonacci analysis expert. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object, no markdown. All price fields must be real numbers from the data:
+{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","trend":"uptrend|downtrend|sideways","confidence":"high|medium|low","analysis":"3 sentence Fibonacci analysis","swing_high":{"price":2124,"barIndex":143},"swing_low":{"price":1938,"barIndex":241},"key_level":{"level":"0.618","price":2010,"reason":"strongest confluence level"},"retracements":[{"level":"0.236","price":2080,"color":"#3498db","strength":"weak|medium|strong"},{"level":"0.382","price":2053,"color":"#9b8fe8","strength":"medium"},{"level":"0.5","price":2031,"color":"#c9a84c","strength":"strong"},{"level":"0.618","price":2009,"color":"#e67e22","strength":"strong"},{"level":"0.786","price":1983,"color":"#e74c3c","strength":"medium"}],"extensions":[{"level":"1.272","price":2220,"color":"#2ecc71","strength":"medium"},{"level":"1.618","price":2286,"color":"#27ae60","strength":"strong"}]}
+barIndex must be between 0 and ${candles.length - 1}.`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 2000, res, (txt)=>trySavePrediction('Fibonacci',txt,pair,timeframe,_fibUserId));
 });
 
 // /smc - Smart Money Concepts (fields match renderSMC)
 app.post('/smc', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _smcUserId = null;
   try { const _smcR = await verifyAndDeduct(_token, 16); _smcUserId = _smcR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `You are a Smart Money Concepts analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
-{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","market_structure":"bullish|bearish|ranging","bias":"bullish|bearish|neutral","analysis":"3 sentence SMC analysis","premium_discount":{"current_zone":"premium|discount|equilibrium","equilibrium_price":"str"},"last_bos":{"type":"BOS|CHoCH","direction":"bullish|bearish","x":0.6,"y":0.45},"order_blocks":[{"type":"bullish|bearish","x1":0.3,"x2":0.45,"y1":0.55,"y2":0.65,"color":"#27ae60","label":"Bullish OB"},{"type":"bearish","x1":0.55,"x2":0.7,"y1":0.2,"y2":0.3,"color":"#e74c3c","label":"Bearish OB"}],"fvg":[{"x1":0.5,"x2":0.6,"y1":0.35,"y2":0.42,"color":"#3498db","filled":false}],"poi":{"label":"POI","x1":0.3,"x2":0.5,"y1":0.52,"y2":0.62},"entry_model":{"trigger":"str","entry":"str","sl":"str","tp1":"str","tp2":"str","rr":"1:2.5"}}
-x values 0-1 (left to right), y values 0-1 (top to bottom).`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 2000, res);
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are a Smart Money Concepts analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object, no markdown. Use real prices for all price fields, barIndex between 0 and ${candles.length-1}:
+{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","market_structure":"bullish|bearish|ranging","bias":"bullish|bearish|neutral","analysis":"3 sentence SMC analysis","premium_discount":{"current_zone":"premium|discount|equilibrium","equilibrium_price":2060},"last_bos":{"type":"BOS|CHoCH","direction":"bullish|bearish","barIndex":210,"price":2070},"order_blocks":[{"type":"bullish","barIndex1":180,"barIndex2":195,"priceFrom":2040,"priceTo":2065,"color":"#27ae60","label":"Bullish OB"},{"type":"bearish","barIndex1":130,"barIndex2":145,"priceFrom":2100,"priceTo":2124,"color":"#e74c3c","label":"Bearish OB"}],"fvg":[{"barIndex1":220,"barIndex2":230,"priceFrom":2075,"priceTo":2090,"color":"#3498db","filled":false}],"poi":{"label":"POI","barIndex1":180,"barIndex2":210,"priceFrom":2040,"priceTo":2070},"entry_model":{"trigger":"str","entry":2095,"sl":2012,"tp1":2200,"tp2":2300,"rr":"1:2.5"}}`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 2000, res, (txt)=>trySavePrediction('Smart Money',txt,pair,timeframe,_smcUserId));
 });
 
 // /volatility - Volatility regime & position sizing (fields match renderVolatility)
 app.post('/volatility', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, account_size, risk_pct, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, account_size, risk_pct, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
   const acct = account_size || 10000;
   const riskP = risk_pct || 1;
-  const p = `You are a volatility regime analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Account size: $${acct}, Risk: ${riskP}%. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are a volatility regime analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Account size: $${acct}, Risk: ${riskP}%. Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
 {"pair":"str","timeframe":"str","regime":"low|medium|high|extreme","regime_score":55,"analysis":"3 sentence volatility analysis","regime_characteristics":{"mean_reversion_probability":0.65,"trend_continuation_probability":0.35,"expected_daily_range":"str e.g. 1.8%","breakout_likelihood":"low|medium|high"},"position_sizing":{"max_position_size":"str e.g. 2.3 units","risk_amount":${(acct * riskP / 100).toFixed(2)},"leverage_warning":"str advice"},"strategy_adaptation":{"recommended_approach":"str e.g. Reduce size, widen stops"}}`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
+  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 1500, res);
 });
 
 // /liquidity - Liquidity map & stop hunt targets (fields match renderLiquidity)
 app.post('/liquidity', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _liqUserId = null;
   try { const _liqR = await verifyAndDeduct(_token, 20); _liqUserId = _liqR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `You are a liquidity mapping analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
-{"pair":"str","timeframe":"str","smart_money_direction":"bullish|bearish|neutral","analysis":"3 sentence liquidity analysis","liquidity_imbalance":{"buy_side_weight":0.65,"sell_side_weight":0.35},"liquidity_pools":[{"label":"Equal Highs","price":"str","y":0.18,"x_position":0.75,"color":"#e74c3c","swept":false},{"label":"BSL","price":"str","y":0.12,"x_position":0.5,"color":"#e74c3c","swept":false},{"label":"SSL","price":"str","y":0.85,"x_position":0.6,"color":"#27ae60","swept":false}],"stop_clusters":[{"price":"str","y":0.2,"color":"rgba(231,76,60,0.18)","size":"large|medium|small"},{"price":"str","y":0.8,"color":"rgba(39,174,96,0.18)","size":"medium"}],"hunt_targets":[{"label":"Target 1","price":"str","y":0.15,"direction":"up","bars_estimate":"8-12","probability":"65%"},{"label":"Target 2","price":"str","y":0.82,"direction":"down","bars_estimate":"15-20","probability":"35%"}]}
-y values 0=top 1=bottom.`;
-  callAnthropic(k, 'claude-opus-4-5', p, image, mediaType, 2000, res, (txt)=>trySavePrediction('Liquidity Map',txt,pair,timeframe,_liqUserId));
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are a liquidity mapping analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object, no markdown. All price fields must be real numbers from the data:
+{"pair":"str","timeframe":"str","smart_money_direction":"bullish|bearish|neutral","analysis":"3 sentence liquidity analysis","liquidity_imbalance":{"buy_side_weight":0.65,"sell_side_weight":0.35},"liquidity_pools":[{"label":"Equal Highs","price":2124,"barIndex":143,"color":"#e74c3c","swept":false},{"label":"BSL","price":2096,"barIndex":200,"color":"#e74c3c","swept":false},{"label":"SSL","price":1984,"barIndex":241,"color":"#27ae60","swept":false}],"stop_clusters":[{"price":2130,"color":"rgba(231,76,60,0.18)","size":"large|medium|small"},{"price":1980,"color":"rgba(39,174,96,0.18)","size":"medium"}],"hunt_targets":[{"label":"Target 1","price":2150,"direction":"up","bars_estimate":"8-12","probability":"65%"},{"label":"Target 2","price":1960,"direction":"down","bars_estimate":"15-20","probability":"35%"}]}
+barIndex must be between 0 and ${candles.length - 1}.`;
+  callAnthropic(k, 'claude-opus-4-5', p, null, null, 2000, res, (txt)=>trySavePrediction('Liquidity Map',txt,pair,timeframe,_liqUserId));
 });
 
 // /journal - AI Trade Journal grader (fields match renderJournal)
 app.post('/journal', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, trade_notes, outcome, pnl, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, trade_notes, outcome, pnl, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   try { await verifyAndDeduct(_token, 20); } catch(e) { return res.status(402).json({ error: e.message }); }
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
   const context = [trade_notes&&`Notes: ${trade_notes}`, outcome&&`Outcome: ${outcome}`, pnl&&`P&L: ${pnl}`].filter(Boolean).join('. ');
-  const p = `You are an expert trading coach grading a trade. Chart: ${pair||'asset'} ${timeframe||'auto'}. ${context}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
+  const p = `You are an expert trading coach grading a trade. Asset: ${pair||'asset'} ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). ${context}. Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
 {"pair":"str","timeframe":"str","overall_grade":"A|B|C|D|F","key_lesson":"one most important lesson from this trade","coach_message":"2-3 sentence personal coaching message from the AI coach","categories":{"entry_timing":{"score":75,"improvement":"str specific improvement tip"},"risk_management":{"score":80,"improvement":"str"},"trade_management":{"score":60,"improvement":"str"},"psychology":{"score":70,"improvement":"str"},"setup_quality":{"score":85,"improvement":"str"}}}`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1500, res);
+  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 1500, res);
 });
 
 /* ═══════════════════════════════════════════════════
