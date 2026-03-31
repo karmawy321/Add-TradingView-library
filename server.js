@@ -538,39 +538,57 @@ const rl = l => l==='ar' ? 'Arabic' : l==='pt' ? 'Portuguese' : 'English';
 app.post('/analyze', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, focus, matches, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _azUserId = null;
   try { const _azR = await verifyAndDeduct(_token, 12); _azUserId = _azR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `You are a fractal market analyst. Analyze this chart for ${pair||'the asset'} on ${timeframe||'auto-detected'} timeframe. Reply in ${rl(l)}. Respond with ONLY a valid JSON object using exactly these field names:
-{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","pattern":"str","wave":"str","confidence":"high|medium|low","rr":"str e.g. 1:2.5","analysis":"3-4 sentence fractal analysis","entry":"price str","stop_loss":"price str","target_1":"price str","target_2":"price str","prediction_summary":"2 sentence forward outlook","annotations":[{"type":"hline","y":0.0-1.0,"color":"#hex","label":"str","dashed":true|false},{"type":"arrow","x":0.0-1.0,"y":0.0-1.0,"dir":"up|down","color":"#hex","label":"str"},{"type":"zone","y1":0.0-1.0,"y2":0.0-1.0,"color":"#hex","label":"str"},{"type":"tline","x1":0.0-1.0,"y1":0.0-1.0,"x2":0.0-1.0,"y2":0.0-1.0,"color":"#hex","label":"str"}],"predicted_path":[8-12 floats 0.0-1.0 showing price path from right edge],"matches":[{"date":"YYYY-MM","pair":"str","timeframe":"str","similarity":75,"pattern_name":"str","outcome":"win|loss","outcome_detail":"str","setup_description":"str","price_path":[10 floats],"after_path":[10 floats]}],"win_rate":65,"avg_rr":"1:2.1","wins":2,"losses":1}
-Annotations y=0 is top of chart, y=1 is bottom. Include 3-6 meaningful annotations (key levels, entry zone, stop zone, trend lines). Include 1-3 historical matches. Make predicted_path show realistic forward price movement.`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 2500, res, (txt)=>trySavePrediction('Fractal Analysis',txt,pair,timeframe,_azUserId));
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are a fractal market analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto-detected'} timeframe (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object using exactly these field names. Use REAL PRICES from the data, not normalized values:
+{"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","pattern":"str","wave":"str","confidence":"high|medium|low","rr":"str e.g. 1:2.5","analysis":"3-4 sentence fractal analysis","entry":65400,"stop_loss":64200,"target_1":67800,"target_2":69500,"prediction_summary":"2 sentence forward outlook","annotations":[{"type":"hline","price":65400,"color":"#hex","label":"str","dashed":true|false},{"type":"arrow","barIndex":80,"price":65000,"dir":"up|down","color":"#hex","label":"str"},{"type":"zone","priceFrom":64000,"priceTo":65000,"color":"#hex","label":"str"},{"type":"tline","barIndex1":10,"price1":63000,"barIndex2":80,"price2":66000,"color":"#hex","label":"str"}],"predicted_path":[8-12 real price values showing forward price movement from current price],"matches":[{"date":"YYYY-MM","pair":"str","timeframe":"str","similarity":75,"pattern_name":"str","outcome":"win|loss","outcome_detail":"str","setup_description":"str","price_path":[10 floats 0-1],"after_path":[10 floats 0-1]}],"win_rate":65,"avg_rr":"1:2.1","wins":2,"losses":1}
+Include 3-6 meaningful annotations at key price levels (support, resistance, entry zone, stop zone, trend lines). barIndex refers to position in the candle array (0=oldest). Include 1-3 historical pattern matches.`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 2500, res, (txt)=>trySavePrediction('Fractal Analysis',txt,pair,timeframe,_azUserId));
 });
 
 // /bar-pattern - Bar pattern self-similarity (fields match renderBarPattern in frontend)
 app.post('/bar-pattern', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _bpUserId = null;
   try { const _bpR = await verifyAndDeduct(_token, 12); _bpUserId = _bpR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `You are a bar pattern self-similarity analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object using exactly these field names:
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are a bar pattern self-similarity analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object using exactly these field names:
 {"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","dominant_pattern":"str","confidence":"high|medium|low","self_similarity_score":0-100,"fractal_dimension":"1.2-1.9 as str","trading_implication":"str","scale_levels":[{"level":"Macro|Mid|Micro","bars":50,"pattern":"str","strength":"high|medium|low"}],"bar_clusters":[{"id":1,"name":"str","color":"#hex","similarity_pct":75,"description":"str","bar_sequence":[10 floats 0-1],"location_a":{"label":"Earlier","x1":0.1,"x2":0.35},"location_b":{"label":"Current","x1":0.6,"x2":0.9}}]}
-Include 2-3 bar clusters showing self-similar patterns found at different locations on the chart.`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 1800, res, (txt)=>trySavePrediction('Bar Pattern',txt,pair,timeframe,_bpUserId));
+Include 2-3 bar clusters showing self-similar patterns found at different locations in the data. location x1/x2 values (0-1) refer to relative position in the candle array.`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 1800, res, (txt)=>trySavePrediction('Bar Pattern',txt,pair,timeframe,_bpUserId));
 });
 
 // /weierstrass - Weierstrass decomposition (fields match renderWeierstrass in frontend)
 app.post('/weierstrass', async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { image, mediaType, pair, timeframe, language: l, _token } = req.body;
-  if (!image || !mediaType) return res.status(400).json({ error: 'Missing image or mediaType.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const p = `You are a Weierstrass fractal decomposition analyst. Analyze the chart for ${pair||'the asset'} on ${timeframe||'auto'}. Reply in ${rl(l)}. Respond with ONLY a valid JSON object, no markdown, no explanation. Use exactly these fields: {"pair":"str","timeframe":"str","hurst_exponent":"0.55","fractal_dimension":"1.45","roughness_index":"0.62","market_regime":"trending|mean-reverting|random-walk","scale_invariance":{"confirmed":true,"ratio":"1:3.2"},"decomposition":{"trend":{"direction":"bullish|bearish|neutral","strength":"high|medium|low","description":"str"},"cycle":{"phase":"accumulation|expansion|distribution|contraction","period_bars":20,"amplitude":"str","description":"str"},"fractal_noise":{"color":"red|pink|white|blue","weierstrass_a":0.72,"weierstrass_b":3.1,"description":"str"}},"weierstrass_fit":{"score":78,"quality":"good|fair|poor","dominant_frequency":"str","harmonics":[0.8,0.6,0.4,0.25,0.15,0.08,0.04,0.02],"weierstrass_a":0.72,"weierstrass_b":3.1,"description":"str"},"noise_signal":{"edge":"bullish|bearish|neutral","confidence":"high|medium|low","interpretation":"2 sentence trading interpretation"}}`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, image, mediaType, 2000, res, (txt)=>trySavePrediction('Fibonacci',txt,pair,timeframe,_fibUserId));
+  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const p = `You are a Weierstrass fractal decomposition analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Respond with ONLY a valid JSON object, no markdown, no explanation. Use exactly these fields: {"pair":"str","timeframe":"str","hurst_exponent":"0.55","fractal_dimension":"1.45","roughness_index":"0.62","market_regime":"trending|mean-reverting|random-walk","scale_invariance":{"confirmed":true,"ratio":"1:3.2"},"decomposition":{"trend":{"direction":"bullish|bearish|neutral","strength":"high|medium|low","description":"str"},"cycle":{"phase":"accumulation|expansion|distribution|contraction","period_bars":20,"amplitude":"str","description":"str"},"fractal_noise":{"color":"red|pink|white|blue","weierstrass_a":0.72,"weierstrass_b":3.1,"description":"str"}},"weierstrass_fit":{"score":78,"quality":"good|fair|poor","dominant_frequency":"str","harmonics":[0.8,0.6,0.4,0.25,0.15,0.08,0.04,0.02],"weierstrass_a":0.72,"weierstrass_b":3.1,"description":"str"},"noise_signal":{"edge":"bullish|bearish|neutral","confidence":"high|medium|low","interpretation":"2 sentence trading interpretation"}}`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 2000, res, null);
 });
 
 // /mtf (MTF Confluence)
