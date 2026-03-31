@@ -3990,7 +3990,7 @@ var sma200On        = false;
 var sma400On        = false;
 var complexFractalOn = false;
 var vpvrOn           = false;
-var vpvrAnchorX      = null;  /* null = auto left edge; set by drag */
+var vpvrAnchorX      = null;  /* null = auto right edge (W-PAD.r-2); set by drag */
 var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
 var allCandleData   = {};
@@ -4574,10 +4574,11 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
   if (!visible || visible.length < 2) return;
   var BUCKETS   = 60;
   var BAR_MAX_W = Math.min(CW * 0.18, 90); /* 18% of chart width, max 90px — responsive */
-  /* Anchor: use dragged position or default to left edge of chart area */
-  var barX = (vpvrAnchorX !== null) ? vpvrAnchorX : PAD.l;
-  /* Clamp so bars stay within chart bounds */
-  barX = Math.max(PAD.l, Math.min(W - PAD.r - BAR_MAX_W - 2, barX));
+  /* Right-edge anchor: bars grow LEFTWARD from this X position (TradingView style).
+     Default = just inside the price axis on the right side of the chart. */
+  var rightEdge = (vpvrAnchorX !== null) ? vpvrAnchorX : W - PAD.r - 2;
+  /* Clamp so bars never overlap the price axis or go off the left edge */
+  rightEdge = Math.max(PAD.l + BAR_MAX_W, Math.min(W - PAD.r - 2, rightEdge));
 
   var buckets    = new Array(BUCKETS).fill(0);
   var buyBuckets = new Array(BUCKETS).fill(0);
@@ -4612,18 +4613,18 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
     /* Y: bucket 0 = bottom price, bucket BUCKETS-1 = top price */
     var y = PAD.t + CH - (i + 1) * bucketH;
 
-    /* Bear portion (red) */
+    /* Bear portion (red) — anchored to rightEdge, extending leftward */
     ctx.fillStyle = 'rgba(239,83,80,0.28)';
-    ctx.fillRect(barX, y, barW, bucketH - 1);
+    ctx.fillRect(rightEdge - barW, y, barW, bucketH - 1);
 
-    /* Bull portion (green) layered on top */
+    /* Bull portion (green) layered on top, also leftward */
     ctx.fillStyle = 'rgba(38,166,154,0.38)';
-    ctx.fillRect(barX, y, buyW, bucketH - 1);
+    ctx.fillRect(rightEdge - buyW, y, buyW, bucketH - 1);
 
     /* POC bucket */
     if (i === pocIdx) {
       ctx.fillStyle = 'rgba(201,168,76,0.15)';
-      ctx.fillRect(barX, y, BAR_MAX_W, bucketH - 1);
+      ctx.fillRect(rightEdge - BAR_MAX_W, y, BAR_MAX_W, bucketH - 1);
       /* POC dashed line across full chart width */
       ctx.save();
       ctx.strokeStyle = '#c9a84c';
@@ -4635,36 +4636,37 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
       ctx.lineTo(W - PAD.r, midY);
       ctx.stroke();
       ctx.setLineDash([]);
-      /* POC price label — right of the histogram bar */
+      /* POC price label — left of the histogram area */
       ctx.font = 'bold 9px "DM Mono",monospace';
       ctx.fillStyle = '#c9a84c';
-      ctx.textAlign = 'left';
+      ctx.textAlign = 'right';
       var pocPrice = mn + (i + 0.5) / BUCKETS * range;
-      ctx.fillText('POC ' + (pocPrice < 1 ? pocPrice.toFixed(5) : pocPrice < 100 ? pocPrice.toFixed(3) : Math.round(pocPrice)), barX + BAR_MAX_W + 3, midY + 3);
+      ctx.fillText('POC ' + (pocPrice < 1 ? pocPrice.toFixed(5) : pocPrice < 100 ? pocPrice.toFixed(3) : Math.round(pocPrice)), rightEdge - BAR_MAX_W - 4, midY + 3);
       ctx.restore();
     }
   }
 
-  /* Drag handle pill — signals that VPVR is draggable */
+  /* Drag handle pill at the top of the VPVR area */
   var handleY = PAD.t + 2;
   var handleH = 14;
   ctx.fillStyle = 'rgba(201,168,76,0.6)';
   ctx.beginPath();
-  if (ctx.roundRect) { ctx.roundRect(barX, handleY, BAR_MAX_W, handleH, 3); }
-  else { ctx.rect(barX, handleY, BAR_MAX_W, handleH); }
+  if (ctx.roundRect) { ctx.roundRect(rightEdge - BAR_MAX_W, handleY, BAR_MAX_W, handleH, 3); }
+  else { ctx.rect(rightEdge - BAR_MAX_W, handleY, BAR_MAX_W, handleH); }
   ctx.fill();
   ctx.font = 'bold 8px "DM Mono",monospace';
   ctx.fillStyle = '#06080d';
   ctx.textAlign = 'center';
-  ctx.fillText('\u2807 VPVR', barX + BAR_MAX_W / 2, handleY + 10);
+  ctx.fillText('\u2807 VPVR', rightEdge - BAR_MAX_W / 2, handleY + 10);
 
   ctx.restore();
 
   /* Expose geometry so mouse handlers can hit-test the drag handle */
-  drawVPVR._x  = barX;
+  drawVPVR._x  = rightEdge - BAR_MAX_W; /* left edge of the VPVR panel */
   drawVPVR._w  = BAR_MAX_W;
   drawVPVR._hy = handleY;
   drawVPVR._hh = handleH;
+  drawVPVR._re = rightEdge;             /* right-edge anchor for drag */
 }
 
 /* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
