@@ -494,11 +494,11 @@ function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, tra
     apiRes.on('end', () => {
       try {
         const obj = JSON.parse(data);
-        /* 529 = Anthropic overloaded — retry up to 3 times with backoff */
+        /* Overloaded — immediately fall back to Sonnet if we were on Opus */
         if (obj.error && obj.error.type === 'overloaded_error') {
-          if (_attempt < 3) {
-            const delay = _attempt * 8000; /* 8s, 16s */
-            return setTimeout(() => callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, trackFn, _attempt + 1), delay);
+          const fallback = 'claude-sonnet-4-6';
+          if (model !== fallback) {
+            return callAnthropic(apiKey, fallback, prompt, image, mediaType, maxTok, res, trackFn, 1);
           }
           return res.status(500).json({ error: 'Overloaded' });
         }
