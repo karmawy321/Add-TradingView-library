@@ -5449,6 +5449,7 @@ var GROUPS = [
       { id:'flattop',   label:'Flat Top/Bottom',  icon:S('<line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="11" x2="14" y2="7"/>'), cur:'crosshair', points:2, channel:'flat' },
       { id:'rect',      label:'Rectangle',        icon:S('<rect x="2" y="5" width="12" height="8" rx="1"/>'), cur:'crosshair', points:2, shape:'rect' },
       { id:'ellipse',   label:'Ellipse',          icon:S('<ellipse cx="8" cy="8" rx="6" ry="4.5"/>'), cur:'crosshair', points:2, shape:'ellipse' },
+      { id:'gannbox',   label:'Gann Box',         icon:S('<rect x="2" y="2" width="12" height="12" fill="none"/><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/>'), cur:'crosshair', points:2, shape:'gannbox' },
       { id:'triangle',  label:'Triangle',         icon:S('<path d="M8 2l7 12H1z"/>'), cur:'crosshair', points:2, shape:'triangle' },
       { id:'arrow',     label:'Arrow',            icon:S('<line x1="3" y1="13" x2="13" y2="3"/><path d="M13 3l-5 1.5 1.5-5z" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2, arrowline:true },
       { id:'arrowup',   label:'Arrow Up mark',    icon:S('<line x1="8" y1="13" x2="8" y2="4"/><path d="M4 7l4-4 4 4" fill="none"/>'), cur:'crosshair', arrowmark:true, dir:'up' },
@@ -6564,6 +6565,84 @@ function drawOne(ctx,d,co,prev){
     ctx.strokeRect(x1,y1,x2-x1,y2-y1);
     ctx.fillStyle='rgba(201,168,76,.05)'; ctx.fillRect(x1,y1,x2-x1,y2-y1);
     ctx.restore();return;
+  }
+  /* Gann Box */
+  if (d.shape === 'gannbox') {
+    var minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+    var minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+    var w = maxX - minX, h = maxY - minY;
+    var levels = [0, 0.25, 0.382, 0.5, 0.618, 0.75, 1];
+    var bgH = ['rgba(243,156,18,0.15)', 'rgba(26,188,156,0.15)', 'rgba(46,204,113,0.15)', 'rgba(52,152,219,0.15)', 'rgba(155,89,182,0.15)', 'rgba(149,165,166,0.15)'];
+    var bgV = ['rgba(243,156,18,0.2)',  'rgba(26,188,156,0.2)',  'rgba(46,204,113,0.2)',  'rgba(52,152,219,0.2)',  'rgba(155,89,182,0.2)',  'rgba(149,165,166,0.2)'];
+    var lineColors = ['#f39c12', '#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#34495e', '#7f8c8d'];
+    
+    // Fills
+    for (var i = 0; i < levels.length - 1; i++) {
+        var lx1 = minX + w * levels[i];
+        var lw = w * (levels[i+1] - levels[i]);
+        ctx.fillStyle = bgV[i % bgV.length];
+        ctx.fillRect(lx1, minY, lw, h);
+        
+        var ty1 = minY + h * levels[i];
+        var th = h * (levels[i+1] - levels[i]);
+        ctx.fillStyle = bgH[i % bgH.length];
+        ctx.fillRect(minX, ty1, w, th);
+    }
+    
+    // Grid Lines
+    ctx.setLineDash(prev?[5,3]:[]);
+    for(var i=0; i<levels.length; i++) {
+        ctx.strokeStyle = lineColors[i] || lineColors[lineColors.length-1];
+        ctx.beginPath();
+        var yy1 = minY + h * levels[i];
+        ctx.moveTo(minX, yy1); ctx.lineTo(maxX, yy1);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        var xx1 = minX + w * levels[i];
+        ctx.moveTo(xx1, minY); ctx.lineTo(xx1, maxY);
+        ctx.stroke();
+        
+        // Labels
+        ctx.font = '10px DM Mono'; ctx.fillStyle = ctx.strokeStyle;
+        ctx.textAlign = 'center'; ctx.fillText(levels[i], xx1, minY - 4);
+        ctx.textAlign = 'left';   ctx.fillText(levels[i], maxX + 4, yy1 + 3);
+    }
+    
+    // Date tags on X axis (Show if active/drawn)
+    var isHoveredOrActive = prev;
+    if (!prev && hoverPoint) {
+      if (hoverPoint.x >= minX - 10 && hoverPoint.x <= maxX + 10 && hoverPoint.y >= minY - 10 && hoverPoint.y <= maxY + 10) {
+        isHoveredOrActive = true;
+      }
+    }
+    
+    if (isHoveredOrActive) {
+      ctx.strokeStyle='rgba(138,149,168,.5)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(x1, 0); ctx.lineTo(x1, co.H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x2, 0); ctx.lineTo(x2, co.H); ctx.stroke();
+      ctx.setLineDash([]);
+      
+      var drawTag = function(bx, pt){
+          if (!co.visible || !pt || pt.bi === undefined) return;
+          var pbi = pt.bi - co.si;
+          if(pbi >= 0 && pbi < co.visible.length){
+              var c = co.visible[pbi], d2 = new Date(c.t);
+              var MO2 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+              var dtStr = days[d2.getDay()] + ' ' + d2.getDate().toString().padStart(2, '0') + ' ' + MO2[d2.getMonth()] + " '" + d2.getFullYear().toString().slice(-2) + '  ' + d2.getHours().toString().padStart(2,'0') + ':' + d2.getMinutes().toString().padStart(2,'0');
+              var dw = dtStr.length * 6.8 + 14;
+              ctx.fillStyle = '#3b82f6';
+              ctx.fillRect(Math.max(PAD.l, Math.min(co.W - PAD.r - dw, bx - dw / 2)), co.H - 18, dw, 17);
+              ctx.fillStyle = '#ffffff'; ctx.font = 'bold 9px DM Mono'; ctx.textAlign = 'center';
+              ctx.fillText(dtStr, Math.max(PAD.l + dw / 2, Math.min(co.W - PAD.r - dw / 2, bx)), co.H - 5);
+          }
+      };
+      drawTag(x1, d.p1);
+      if (Math.abs(x1 - x2) > 5) drawTag(x2, d.p2);
+    }
+    
+    ctx.restore(); return;
   }
   /* Ellipse */
   if(d.shape==='ellipse'){
