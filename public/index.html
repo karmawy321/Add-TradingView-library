@@ -6250,21 +6250,6 @@ function drawCursorOverlay(ctx,co){
       ctx.fillRect(Math.max(PAD.l,Math.min(co.W-PAD.r-dw,barCenterX-dw/2)),co.H-18,dw,17);
       ctx.fillStyle='#0d1018'; ctx.font='bold 9px DM Mono'; ctx.textAlign='center';
       ctx.fillText(dtStr,Math.max(PAD.l+dw/2,Math.min(co.W-PAD.r-dw/2,barCenterX)),co.H-5);
-
-      /* OHLCV alongside the date */
-      var isUpD=candle2.c>=candle2.o, colD=isUpD?'#26a69a':'#ef5350';
-      var chgPctD=candle2.o!==0?(((candle2.c-candle2.o)/candle2.o)*100).toFixed(2):'0.00';
-      var chgSignD=isUpD?'+':'';
-      var ohlcvStr='O:'+formatPrice(candle2.o)+'  H:'+formatPrice(candle2.h)+'  L:'+formatPrice(candle2.l)+'  C:'+formatPrice(candle2.c)+'  V:'+formatVol(candle2.v)+'  '+chgSignD+chgPctD+'%';
-      ctx.font='bold 9px DM Mono'; ctx.textAlign='center';
-      var ohlcvW=ctx.measureText(ohlcvStr).width+16;
-      var ohlcvX=Math.max(PAD.l+ohlcvW/2, Math.min(co.W-PAD.r-ohlcvW/2, barCenterX));
-      ctx.fillStyle='rgba(7,9,14,.88)';
-      ctx.fillRect(ohlcvX-ohlcvW/2, co.H-PAD.b-PAD.vol-18, ohlcvW, 16);
-      ctx.strokeStyle='rgba(201,168,76,.18)'; ctx.lineWidth=1;
-      ctx.strokeRect(ohlcvX-ohlcvW/2, co.H-PAD.b-PAD.vol-18, ohlcvW, 16);
-      ctx.fillStyle=colD;
-      ctx.fillText(ohlcvStr, ohlcvX, co.H-PAD.b-PAD.vol-6);
     }
   }
 
