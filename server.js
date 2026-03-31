@@ -550,7 +550,7 @@ ${candleText}
 
 Respond with ONLY a valid JSON object using exactly these field names. Use REAL PRICES from the data, not normalized values:
 {"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","pattern":"str","wave":"str","confidence":"high|medium|low","rr":"str e.g. 1:2.5","analysis":"3-4 sentence fractal analysis","entry":65400,"stop_loss":64200,"target_1":67800,"target_2":69500,"prediction_summary":"2 sentence forward outlook","annotations":[{"type":"hline","price":65400,"color":"#hex","label":"str","dashed":true|false},{"type":"arrow","barIndex":80,"price":65000,"dir":"up|down","color":"#hex","label":"str"},{"type":"zone","priceFrom":64000,"priceTo":65000,"color":"#hex","label":"str"},{"type":"tline","barIndex1":10,"price1":63000,"barIndex2":80,"price2":66000,"color":"#hex","label":"str"}],"predicted_path":[8-12 real price values showing forward price movement from current price],"matches":[{"date":"YYYY-MM","pair":"str","timeframe":"str","similarity":75,"pattern_name":"str","outcome":"win|loss","outcome_detail":"str","setup_description":"str","price_path":[10 floats 0-1],"after_path":[10 floats 0-1]}],"win_rate":65,"avg_rr":"1:2.1","wins":2,"losses":1}
-Include 3-6 meaningful annotations at key price levels (support, resistance, entry zone, stop zone, trend lines). barIndex refers to position in the candle array (0=oldest). Include 1-3 historical pattern matches.`;
+Include 3-6 meaningful annotations at key price levels (support, resistance, entry zone, stop zone, trend lines). barIndex MUST be between 0 and ${candles.length - 1} (0=oldest candle, ${candles.length - 1}=most recent). Include 1-3 historical pattern matches.`;
   callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 2500, res, (txt)=>trySavePrediction('Fractal Analysis',txt,pair,timeframe,_azUserId));
 });
 
@@ -570,7 +570,7 @@ ${candleText}
 
 Respond with ONLY a valid JSON object using exactly these field names:
 {"pair":"str","timeframe":"str","signal":"bullish|bearish|neutral","dominant_pattern":"str","confidence":"high|medium|low","self_similarity_score":0-100,"fractal_dimension":"1.2-1.9 as str","trading_implication":"str","scale_levels":[{"level":"Macro|Mid|Micro","bars":50,"pattern":"str","strength":"high|medium|low"}],"bar_clusters":[{"id":1,"name":"str","color":"#hex","similarity_pct":75,"description":"str","bar_sequence":[10 floats 0-1],"location_a":{"label":"Earlier","x1":0.1,"x2":0.35},"location_b":{"label":"Current","x1":0.6,"x2":0.9}}]}
-Include 2-3 bar clusters showing self-similar patterns found at different locations in the data. location x1/x2 values (0-1) refer to relative position in the candle array.`;
+Include 2-3 bar clusters showing self-similar patterns found at different locations in the data. location x1/x2 values (0-1) refer to relative position in the ${candles.length}-candle array (0=oldest, 1=newest).`;
   callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 1800, res, (txt)=>trySavePrediction('Bar Pattern',txt,pair,timeframe,_bpUserId));
 });
 
