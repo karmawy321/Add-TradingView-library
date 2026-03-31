@@ -4543,58 +4543,9 @@ if(chartCanvas){
     var barW2=CW2/Math.max(visible2.length + rightGapBars2, 1);
     var bi2=Math.max(0,Math.min(visible2.length-1,Math.round((cssX-PAD2.l)/barW2 - 0.5)));
     var price2=mx2-((cssY-PAD2.t)/CH2)*rng2;
-    /* Draw crosshair */
-    chartCtx.strokeStyle='rgba(201,168,76,.25)'; chartCtx.lineWidth=0.6; chartCtx.setLineDash([4,4]);
-    chartCtx.beginPath();chartCtx.moveTo(cssX,0);chartCtx.lineTo(cssX,H);chartCtx.stroke();
-    chartCtx.beginPath();chartCtx.moveTo(0,cssY);chartCtx.lineTo(W,cssY);chartCtx.stroke();
-    chartCtx.setLineDash([]);
-    /* Price badge on right axis */
-    var priceStr=formatPrice(price2);
-    chartCtx.fillStyle='rgba(201,168,76,.9)'; chartCtx.fillRect(W-PAD2.r,cssY-9,PAD2.r,18);
-    chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 10px DM Mono'; chartCtx.textAlign='left';
-    chartCtx.fillText(priceStr,W-PAD2.r+3,cssY+4);
-    /* ── Date + OHLCV badge below the hovered bar ── */
+    /* Date tooltip handles the HTML label. Canvas shapes are now drawn inside drawCursorOverlay() */
     var candle2=visible2[bi2];
     if(candle2){
-      var d2=new Date(candle2.t);
-      var MO2=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      var spanMs2=visible2.length>1?visible2[visible2.length-1].t-visible2[0].t:0;
-      var spanDay2=spanMs2/86400000;
-      var hh=d2.getHours().toString().padStart(2,'0');
-      var mm=d2.getMinutes().toString().padStart(2,'0');
-      var ss=d2.getSeconds().toString().padStart(2,'0');
-      /* Full detailed TradingView style label: Day Name, Date, Month, Year, Time (24h) */
-      var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-      var dayName = days[d2.getDay()];
-      var dd = d2.getDate().toString().padStart(2, '0');
-      var mo = MO2[d2.getMonth()];
-      var yy = d2.getFullYear().toString().slice(-2);
-      var dateStr = dayName + ' ' + dd + ' ' + mo + " '" + yy + '  ' + hh + ':' + mm;
-      var barCenterX=PAD2.l+(bi2+0.5)*barW2;
-      /* OHLCV compact string to show beside date */
-      var isUpD=candle2.c>=candle2.o;
-      var colD=isUpD?'#26a69a':'#ef5350';
-      var chgPctD=candle2.o!==0?(((candle2.c-candle2.o)/candle2.o)*100).toFixed(2):'0.00';
-      var chgSignD=isUpD?'+':'';
-      /* Date badge on bottom axis */
-      var dw=dateStr.length*6.8+14;
-      chartCtx.fillStyle='rgba(201,168,76,.9)';
-      chartCtx.fillRect(Math.max(PAD2.l,Math.min(W-PAD2.r-dw,barCenterX-dw/2)),H-18,dw,17);
-      chartCtx.fillStyle='#0d1018'; chartCtx.font='bold 9px DM Mono'; chartCtx.textAlign='center';
-      chartCtx.fillText(dateStr,Math.max(PAD2.l+dw/2,Math.min(W-PAD2.r-dw/2,barCenterX)),H-5);
-      /* OHLCV alongside the date — drawn just left of date badge */
-      var ohlcvStr='O:'+formatPrice(candle2.o)+'  H:'+formatPrice(candle2.h)+'  L:'+formatPrice(candle2.l)+'  C:'+formatPrice(candle2.c)+'  V:'+formatVol(candle2.v)+'  '+chgSignD+chgPctD+'%';
-      chartCtx.font='bold 9px DM Mono'; chartCtx.textAlign='center';
-      var ohlcvW=chartCtx.measureText(ohlcvStr).width+16;
-      var ohlcvX=Math.max(PAD2.l+ohlcvW/2, Math.min(W-PAD2.r-ohlcvW/2, barCenterX));
-      /* Pill background */
-      chartCtx.fillStyle='rgba(7,9,14,.88)';
-      chartCtx.fillRect(ohlcvX-ohlcvW/2, H-PAD2.b-PAD2.vol-18, ohlcvW, 16);
-      chartCtx.strokeStyle='rgba(201,168,76,.18)'; chartCtx.lineWidth=1;
-      chartCtx.strokeRect(ohlcvX-ohlcvW/2, H-PAD2.b-PAD2.vol-18, ohlcvW, 16);
-      chartCtx.fillStyle=colD;
-      chartCtx.fillText(ohlcvStr, ohlcvX, H-PAD2.b-PAD2.vol-6);
-
       /* ── Top-left fixed OHLCV HTML label ── */
       var isUp=candle2.c>=candle2.o;
       var col=isUp?'#26a69a':'#ef5350';
@@ -6274,6 +6225,48 @@ function drawCursorOverlay(ctx,co){
   ctx.fillStyle='rgba(201,168,76,.85)'; ctx.fillRect(co.W-PAD.r,y-9,PAD.r-2,18);
   ctx.fillStyle='#0d1018'; ctx.font='bold 10px DM Mono'; ctx.textAlign='left';
   ctx.fillText(formatPrice(priceAtCursor),co.W-PAD.r+3,y+4);
+
+  /* Date + OHLCV badge below the hovered bar */
+  if (hoverPoint.visible && hoverPoint.visible.length > 0) {
+    var vi = hoverPoint.bi - hoverPoint.si;
+    if(vi>=0 && vi<hoverPoint.visible.length){
+      var candle2 = hoverPoint.visible[vi];
+      var d2=new Date(candle2.t);
+      var MO2=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      var dayName = days[d2.getDay()];
+      var dd = d2.getDate().toString().padStart(2, '0');
+      var mo = MO2[d2.getMonth()];
+      var yy = d2.getFullYear().toString().slice(-2);
+      var hh = d2.getHours().toString().padStart(2,'0');
+      var mm = d2.getMinutes().toString().padStart(2,'0');
+      
+      /* Full detailed TradingView style label: Day Name, Date, Month, Year, Time (24h) */
+      var dtStr = dayName + ' ' + dd + ' ' + mo + " '" + yy + '  ' + hh + ':' + mm;
+      
+      var barCenterX = PAD.l + (vi+0.5) * hoverPoint.barW;
+      var dw=dtStr.length*6.8+14;
+      ctx.fillStyle='rgba(201,168,76,.9)';
+      ctx.fillRect(Math.max(PAD.l,Math.min(co.W-PAD.r-dw,barCenterX-dw/2)),co.H-18,dw,17);
+      ctx.fillStyle='#0d1018'; ctx.font='bold 9px DM Mono'; ctx.textAlign='center';
+      ctx.fillText(dtStr,Math.max(PAD.l+dw/2,Math.min(co.W-PAD.r-dw/2,barCenterX)),co.H-5);
+
+      /* OHLCV alongside the date */
+      var isUpD=candle2.c>=candle2.o, colD=isUpD?'#26a69a':'#ef5350';
+      var chgPctD=candle2.o!==0?(((candle2.c-candle2.o)/candle2.o)*100).toFixed(2):'0.00';
+      var chgSignD=isUpD?'+':'';
+      var ohlcvStr='O:'+formatPrice(candle2.o)+'  H:'+formatPrice(candle2.h)+'  L:'+formatPrice(candle2.l)+'  C:'+formatPrice(candle2.c)+'  V:'+formatVol(candle2.v)+'  '+chgSignD+chgPctD+'%';
+      ctx.font='bold 9px DM Mono'; ctx.textAlign='center';
+      var ohlcvW=ctx.measureText(ohlcvStr).width+16;
+      var ohlcvX=Math.max(PAD.l+ohlcvW/2, Math.min(co.W-PAD.r-ohlcvW/2, barCenterX));
+      ctx.fillStyle='rgba(7,9,14,.88)';
+      ctx.fillRect(ohlcvX-ohlcvW/2, co.H-PAD.b-PAD.vol-18, ohlcvW, 16);
+      ctx.strokeStyle='rgba(201,168,76,.18)'; ctx.lineWidth=1;
+      ctx.strokeRect(ohlcvX-ohlcvW/2, co.H-PAD.b-PAD.vol-18, ohlcvW, 16);
+      ctx.fillStyle=colD;
+      ctx.fillText(ohlcvStr, ohlcvX, co.H-PAD.b-PAD.vol-6);
+    }
+  }
 
   ctx.restore();
 }
