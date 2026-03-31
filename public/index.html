@@ -691,28 +691,42 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 .cx-hint{font-size:7.5px;color:rgba(201,168,76,.28);padding:3px 10px 5px;font-family:'DM Mono',monospace;letter-spacing:.04em}
 
 </style>
-
 <script>
+var isEmbedded = window.location.search.includes('embed=true');
+var embedId = new URLSearchParams(window.location.search).get('paneId');
+
 // Prevent FOUC and aggressively strip UI when loaded as an inner Multi-chart Pane
-if (window.location.search.includes('embed=true')) {
+if (isEmbedded) {
   document.write(`
     <style>
-      nav, header, footer, #how, #about, #aiToolsPanel, .az-bar, .gate-overlay, #chartWatermark, #layoutIn { display: none !important; }
+      nav, header, footer, #how, #about, #aiToolsPanel, .az-bar, .gate-overlay, #chartWatermark, #layoutIn, #drawToolbar, .nav-credits { display: none !important; }
       body, #analyzer { padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
       .az-box, .az-wrap, #chartToolsPanel, .nd-chart-area { border: none !important; padding: 0 !important; max-width: 100% !important; margin: 0 !important; border-radius: 0 !important; height: 100vh !important; background: #000 !important; }
       #chartCanvas { height: calc(100vh - 46px) !important; }
     </style>
   `);
+  
+  // Listen for clicks inside the Iframe body to alert the parent
+  window.addEventListener('mousedown', function() {
+    if (window.parent) {
+      window.parent.postMessage({type: 'focus', paneId: embedId}, '*');
+    }
+  }, true);
 }
+
+var activeIframeId = null;
 
 function switchLayout(panels) {
   var ctp = document.getElementById('chartToolsPanel');
   var multi = document.getElementById('multiLayout');
+  var tb = document.getElementById('drawToolbar');
   var activeSym = window.currentSymbol || document.getElementById('pairIn').value || '';
   
   if (panels == 1) {
     ctp.style.display = 'flex';
     if(multi) multi.remove();
+    activeIframeId = null;
+    if(tb) tb.style.display = 'flex';
   } else {
     ctp.style.display = 'none';
     if (!multi) {
@@ -721,16 +735,54 @@ function switchLayout(panels) {
       ctp.parentNode.insertBefore(multi, ctp.nextSibling);
     }
     multi.className = 'multi-layout layout-' + panels;
-    // Set height to match browser window roughly
     multi.style.height = 'calc(100vh - 100px)';
     multi.innerHTML = '';
     for (var i = 0; i < panels; i++) {
+      var _id = 'pane-' + i;
       var inf = document.createElement('iframe');
-      inf.src = '/?embed=true'; 
-      multi.appendChild(inf);
+      inf.id = _id;
+      inf.src = '/?embed=true&paneId=' + _id + (activeSym ? '&symbol=' + activeSym : '');
+      
+      var wrapper = document.createElement('div');
+      wrapper.style.position = 'relative';
+      wrapper.style.width = '100%';
+      wrapper.style.height = '100%';
+      wrapper.style.border = '2px solid transparent';
+      wrapper.style.boxSizing = 'border-box';
+      wrapper.style.transition = 'border-color 0.2s';
+      wrapper.id = 'wrap-' + _id;
+      wrapper.className = 'iframe-wrap-node';
+      
+      wrapper.appendChild(inf);
+      multi.appendChild(wrapper);
     }
+    setTimeout(function(){ focusPane('pane-0'); }, 300);
   }
 }
+
+function focusPane(id) {
+  activeIframeId = id;
+  document.querySelectorAll('.iframe-wrap-node').forEach(function(w) {
+    // Show a gold border explicitly telling the user THIS pane is focused
+    w.style.border = (w.id === 'wrap-' + id) ? '2px solid #c9a84c' : '2px solid transparent';
+  });
+}
+
+window.addEventListener('message', function(e) {
+  if (!e.data || !e.data.type) return;
+  
+  // PARENT PAGE: receives focus request from Iframe
+  if (e.data.type === 'focus' && !isEmbedded) {
+    focusPane(e.data.paneId);
+  }
+  
+  // IFRAME: receives tool change request from Parent Toolbar
+  if (e.data.type === 'setTool' && isEmbedded) {
+    if (typeof pickItemById === 'function') {
+      pickItemById(e.data.toolId);
+    }
+  }
+});
 </script>
 
 </head>
@@ -5533,7 +5585,30 @@ function isActive(g) {
   return false;
 }
 
+function pickItemById(id) {
+  for(var g of GROUPS) {
+    if(g==='sep') continue;
+    if(g.items) {
+      for(var i of g.items) { if(i.id===id) { pickItem(i); return; } }
+    } else {
+      if(g.id===id) { pickItem(g); return; }
+    }
+  }
+}
+
 function pickItem(item) {
+  /* MULTI-LAYOUT MASTER OVERRIDE: Forward generic tool commands to the active iframe */
+  if (typeof activeIframeId !== 'undefined' && activeIframeId !== null && !isEmbedded) {
+    var iframe = document.getElementById(activeIframeId);
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({type: 'setTool', toolId: item.id}, '*');
+      activeTool=item.id; activeItem=item;
+      // Rebuild parent toolbar so it VISUALLY appears selected on the Master window
+      if (typeof buildToolbar === 'function') buildToolbar();
+      return; 
+    }
+  }
+
   /* Immediate-action tools — fire on toolbar click, don't become active tool */
   if(item.undotool)  { doUndo(); return; }
   if(item.redotool)  { doRedo(); return; }
