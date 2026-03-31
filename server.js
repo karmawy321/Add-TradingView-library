@@ -474,7 +474,8 @@ app.get('/price/:symbol', (req, res) => {
    ANTHROPIC API HELPER
    ═══════════════════════════════════════════════════ */
 
-function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, trackFn) {
+function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, trackFn, _attempt) {
+  _attempt = _attempt || 1;
   const messages = image
     ? [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: image } }, { type: 'text', text: prompt }] }]
     : [{ role: 'user', content: prompt }];
@@ -493,6 +494,14 @@ function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, tra
     apiRes.on('end', () => {
       try {
         const obj = JSON.parse(data);
+        /* 529 = Anthropic overloaded — retry up to 3 times with backoff */
+        if (obj.error && obj.error.type === 'overloaded_error') {
+          if (_attempt < 3) {
+            const delay = _attempt * 8000; /* 8s, 16s */
+            return setTimeout(() => callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, trackFn, _attempt + 1), delay);
+          }
+          return res.status(500).json({ error: 'Overloaded' });
+        }
         if (obj.error) return res.status(500).json({ error: obj.error.message });
         const text = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
         // Parse JSON string from AI and return the object directly so frontend render functions work
