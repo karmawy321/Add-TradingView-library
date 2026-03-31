@@ -711,9 +711,19 @@ if (isEmbedded) {
   // Listen for clicks inside the Iframe body to alert the parent
   window.addEventListener('mousedown', function() {
     if (window.parent) {
-      window.parent.postMessage({type: 'focus', paneId: embedId}, '*');
+      var sym = window.currentSymbol;
+      if (!sym) { var pin = document.getElementById('pairIn'); if(pin) sym = pin.value; }
+      window.parent.postMessage({type: 'focus', paneId: embedId, symbol: sym}, '*');
     }
   }, true);
+  
+  // Auto-launch preset coin if provided by master layout
+  var initSym = new URLSearchParams(window.location.search).get('symbol');
+  if (initSym) {
+    window.addEventListener('DOMContentLoaded', function() {
+      if (typeof quickLoad === 'function') quickLoad(initSym);
+    });
+  }
 }
 
 var activeIframeId = null;
@@ -737,11 +747,16 @@ function switchLayout(panels) {
     multi.className = 'multi-layout layout-' + panels;
     multi.style.height = 'calc(100vh - 100px)';
     multi.innerHTML = '';
+    
+    // Preset coins for dynamic grids
+    var defaultCoins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
+    
     for (var i = 0; i < panels; i++) {
       var _id = 'pane-' + i;
+      var sym = defaultCoins[i] || 'BTCUSDT';
       var inf = document.createElement('iframe');
       inf.id = _id;
-      inf.src = '/?embed=true&paneId=' + _id + (activeSym ? '&symbol=' + activeSym : '');
+      inf.src = window.location.pathname + '?embed=true&paneId=' + _id + '&symbol=' + sym;
       
       var wrapper = document.createElement('div');
       wrapper.style.position = 'relative';
@@ -774,12 +789,27 @@ window.addEventListener('message', function(e) {
   // PARENT PAGE: receives focus request from Iframe
   if (e.data.type === 'focus' && !isEmbedded) {
     focusPane(e.data.paneId);
+    if (e.data.symbol) {
+      var pSearch = document.getElementById('pairIn');
+      if (pSearch && pSearch.value !== e.data.symbol) {
+        // Silently update parent search bar without triggering reload
+        pSearch.value = e.data.symbol;
+      }
+      window.currentSymbol = e.data.symbol;
+    }
   }
   
   // IFRAME: receives tool change request from Parent Toolbar
   if (e.data.type === 'setTool' && isEmbedded) {
     if (typeof pickItemById === 'function') {
       pickItemById(e.data.toolId);
+    }
+  }
+
+  // IFRAME: receives coin change request from Parent Input
+  if (e.data.type === 'setPair' && isEmbedded) {
+    if (typeof quickLoad === 'function') {
+      quickLoad(e.data.symbol);
     }
   }
 });
@@ -5163,6 +5193,21 @@ function resolveSymbol(raw) {
 }
 
 function onPairInput(val){
+  /* MASTER SYNC: Forward search inputs straight to active iframe if in multi-layout mode */
+  if (typeof activeIframeId !== 'undefined' && activeIframeId !== null && !isEmbedded) {
+    clearTimeout(pairInputTimer);
+    var raw = val.trim();
+    if(raw.length < 2) return;
+    pairInputTimer = setTimeout(function(){
+      var sym = resolveSymbol(raw);
+      var iframe = document.getElementById(activeIframeId);
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({type: 'setPair', symbol: sym}, '*');
+      }
+    }, 600);
+    return;
+  }
+
   clearTimeout(pairInputTimer);
   var raw = val.trim();
   if(raw.length < 2) return;
