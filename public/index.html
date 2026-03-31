@@ -965,7 +965,39 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
             <!-- Drawing toolbar — left strip -->
             <div id="drawToolbar" style="width:44px;flex-shrink:0;background:#07090e;border-right:1px solid rgba(201,168,76,.13);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;overflow:visible"></div>
             <!-- Canvas wrapper -->
-            <div id="chartCanvasWrap">
+            <div id="chartCanvasWrap" style="position:relative">
+              
+              <!-- TRADINGVIEW-STYLE REPLAY WIDGET -->
+              <div id="replayWidget" style="display:none;position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:200;background:rgba(18,20,30,0.95);border:1px solid rgba(52,152,219,.4);border-radius:6px;padding:6px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.6);backdrop-filter:blur(8px);font-family:'DM Mono',monospace;align-items:center;gap:12px">
+                <div style="color:rgba(240,244,250,.9);font-weight:bold;font-size:11px;display:flex;align-items:center;gap:6px">
+                  <span style="color:#3498db">▶</span> REPLAY
+                </div>
+                <div style="width:1px;height:14px;background:rgba(255,255,255,.1)"></div>
+                
+                <div id="rpPlayControls" style="display:none;align-items:center;gap:6px">
+                  <button id="rpPlayBtn" onclick="toggleReplayPlay()" style="background:rgba(52,152,219,.15);border:1px solid rgba(52,152,219,.3);color:#3498db;cursor:pointer;display:flex;align-items:center;justify-content:center;width:26px;height:24px;border-radius:4px">
+                    <svg id="rpPlayIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  </button>
+                  <button id="rpStepBtn" onclick="stepReplayForward()" style="background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);cursor:pointer;display:flex;align-items:center;justify-content:center;width:26px;height:24px;border-radius:4px">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                  </button>
+                  <div style="width:1px;height:14px;background:rgba(255,255,255,.1);margin-left:6px"></div>
+                  <select id="rpSpeed" style="background:#0a0c10;color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.15);border-radius:3px;padding:2px 4px;font-family:inherit;font-size:9px;outline:none">
+                    <option value="1000">1x</option>
+                    <option value="500">2x</option>
+                    <option value="300" selected>3x</option>
+                    <option value="100">5x</option>
+                    <option value="30">10x</option>
+                  </select>
+                </div>
+
+                <div id="rpSelectMsg" style="font-size:10px;color:rgba(255,255,255,.5);font-style:italic">
+                  Click on the chart to select starting point...
+                </div>
+
+                <div style="width:1px;height:14px;background:rgba(255,255,255,.1);margin-right:2px"></div>
+                <button onclick="exitBacktestMode()" style="background:transparent;border:none;color:#e74c3c;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;line-height:1">×</button>
+              </div>
 
 
               <canvas id="chartCanvas" style="display:block;width:100%;height:560px;cursor:crosshair"></canvas>
@@ -3412,7 +3444,10 @@ callBackend = function(endpoint, payload){
 
 var _btActive      = false;  /* is backtest mode on? */
 var _btAllCandles  = null;   /* full candle set (past + future) */
-var _replayIndex   = 0;      /* current visible candle index */
+/* ── TRADINGVIEW STYLE REPLAY ENGINE ── */
+var _replayIndex   = 0;
+var _replayState   = 'idle'; /* 'idle' | 'select' | 'paused' | 'playing' */
+var _replayIntId   = null;
 
 function toggleBacktestMode() {
   if (_btActive) { exitBacktestMode(); return; }
@@ -3422,30 +3457,34 @@ function toggleBacktestMode() {
   }
   
   _btActive = true;
-  document.getElementById('btModeBtn').classList.add('active');
-  document.getElementById('btBar').classList.add('active');
+  var btBtn = document.getElementById('btModeBtn');
+  if (btBtn) btBtn.classList.add('active');
   
-  /* Save full candle set */
+  var w = document.getElementById('replayWidget');
+  if (w) w.style.display = 'flex';
+  
   _btAllCandles = chartCandles.slice();
   
-  /* Default: show 70% of data */
-  _replayIndex = Math.floor(_btAllCandles.length * 0.7);
+  _replayState = 'select';
+  document.getElementById('rpPlayControls').style.display = 'none';
+  document.getElementById('rpSelectMsg').style.display = 'block';
   
-  /* Slice to show only data up to replayIndex */
-  chartCandles = _btAllCandles.slice(0, _replayIndex);
-  
-  updateBacktestUI();
   renderChart();
 }
 
 function exitBacktestMode() {
   _btActive = false;
+  _replayState = 'idle';
   _replayIndex = 0;
+  if (_replayIntId) clearInterval(_replayIntId);
+  _replayIntId = null;
   
-  document.getElementById('btModeBtn').classList.remove('active');
-  document.getElementById('btBar').classList.remove('active');
+  var btBtn = document.getElementById('btModeBtn');
+  if (btBtn) btBtn.classList.remove('active');
   
-  /* Restore full candles */
+  var w = document.getElementById('replayWidget');
+  if (w) w.style.display = 'none';
+  
   if (_btAllCandles && _btAllCandles.length) {
     chartCandles = _btAllCandles;
     _btAllCandles = null;
@@ -3453,147 +3492,68 @@ function exitBacktestMode() {
   
   renderChart();
   
-  /* Update snapshot */
   if (chartCandles && chartCandles.length > 0) {
     var cv = document.getElementById('chartCanvas');
     if (cv) { dataUrl = cv.toDataURL('image/png'); }
   }
 }
 
-function updateBacktestUI() {
-  /* Update slider */
-  var pct = Math.round((_replayIndex / _btAllCandles.length) * 100);
-  document.getElementById('btSlider').value = pct;
+function startReplayAt(idx) {
+  _replayIndex = Math.max(10, Math.min(_btAllCandles.length - 1, idx));
+  _replayState = 'paused';
   
-  /* Update date label */
-  var cutCandle = _btAllCandles[_replayIndex - 1];
-  if (cutCandle) {
-    var d = new Date(cutCandle.t);
-    document.getElementById('btDateLbl').textContent =
-      'Cut: ' + d.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
-  }
+  document.getElementById('rpSelectMsg').style.display = 'none';
+  document.getElementById('rpPlayControls').style.display = 'flex';
+  document.getElementById('rpPlayIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
   
-  /* Update hidden bars count */
-  var hiddenCount = _btAllCandles.length - _replayIndex;
-  document.getElementById('btCandlesLeft').textContent = hiddenCount + ' bars hidden';
-}
-
-function onBtSlider(pct) {
-  if (!_btAllCandles || !_btAllCandles.length) return;
-  
-  pct = parseInt(pct);
-  _replayIndex = Math.round((pct / 100) * _btAllCandles.length);
-  _replayIndex = Math.max(10, Math.min(_btAllCandles.length - 3, _replayIndex));
-  
-  /* Slice array to show only data up to replayIndex */
   chartCandles = _btAllCandles.slice(0, _replayIndex);
-  
-  updateBacktestUI();
   renderChart();
-  
-  /* Screenshot for AI */
-  var cv = document.getElementById('chartCanvas');
-  if (cv) {
-    dataUrl = cv.toDataURL('image/png');
-    if (typeof buildToolGrid === 'function') buildToolGrid();
+}
+
+function toggleReplayPlay() {
+  if (_replayState === 'playing') {
+    _replayState = 'paused';
+    if (_replayIntId) clearInterval(_replayIntId);
+    document.getElementById('rpPlayIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
+  } else if (_replayState === 'paused') {
+    if (_replayIndex >= _btAllCandles.length - 1) return;
+    _replayState = 'playing';
+    document.getElementById('rpPlayIcon').innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+    
+    var speed = parseInt(document.getElementById('rpSpeed').value) || 300;
+    _replayIntId = setInterval(function() {
+      if (_replayIndex >= _btAllCandles.length - 1) {
+        toggleReplayPlay(); 
+        return;
+      }
+      _replayIndex++;
+      chartCandles = _btAllCandles.slice(0, _replayIndex);
+      renderChart();
+    }, speed);
   }
 }
 
-function revealBacktest() {
-  if (!_btAllCandles) { showErr('No hidden candles to reveal.'); return; }
-
-  /* Calculate hidden bars */
-  var hiddenCandles = _btAllCandles.slice(_replayIndex);
+function stepReplayForward() {
+  if (_replayState === 'playing') toggleReplayPlay(); 
+  if (_replayState !== 'paused' || !_btAllCandles) return;
+  if (_replayIndex >= _btAllCandles.length - 1) return;
   
-  /* Restore full chart */
-  chartCandles = _btAllCandles.slice();
+  _replayIndex++;
+  chartCandles = _btAllCandles.slice(0, _replayIndex);
   renderChart();
-
-  /* Score: compare AI prediction direction vs actual outcome */
-  var hiddenFirst = hiddenCandles[0];
-  var hiddenLast  = hiddenCandles[hiddenCandles.length - 1];
-  if (!hiddenFirst || !hiddenLast) return;
-
-  var actualOpen  = hiddenFirst.o;
-  var actualClose = hiddenLast.c;
-  var actualDir   = actualClose > actualOpen ? 'up' : 'down';
-  var actualPct   = ((actualClose - actualOpen) / actualOpen * 100).toFixed(2);
-  var hiddenBars  = hiddenCandles.length;
-
-  /* Draw reveal overlay on chart */
-  setTimeout(function() {
-    var cv  = document.getElementById('chartCanvas');
-    var ctx = cv && cv.getContext('2d');
-    if (!ctx) return;
-
-    var dpr = window.devicePixelRatio || 1;
-    var W   = cv.width / dpr;
-    var H   = cv.height / dpr;
-
-    /* Draw green/red band over the revealed zone */
-    var visibleTotal = chartCandles.length;
-    var cutX = W * (_replayIndex / visibleTotal);
-    ctx.fillStyle = actualDir === 'up'
-      ? 'rgba(39,174,96,0.08)' : 'rgba(231,76,60,0.08)';
-    ctx.fillRect(cutX, 0, W - cutX - 75, H - 56);
-
-    /* Label */
-    ctx.font = 'bold 11px DM Mono';
-    ctx.fillStyle = actualDir === 'up' ? '#27ae60' : '#e74c3c';
-    ctx.textAlign = 'center';
-    ctx.fillText(
-      'ACTUAL: ' + (actualDir === 'up' ? '▲' : '▼') + ' ' + actualPct + '% over ' + hiddenBars + ' bars',
-      cutX + (W - cutX - 75) / 2,
-      H / 2
-    );
-  }, 80);
-
-  /* Show results panel */
-  _showBtScore(actualDir, actualPct, hiddenBars, actualOpen, actualClose);
 }
 
-function _showBtScore(actualDir, actualPct, hiddenBars, priceOpen, priceClose) {
-  /* Remove old panel if any */
-  var old = document.getElementById('btScorePanel');
-  if (old) old.remove();
-
-  var panel = document.createElement('div');
-  panel.id = 'btScorePanel';
-  panel.style.cssText = [
-    'position:fixed', 'top:50%', 'left:50%',
-    'transform:translate(-50%,-50%)',
-    'background:#0d1018', 'border:1px solid rgba(201,168,76,.35)',
-    'padding:28px 32px', 'z-index:9999', 'min-width:340px',
-    'font-family:DM Mono,monospace', 'box-shadow:0 20px 60px rgba(0,0,0,.8)'
-  ].join(';');
-
-  var dirColor = actualDir === 'up' ? '#27ae60' : '#e74c3c';
-  var dirIcon  = actualDir === 'up' ? '▲' : '▼';
-
-  panel.innerHTML =
-    '<div style="font-family:Cinzel,serif;font-size:14px;color:#c9a84c;letter-spacing:.1em;margin-bottom:16px">⏪ BACKTEST RESULT</div>' +
-    '<div style="font-size:28px;color:' + dirColor + ';font-weight:700;margin-bottom:4px">' +
-      dirIcon + ' ' + actualPct + '%' +
-    '</div>' +
-    '<div style="font-size:10px;color:rgba(240,244,250,.5);margin-bottom:16px">' +
-      'Actual move over ' + hiddenBars + ' hidden bars · ' +
-      '$' + parseFloat(priceOpen).toLocaleString() + ' → $' + parseFloat(priceClose).toLocaleString() +
-    '</div>' +
-    '<div style="border-top:1px solid rgba(255,255,255,.07);padding-top:12px;font-size:9px;color:rgba(240,244,250,.55);line-height:1.9">' +
-      'Compare to your AI tool predictions above.<br>' +
-      'Were the signals bullish/bearish in the right direction?' +
-    '</div>' +
-    '<div style="display:flex;gap:8px;margin-top:16px">' +
-      '<button onclick="exitBacktestMode();var p=document.getElementById(\'btScorePanel\');if(p)p.remove();" ' +
-        'style="flex:1;font-family:Cinzel,serif;font-size:9px;padding:8px;background:rgba(201,168,76,.1);' +
-        'border:1px solid rgba(201,168,76,.3);color:#c9a84c;cursor:pointer;letter-spacing:.08em">EXIT BACKTEST</button>' +
-      '<button onclick="var p=document.getElementById(\'btScorePanel\');if(p)p.remove();" ' +
-        'style="font-family:DM Mono,monospace;font-size:9px;padding:8px 12px;background:transparent;' +
-        'border:1px solid rgba(255,255,255,.1);color:rgba(240,244,250,.5);cursor:pointer">Keep chart</button>' +
-    '</div>';
-
-  document.body.appendChild(panel);
-}
+document.addEventListener('DOMContentLoaded', function() {
+  var speedEl = document.getElementById('rpSpeed');
+  if (speedEl) {
+    speedEl.addEventListener('change', function() {
+      if (_replayState === 'playing') {
+        toggleReplayPlay(); // pause
+        toggleReplayPlay(); // resume with new speed
+      }
+    });
+  }
+});
 
 /* Patch renderChart to draw the curtain line when in backtest mode */
 var _origRenderChart = null;
@@ -3604,202 +3564,114 @@ var _origRenderChart = null;
     var _orig = renderChart;
     renderChart = function() {
       _orig.apply(this, arguments);
-      if (!_btActive || !_btAllCandles || !chartCandles || !chartCandles.length) return;
+      if (!_btActive || !_btAllCandles) return;
+      
       var cv  = document.getElementById('chartCanvas');
       var ctx = cv && cv.getContext('2d');
       if (!ctx) return;
       var dpr = window.devicePixelRatio || 1;
       var W   = cv.width / dpr;
       var H   = cv.height / dpr;
-      
-      /* Draw replay line at the last visible candle */
       var PAD = { l:8, r:75, t:16, b:56 };
       var CW  = W - PAD.l - PAD.r;
-      var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
-      var rightGapBars = Math.max(4, Math.round(n * 0.08));
-      var barW = CW / (n + rightGapBars);
       
-      /* Find where to draw the line: at the END of chartCandles */
-      var replayVisibleIdx = chartCandles.length - Math.max(0, chartCandles.length - n - chartView.offset);
-      if (replayVisibleIdx >= 0 && replayVisibleIdx <= n) {
-        var x = PAD.l + replayVisibleIdx * barW;
+      /* In 'select' mode, draw a vertical blue dashed line where the user is hovering */
+      if (_replayState === 'select' && _hoverReplayIdx >= 0 && chartCandles && chartCandles.length) {
+        var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
+        var rightGapBars = Math.max(4, Math.round(n * 0.08));
+        var barW = CW / (n + rightGapBars);
         
-        ctx.save();
+        var startIdx = Math.max(0, chartCandles.length - n - chartView.offset);
+        var visibleIdx = _hoverReplayIdx - startIdx;
         
-        /* Red vertical line */
-        ctx.strokeStyle = '#e74c3c';
-        ctx.lineWidth   = 2;
-        ctx.beginPath();
-        ctx.moveTo(x, PAD.t);
-        ctx.lineTo(x, H - PAD.b);
-        ctx.stroke();
-        
-        /* Circle handle at top */
-        ctx.fillStyle = '#e74c3c';
-        ctx.beginPath();
-        ctx.arc(x, PAD.t + 8, 5, 0, Math.PI * 2);
-        ctx.fill();
-        
-        /* Hidden bars count */
-        var hiddenCount = _btAllCandles.length - _replayIndex;
-        if (hiddenCount > 0) {
-          ctx.fillStyle = '#e74c3c';
-          ctx.font = 'bold 9px DM Mono';
+        if (visibleIdx >= 0 && visibleIdx <= n) {
+          var x = PAD.l + visibleIdx * barW;
+          ctx.save();
+          ctx.strokeStyle = '#3498db';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x, PAD.t);
+          ctx.lineTo(x, H - PAD.b);
+          ctx.stroke();
+          
+          /* Tooltip handle at bottom */
+          ctx.fillStyle = '#3498db';
+          ctx.font = 'bold 10px DM Mono';
           ctx.textAlign = 'center';
-          ctx.fillText(hiddenCount + ' hidden', x, PAD.t + 24);
+          ctx.fillText('✂️ Click to Start', x, H - PAD.b + 14);
+          ctx.restore();
         }
-        
-        ctx.restore();
       }
     };
   }, 200);
 })();
 
-/* ── Simple Replay Drag (TradingView style) ── */
-(function initReplayDrag() {
-  var _dragging = false;
-
-  function _getReplayX() {
-    if (!_btActive || !_btAllCandles || !chartCandles || !chartCandles.length) return -1;
-    var cv = document.getElementById('chartCanvas');
-    if (!cv) return -1;
-    var dpr = window.devicePixelRatio || 1;
-    var W   = cv.width / dpr;
-    var PAD  = { l:8, r:75 };
-    var CW   = W - PAD.l - PAD.r;
-    var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
-    var rightGapBars = Math.max(4, Math.round(n * 0.08));
-    var barW = CW / (n + rightGapBars);
-    var startIdx = Math.max(0, chartCandles.length - n - chartView.offset);
-    var replayVisibleIdx = chartCandles.length - startIdx;
-    
-    // If it's way off screen, return -1
-    if (replayVisibleIdx < -2 || replayVisibleIdx > n + rightGapBars + 2) return -1;
-    return PAD.l + replayVisibleIdx * barW;
-  }
-
-  function _updateReplayFromMouse(clientX) {
-    var cv = document.getElementById('chartCanvas');
-    if (!cv || !_btAllCandles) return;
-    
-    var rect = cv.getBoundingClientRect();
-    var dpr  = window.devicePixelRatio || 1;
-    var W    = cv.width / dpr;
-    var PAD  = { l:8, r:75 };
-    var CW   = W - PAD.l - PAD.r;
-    var mouseX = clientX - rect.left;
-    
-    /* Calculate visible range based on current zoom */
-    var n = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
-    var rightGapBars = Math.max(4, Math.round(n * 0.08));
-    var barW = CW / (n + rightGapBars);
-    
-    /* Mouse X to visible bar index */
-    var visibleBarIdx = Math.floor((mouseX - PAD.l) / barW);
-    
-    /* Convert to absolute index in _btAllCandles. 
-       startIdx is relative to the currently sliced chartCandles. */
-    var startIdx = Math.max(0, chartCandles.length - n - chartView.offset);
-    var absoluteIdx = startIdx + visibleBarIdx;
-    absoluteIdx = Math.max(10, Math.min(_btAllCandles.length - 1, absoluteIdx));
-    
-    /* Calculate how index changes so we can keep right edge stable by adjusting offset */
-    var shift = absoluteIdx - _replayIndex;
-    if (shift !== 0) {
-      /* Keep the view visually stable during drag if possible */
-      chartView.offset = Math.max(0, chartView.offset - shift);
-    }
-
-    /* Update replayIndex and slice */
-    _replayIndex = absoluteIdx;
-    chartCandles = _btAllCandles.slice(0, _replayIndex);
-    
-    updateBacktestUI();
-    renderChart();
-  }
-
+/* Setup Canvas listeners for Replay Selection */
+var _hoverReplayIdx = -1;
+(function initReplayEngine() {
   var _waitForCanvas = setInterval(function() {
     var cv = document.getElementById('chartCanvas');
     if (!cv) return;
     clearInterval(_waitForCanvas);
 
-    cv.addEventListener('mousedown', function(e) {
-      if (!_btActive || e.button !== 0) return;
-      var curX = _getReplayX();
+    function _getHoverAbsoluteIdx(clientX) {
+      if (!chartCandles || !chartCandles.length || !_btAllCandles) return -1;
+      var dpr = window.devicePixelRatio || 1;
+      var W   = cv.width / dpr;
+      var PAD  = { l:8, r:75 };
+      var CW   = W - PAD.l - PAD.r;
       var rect = cv.getBoundingClientRect();
-      var mouseX = e.clientX - rect.left;
-      if (curX > 0 && Math.abs(mouseX - curX) <= 20) {
-        _dragging = true;
-        cv.style.cursor = 'ew-resize';
-        _updateReplayFromMouse(e.clientX);
+      var mouseX = clientX - rect.left;
+      
+      var n = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
+      var rightGapBars = Math.max(4, Math.round(n * 0.08));
+      var barW = CW / (n + rightGapBars);
+      
+      var visibleBarIdx = Math.floor((mouseX - PAD.l) / barW);
+      var startIdx = Math.max(0, chartCandles.length - n - chartView.offset);
+      var absoluteIdx = startIdx + visibleBarIdx;
+      return absoluteIdx;
+    }
+
+    cv.addEventListener('mousemove', function(e) {
+      if (!_btActive || _replayState !== 'select') {
+        if (_hoverReplayIdx !== -1) { _hoverReplayIdx = -1; renderChart(); }
+        return;
+      }
+      var idx = _getHoverAbsoluteIdx(e.clientX);
+      if (idx !== _hoverReplayIdx) {
+        _hoverReplayIdx = idx;
+        renderChart();
+      }
+    });
+
+    cv.addEventListener('mouseleave', function() {
+      if (_hoverReplayIdx !== -1) { _hoverReplayIdx = -1; renderChart(); }
+    });
+
+    cv.addEventListener('mousedown', function(e) {
+      if (!_btActive || _replayState !== 'select' || e.button !== 0) return;
+      var idx = _getHoverAbsoluteIdx(e.clientX);
+      if (idx > 0 && idx < _btAllCandles.length) {
+        _hoverReplayIdx = -1;
+        startReplayAt(idx);
         e.preventDefault();
         e.stopPropagation();
       }
     }, true);
 
-    document.addEventListener('mousemove', function(e) {
-      if (!_btActive) return;
-      if (_dragging) {
-        _updateReplayFromMouse(e.clientX);
-        e.preventDefault();
-      } else {
-        var curX = _getReplayX();
-        var rect = cv.getBoundingClientRect();
-        var mouseX = e.clientX - rect.left;
-        if (curX > 0 && Math.abs(mouseX - curX) <= 20) {
-          cv.style.cursor = 'ew-resize';
-        } else if (cv.style.cursor === 'ew-resize') {
-          cv.style.cursor = 'crosshair';
-        }
-      }
-    });
-
-    document.addEventListener('mouseup', function(e) {
-      if (!_dragging) return;
-      _dragging = false;
-      var cv = document.getElementById('chartCanvas');
-      if (cv) cv.style.cursor = 'crosshair';
-      
-      /* Screenshot for AI */
-      var cvEl = document.getElementById('chartCanvas');
-      if (cvEl) {
-        dataUrl = cvEl.toDataURL('image/png');
-        if (typeof buildToolGrid === 'function') buildToolGrid();
-      }
-    });
-
-    /* Touch support */
     cv.addEventListener('touchstart', function(e) {
-      if (!_btActive) return;
-      var curX = _getReplayX();
-      var rect = cv.getBoundingClientRect();
+      if (!_btActive || _replayState !== 'select') return;
       var touch = e.touches[0];
-      var mouseX = touch.clientX - rect.left;
-      if (curX > 0 && Math.abs(mouseX - curX) <= 30) {
-        _dragging = true;
-        _updateReplayFromMouse(touch.clientX);
+      var idx = _getHoverAbsoluteIdx(touch.clientX);
+      if (idx > 0 && idx < _btAllCandles.length) {
+        _hoverReplayIdx = -1;
+        startReplayAt(idx);
         e.preventDefault();
         e.stopPropagation();
       }
-    }, { passive: false, capture: true });
-
-    document.addEventListener('touchmove', function(e) {
-      if (!_dragging || !_btActive) return;
-      var touch = e.touches[0];
-      _updateReplayFromMouse(touch.clientX);
-      e.preventDefault();
-    }, { passive: false });
-
-    document.addEventListener('touchend', function() {
-      if (!_dragging) return;
-      _dragging = false;
-      
-      var cvEl = document.getElementById('chartCanvas');
-      if (cvEl) {
-        dataUrl = cvEl.toDataURL('image/png');
-        if (typeof buildToolGrid === 'function') buildToolGrid();
-      }
-    });
+    }, { capture: true });
 
   }, 300);
 })();
