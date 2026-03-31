@@ -4852,9 +4852,25 @@ function loadChart(symbol,interval){
       if(data.status==='loading'){ showChartMsg('Loading '+sym+'\u2026\nRailway fetching from TwelveData'); return; }
       if(!data.candles||!data.candles[currentInterval])return;
       if(sym!==currentSymbol)return;
+      
+      /* ── BACKTEST GUARD ── 
+         If user is replaying old history, we must NOT let live ticks steal the screen! 
+         We quietly update the hidden data and exit. */
+      if (typeof _btActive !== 'undefined' && _btActive) {
+        if(!allCandleData[sym]) allCandleData[sym]={};
+        allCandleData[sym][currentInterval] = data.candles[currentInterval];
+        _btAllCandles = data.candles[currentInterval];
+        
+        var liveC = data.candles[currentInterval];
+        var lastL = liveC[liveC.length-1];
+        var prevL = liveC.length>1 ? liveC[liveC.length-2].c : lastL.o;
+        showLivePrice({symbol:sym,price:lastL.c,change_24h:((lastL.c-prevL)/prevL*100).toFixed(3),trend_24h:lastL.c>=prevL?'up':'dn'});
+        return;
+      }
+
       chartCandles=data.candles[currentInterval];
       if(!allCandleData[sym])allCandleData[sym]={};
-      allCandleData[sym]=data.candles;
+      allCandleData[sym][currentInterval]=data.candles[currentInterval];
       renderChart();
       var last=chartCandles[chartCandles.length-1];
       var prev=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last.o;
