@@ -3990,6 +3990,9 @@ var sma200On        = false;
 var sma400On        = false;
 var complexFractalOn = false;
 var vpvrOn           = false;
+var vpvrAnchorX      = null;  /* null = auto left edge; set by drag */
+var _vpvrDragging    = false;
+var _vpvrDragOff     = 0;
 var allCandleData   = {};
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0 };
@@ -4569,9 +4572,14 @@ function renderChart() {
 /* ── Volume Profile Visible Range (VPVR) ── */
 function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
   if (!visible || visible.length < 2) return;
-  var BUCKETS = 60;
-  var BAR_MAX_W = 52; /* max bar width in px — sits inside PAD.r */
-  var buckets = new Array(BUCKETS).fill(0);
+  var BUCKETS   = 60;
+  var BAR_MAX_W = Math.min(CW * 0.18, 90); /* 18% of chart width, max 90px — responsive */
+  /* Anchor: use dragged position or default to left edge of chart area */
+  var barX = (vpvrAnchorX !== null) ? vpvrAnchorX : PAD.l;
+  /* Clamp so bars stay within chart bounds */
+  barX = Math.max(PAD.l, Math.min(W - PAD.r - BAR_MAX_W - 2, barX));
+
+  var buckets    = new Array(BUCKETS).fill(0);
   var buyBuckets = new Array(BUCKETS).fill(0);
 
   /* Accumulate volume into price buckets */
@@ -4580,44 +4588,41 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
     if (!vol) return;
     var lo = Math.max(c.l, mn), hi = Math.min(c.h, mx);
     if (hi <= lo) return;
-    var idxLo = Math.floor((lo - mn) / range * BUCKETS);
-    var idxHi = Math.floor((hi - mn) / range * BUCKETS);
-    idxLo = Math.max(0, Math.min(BUCKETS - 1, idxLo));
-    idxHi = Math.max(0, Math.min(BUCKETS - 1, idxHi));
+    var idxLo = Math.max(0, Math.min(BUCKETS - 1, Math.floor((lo - mn) / range * BUCKETS)));
+    var idxHi = Math.max(0, Math.min(BUCKETS - 1, Math.floor((hi - mn) / range * BUCKETS)));
     var span = idxHi - idxLo + 1;
     var perBucket = vol / span;
     var isBull = c.c >= c.o;
     for (var b = idxLo; b <= idxHi; b++) {
-      buckets[b]   += perBucket;
+      buckets[b] += perBucket;
       if (isBull) buyBuckets[b] += perBucket;
     }
   });
 
-  var maxVol = Math.max.apply(null, buckets) || 1;
-  var pocIdx = buckets.indexOf(maxVol);
+  var maxVol  = Math.max.apply(null, buckets) || 1;
+  var pocIdx  = buckets.indexOf(maxVol);
   var bucketH = CH / BUCKETS;
-  var barX = W - PAD.r + 2; /* anchored just inside right margin */
 
   ctx.save();
 
   for (var i = 0; i < BUCKETS; i++) {
     if (!buckets[i]) continue;
-    var barW  = (buckets[i] / maxVol) * BAR_MAX_W;
-    var buyW  = (buyBuckets[i] / maxVol) * BAR_MAX_W;
+    var barW = (buckets[i] / maxVol) * BAR_MAX_W;
+    var buyW = (buyBuckets[i] / maxVol) * BAR_MAX_W;
     /* Y: bucket 0 = bottom price, bucket BUCKETS-1 = top price */
     var y = PAD.t + CH - (i + 1) * bucketH;
 
     /* Bear portion (red) */
-    ctx.fillStyle = 'rgba(239,83,80,0.35)';
+    ctx.fillStyle = 'rgba(239,83,80,0.28)';
     ctx.fillRect(barX, y, barW, bucketH - 1);
 
-    /* Bull portion (green) — drawn on top of red */
-    ctx.fillStyle = 'rgba(38,166,154,0.45)';
+    /* Bull portion (green) layered on top */
+    ctx.fillStyle = 'rgba(38,166,154,0.38)';
     ctx.fillRect(barX, y, buyW, bucketH - 1);
 
-    /* POC — gold highlight */
+    /* POC bucket */
     if (i === pocIdx) {
-      ctx.fillStyle = 'rgba(201,168,76,0.18)';
+      ctx.fillStyle = 'rgba(201,168,76,0.15)';
       ctx.fillRect(barX, y, BAR_MAX_W, bucketH - 1);
       /* POC dashed line across full chart width */
       ctx.save();
@@ -4630,23 +4635,36 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
       ctx.lineTo(W - PAD.r, midY);
       ctx.stroke();
       ctx.setLineDash([]);
-      /* POC label */
+      /* POC price label — right of the histogram bar */
       ctx.font = 'bold 9px "DM Mono",monospace';
       ctx.fillStyle = '#c9a84c';
       ctx.textAlign = 'left';
       var pocPrice = mn + (i + 0.5) / BUCKETS * range;
-      ctx.fillText('POC ' + (pocPrice < 1 ? pocPrice.toFixed(5) : pocPrice < 100 ? pocPrice.toFixed(3) : Math.round(pocPrice)), barX + 2, midY - 2);
+      ctx.fillText('POC ' + (pocPrice < 1 ? pocPrice.toFixed(5) : pocPrice < 100 ? pocPrice.toFixed(3) : Math.round(pocPrice)), barX + BAR_MAX_W + 3, midY + 3);
       ctx.restore();
     }
   }
 
-  /* VPVR label */
-  ctx.font = 'bold 8px "DM Mono",monospace';
+  /* Drag handle pill — signals that VPVR is draggable */
+  var handleY = PAD.t + 2;
+  var handleH = 14;
   ctx.fillStyle = 'rgba(201,168,76,0.6)';
-  ctx.textAlign = 'left';
-  ctx.fillText('VPVR', barX + 2, PAD.t + 10);
+  ctx.beginPath();
+  if (ctx.roundRect) { ctx.roundRect(barX, handleY, BAR_MAX_W, handleH, 3); }
+  else { ctx.rect(barX, handleY, BAR_MAX_W, handleH); }
+  ctx.fill();
+  ctx.font = 'bold 8px "DM Mono",monospace';
+  ctx.fillStyle = '#06080d';
+  ctx.textAlign = 'center';
+  ctx.fillText('\u2807 VPVR', barX + BAR_MAX_W / 2, handleY + 10);
 
   ctx.restore();
+
+  /* Expose geometry so mouse handlers can hit-test the drag handle */
+  drawVPVR._x  = barX;
+  drawVPVR._w  = BAR_MAX_W;
+  drawVPVR._hy = handleY;
+  drawVPVR._hh = handleH;
 }
 
 /* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
@@ -4863,6 +4881,36 @@ if(chartCanvas){
   chartCanvas.addEventListener('mouseleave',function(){
     if(_panStart===null) chartCanvas.style.cursor='crosshair';
   });
+
+  /* ── VPVR drag: left-click on the handle pill to move it horizontally ── */
+  chartCanvas.addEventListener('mousedown', function(e) {
+    if (!vpvrOn || e.button !== 0) return;
+    var dpr = window.devicePixelRatio || 1;
+    var r   = chartCanvas.getBoundingClientRect();
+    var cx  = (e.clientX - r.left);
+    var cy  = (e.clientY - r.top);
+    var h   = drawVPVR;
+    if (!h._w) return;
+    /* Hit-test the drag handle pill */
+    if (cx >= h._x && cx <= h._x + h._w && cy >= h._hy && cy <= h._hy + h._hh) {
+      _vpvrDragging = true;
+      _vpvrDragOff  = cx - h._x;
+      e.stopPropagation();
+    }
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!_vpvrDragging) return;
+    var dpr = window.devicePixelRatio || 1;
+    var r   = chartCanvas.getBoundingClientRect();
+    var cx  = (e.clientX - r.left);
+    vpvrAnchorX = cx - _vpvrDragOff;
+    renderChart && renderChart();
+  });
+
+  document.addEventListener('mouseup', function(e) {
+    if (_vpvrDragging) { _vpvrDragging = false; }
+  });
 }
 
 function captureChart(){
@@ -4907,6 +4955,7 @@ function loadChart(symbol,interval){
     dataUrl=null;
   }
   currentSymbol=sym; currentInterval=interval||'4h';
+  vpvrAnchorX = null; /* reset VPVR position on new symbol */
   var empty=document.getElementById('chartEmpty');if(empty)empty.style.display='none';
   if(chartSSE){chartSSE.close();chartSSE=null;}
   chartCandles=[];
