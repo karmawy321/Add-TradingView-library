@@ -4828,14 +4828,20 @@ if(chartCanvas){
     var isCursor = (typeof activeItem !== 'undefined' && activeItem && (activeItem.id==='cursor' || activeItem.id==='arrow_cur' || activeItem.id==='dot'));
     if(e.button!==1 && !(e.button===0 && isCursor)) return;
     
+    e.preventDefault(); /* Must prevent default to stop middle-click auto-scroll and selection */
+    
+    var sX = e.clientX;
+    var sBtn = e.button;
+    var sOff = chartView.offset;
+
     /* Defer slightly to let drawing drags in initDrawEvents take precedence left click */
     setTimeout(function() {
-      if (e.button===0) {
+      if (sBtn === 0) {
         if (typeof _ghostDrag !== 'undefined' && _ghostDrag !== null) return;
         if (typeof _ghostResize !== 'undefined' && _ghostResize !== null) return;
         if (typeof _drawDrag !== 'undefined' && _drawDrag !== null) return;
       }
-      _panStart=e.clientX; _panOffset=chartView.offset;
+      _panStart = sX; _panOffset = sOff;
       chartCanvas.style.cursor='grabbing';
     }, 0);
   });
