@@ -726,46 +726,6 @@ if (isEmbedded) {
   }
 }
 
-var activeIframeId = null;
-
-    setTimeout(function(){ activeIframeId = 'pane-0'; }, 300);
-  }
-}
-
-function focusPane(id) {
-  activeIframeId = id;
-}
-
-window.addEventListener('message', function(e) {
-  if (!e.data || !e.data.type) return;
-  
-  // PARENT PAGE: receives focus request from Iframe
-  if (e.data.type === 'focus' && !isEmbedded) {
-    focusPane(e.data.paneId);
-    if (e.data.symbol) {
-      var pSearch = document.getElementById('pairIn');
-      if (pSearch && pSearch.value !== e.data.symbol) {
-        // Silently update parent search bar without triggering reload
-        pSearch.value = e.data.symbol;
-      }
-      window.currentSymbol = e.data.symbol;
-    }
-  }
-  
-  // IFRAME: receives tool change request from Parent Toolbar
-  if (e.data.type === 'setTool' && isEmbedded) {
-    if (typeof pickItemById === 'function') {
-      pickItemById(e.data.toolId);
-    }
-  }
-
-  // IFRAME: receives coin change request from Parent Input
-  if (e.data.type === 'setPair' && isEmbedded) {
-    if (typeof quickLoad === 'function') {
-      quickLoad(e.data.symbol);
-    }
-  }
-});
 </script>
 
 </head>
@@ -4541,10 +4501,13 @@ function renderChart() {
     var lastY = Math.max(PAD.t + 10, Math.min(H - PAD.b - 10, pyVal));
     
     chartCtx.save();
+    var liveCol = (liveC.c >= liveC.o) ? '#26a69a' : '#ef5350';
+    var liveLineCol = (liveC.c >= liveC.o) ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)';
+
     /* Check if the actual live bar is visible horizontally to decide on drawing the dashed line */
     var isLiveVisible = (chartView.offset === 0);
     if (isLiveVisible && pyVal >= PAD.t && pyVal <= H - PAD.b) {
-      chartCtx.strokeStyle = 'rgba(52,152,219,0.5)';
+      chartCtx.strokeStyle = liveLineCol;
       chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
       chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
       chartCtx.setLineDash([]);
@@ -4556,7 +4519,7 @@ function renderChart() {
     var bdgW=chartCtx.measureText(priceStr2).width+16;
     var bdgX=W-4-bdgW;  /* Just next to the right margin */
     
-    chartCtx.fillStyle='#3498db'; /* requested blue color */
+    chartCtx.fillStyle=liveCol;
     chartCtx.fillRect(bdgX,lastY-10,bdgW,20);
     
     /* Draw left-pointing tag arrow to match TV indicator styling */
