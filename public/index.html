@@ -3995,7 +3995,7 @@ var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
 var allCandleData   = {};
 var lwChartInstance = null; /* truthy flag for compatibility */
-var chartView       = { offset: 0, zoom: 1.0 };
+var chartView       = { offset: 0, zoom: 1.0, rightPad: 0 };
 var C = { up:'#26a69a', dn:'#ef5350', bg:'#06080d', grid:'rgba(201,168,76,0.05)', sma50:'#c9a84c', sma200:'#3498db', crosshair:'rgba(201,168,76,0.4)' };
 
 function resizeCanvas() {
@@ -4277,8 +4277,8 @@ function renderChart() {
   var range = mx-mn||mn*0.001||0.0001;
   mn -= range*0.05; mx += range*0.05; range = mx-mn;
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
-  /* ── TradingView-style right gap: reserve ~8% of visible bars as empty space ── */
-  var rightGapBars = Math.max(4, Math.round(visible.length * 0.08));
+  /* ── TradingView-style right gap: base 8% + user-dragged extra space (VPVR fills this) ── */
+  var rightGapBars = Math.max(4, Math.round(visible.length * 0.08)) + (chartView.rightPad || 0);
   var n = visible.length, barW = CW/(n + rightGapBars), candleW = Math.max(1.5, barW*0.72);
   function px(i)  { return PAD.l+(i+0.5)*barW; }
   function py(v)  { return PAD.t+CH-((v-mn)/range)*CH; }
@@ -4565,20 +4565,24 @@ function renderChart() {
   
   chartCtx.restore();
 
-  /* ── VPVR overlay ── */
-  if (vpvrOn) drawVPVR(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
+  /* ── VPVR overlay — width = gap between last candle and price axis ── */
+  if (vpvrOn) {
+    var _vpvrRight   = W - PAD.r - 2;
+    var _lastCandleX = PAD.l + (visible.length - 0.5) * barW + candleW / 2;
+    var _vpvrGapW    = _vpvrRight - _lastCandleX;
+    drawVPVR(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, _vpvrGapW);
+  }
 }
 
 /* ── Volume Profile Visible Range (VPVR) ── */
-function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
+function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, gapW) {
   if (!visible || visible.length < 2) return;
   var BUCKETS   = 60;
-  var BAR_MAX_W = Math.min(CW * 0.18, 90); /* 18% of chart width, max 90px — responsive */
-  /* Right-edge anchor: bars grow LEFTWARD from this X position (TradingView style).
-     Default = just inside the price axis on the right side of the chart. */
-  var rightEdge = (vpvrAnchorX !== null) ? vpvrAnchorX : W - PAD.r - 2;
-  /* Clamp so bars never overlap the price axis or go off the left edge */
-  rightEdge = Math.max(PAD.l + BAR_MAX_W, Math.min(W - PAD.r - 2, rightEdge));
+  /* Width = the gap between the last candle and the price axis, min 6px to render */
+  var BAR_MAX_W = gapW || 0;
+  if (BAR_MAX_W < 6) return;
+  /* Fixed right edge — always flush against the price axis */
+  var rightEdge = W - PAD.r - 2;
 
   var buckets    = new Array(BUCKETS).fill(0);
   var buyBuckets = new Array(BUCKETS).fill(0);
@@ -4608,18 +4612,18 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
 
   for (var i = 0; i < BUCKETS; i++) {
     if (!buckets[i]) continue;
-    var barW = (buckets[i] / maxVol) * BAR_MAX_W;
-    var buyW = (buyBuckets[i] / maxVol) * BAR_MAX_W;
+    var bw = (buckets[i] / maxVol) * BAR_MAX_W;
+    var buw = (buyBuckets[i] / maxVol) * BAR_MAX_W;
     /* Y: bucket 0 = bottom price, bucket BUCKETS-1 = top price */
     var y = PAD.t + CH - (i + 1) * bucketH;
 
     /* Bear portion (red) — anchored to rightEdge, extending leftward */
     ctx.fillStyle = 'rgba(239,83,80,0.28)';
-    ctx.fillRect(rightEdge - barW, y, barW, bucketH - 1);
+    ctx.fillRect(rightEdge - bw, y, bw, bucketH - 1);
 
     /* Bull portion (green) layered on top, also leftward */
     ctx.fillStyle = 'rgba(38,166,154,0.38)';
-    ctx.fillRect(rightEdge - buyW, y, buyW, bucketH - 1);
+    ctx.fillRect(rightEdge - buw, y, buw, bucketH - 1);
 
     /* POC bucket */
     if (i === pocIdx) {
@@ -4636,7 +4640,7 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
       ctx.lineTo(W - PAD.r, midY);
       ctx.stroke();
       ctx.setLineDash([]);
-      /* POC price label — left of the histogram area */
+      /* POC label — just left of the VPVR panel */
       ctx.font = 'bold 9px "DM Mono",monospace';
       ctx.fillStyle = '#c9a84c';
       ctx.textAlign = 'right';
@@ -4646,27 +4650,13 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
     }
   }
 
-  /* Drag handle pill at the top of the VPVR area */
-  var handleY = PAD.t + 2;
-  var handleH = 14;
-  ctx.fillStyle = 'rgba(201,168,76,0.6)';
-  ctx.beginPath();
-  if (ctx.roundRect) { ctx.roundRect(rightEdge - BAR_MAX_W, handleY, BAR_MAX_W, handleH, 3); }
-  else { ctx.rect(rightEdge - BAR_MAX_W, handleY, BAR_MAX_W, handleH); }
-  ctx.fill();
+  /* "VPVR" label — small, top of the panel, right-aligned */
   ctx.font = 'bold 8px "DM Mono",monospace';
-  ctx.fillStyle = '#06080d';
-  ctx.textAlign = 'center';
-  ctx.fillText('\u2807 VPVR', rightEdge - BAR_MAX_W / 2, handleY + 10);
+  ctx.fillStyle = 'rgba(201,168,76,0.55)';
+  ctx.textAlign = 'right';
+  ctx.fillText('VPVR', rightEdge - 2, PAD.t + 10);
 
   ctx.restore();
-
-  /* Expose geometry so mouse handlers can hit-test the drag handle */
-  drawVPVR._x  = rightEdge - BAR_MAX_W; /* left edge of the VPVR panel */
-  drawVPVR._w  = BAR_MAX_W;
-  drawVPVR._hy = handleY;
-  drawVPVR._hh = handleH;
-  drawVPVR._re = rightEdge;             /* right-edge anchor for drag */
 }
 
 /* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
@@ -4852,13 +4842,14 @@ if(chartCanvas){
     if(tip) setTimeout(function(){tip.style.display='none';},1500);
   },{passive:false});
 
-  /* Pan — left click (crosshair) or middle click */
-  /* Pan — middle click */
-  var _panStart=null, _panOffset=0;
+  /* Pan — middle click; drag right = history, drag left past latest candle = grow right gap (VPVR expands) */
+  var _panStart=null, _panOffset=0, _panRightPad=0;
   chartCanvas.addEventListener('mousedown',function(e){
     if(e.button!==1) return;
     e.preventDefault();
-    _panStart = e.clientX; _panOffset = chartView.offset;
+    _panStart    = e.clientX;
+    _panOffset   = chartView.offset;
+    _panRightPad = chartView.rightPad || 0;
     chartCanvas.style.cursor='grabbing';
   });
   document.addEventListener('mousemove',function(e){
@@ -4866,11 +4857,22 @@ if(chartCanvas){
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-    var barW=(W-8-75)/Math.max(vis,1);
+    var baseGap=Math.max(4,Math.round(vis*0.08));
+    var barW=(W-8-75)/Math.max(vis+baseGap+_panRightPad,1);
     var dx=e.clientX-_panStart;
-    /* Invert: drag right = go back in history (increase offset) */
+    /* drag right = positive bars = going into history
+       drag left  = negative bars = going toward / into the future gap */
     var bars=Math.round(dx/barW);
-    chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-20)||0,_panOffset+bars));
+    /* Combined scroll position: positive = history, negative = future gap */
+    var scrollPos = (_panOffset - _panRightPad) + bars;
+    var maxOff = Math.max(0,(chartCandles&&chartCandles.length-20)||0);
+    if (scrollPos >= 0) {
+      chartView.offset   = Math.min(scrollPos, maxOff);
+      chartView.rightPad = 0;
+    } else {
+      chartView.offset   = 0;
+      chartView.rightPad = Math.min(-scrollPos, 80); /* cap at 80 extra bars */
+    }
     renderChart();
   });
   document.addEventListener('mouseup',function(e){
@@ -4957,7 +4959,7 @@ function loadChart(symbol,interval){
     dataUrl=null;
   }
   currentSymbol=sym; currentInterval=interval||'4h';
-  vpvrAnchorX = null; /* reset VPVR position on new symbol */
+  vpvrAnchorX = null; chartView.rightPad = 0; /* reset VPVR gap on new symbol */
   var empty=document.getElementById('chartEmpty');if(empty)empty.style.display='none';
   if(chartSSE){chartSSE.close();chartSSE=null;}
   chartCandles=[];
