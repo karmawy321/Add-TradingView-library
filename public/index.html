@@ -2891,7 +2891,7 @@ function setToolRunning(tool, running){
 }
 
 function runTool(tool){
-  if(!dataUrl){ alert('Upload a chart first.'); return; }
+  if(!chartCandles || chartCandles.length < 2){ alert('Load a chart first — select a symbol to connect live data.'); return; }
   if(!tierAllows(tool)){ scrollToPricing(); return; }
   /* Capture screenshot for outCanvas background (preserves visual style) */
   captureAndStore();
