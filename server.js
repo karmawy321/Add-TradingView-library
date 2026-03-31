@@ -492,7 +492,6 @@ function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, tra
     let data = '';
     apiRes.on('data', c => { data += c; });
     apiRes.on('end', () => {
-      console.log(`[Anthropic] model=${model} status=${apiRes.statusCode} body=${data.slice(0,200)}`);
       try {
         const obj = JSON.parse(data);
         /* Overloaded: HTTP 529, or error type/message contains overload */
