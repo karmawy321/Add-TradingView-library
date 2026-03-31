@@ -3604,10 +3604,10 @@ var _origRenderChart = null;
     var _orig = renderChart;
     renderChart = function() {
       _orig.apply(this, arguments);
-      if (!_btActive || _btCurtainBarIdx < 0 || !_btAllCandles) return;
+      if (!_btActive || !_btAllCandles || !chartCandles || !chartCandles.length) return;
       var cv  = document.getElementById('chartCanvas');
       var ctx = cv && cv.getContext('2d');
-      if (!ctx || !chartCandles || !chartCandles.length) return;
+      if (!ctx) return;
       var dpr = window.devicePixelRatio || 1;
       var W   = cv.width / dpr;
       var H   = cv.height / dpr;
@@ -3620,11 +3620,7 @@ var _origRenderChart = null;
       var barW = CW / (n + rightGapBars);
       
       /* Find where to draw the line: at the END of chartCandles */
-      var firstVisibleIdx = chartView.offset;
-      var lastVisibleIdx = Math.min(firstVisibleIdx + n, chartCandles.length);
-      var replayVisibleIdx = chartCandles.length - firstVisibleIdx;
-      
-      /* Only draw if the replay line is within visible range */
+      var replayVisibleIdx = chartCandles.length - Math.max(0, chartCandles.length - n - chartView.offset);
       if (replayVisibleIdx >= 0 && replayVisibleIdx <= n) {
         var x = PAD.l + replayVisibleIdx * barW;
         
@@ -3663,6 +3659,25 @@ var _origRenderChart = null;
 (function initReplayDrag() {
   var _dragging = false;
 
+  function _getReplayX() {
+    if (!_btActive || !_btAllCandles || !chartCandles || !chartCandles.length) return -1;
+    var cv = document.getElementById('chartCanvas');
+    if (!cv) return -1;
+    var dpr = window.devicePixelRatio || 1;
+    var W   = cv.width / dpr;
+    var PAD  = { l:8, r:75 };
+    var CW   = W - PAD.l - PAD.r;
+    var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
+    var rightGapBars = Math.max(4, Math.round(n * 0.08));
+    var barW = CW / (n + rightGapBars);
+    var startIdx = Math.max(0, chartCandles.length - n - chartView.offset);
+    var replayVisibleIdx = chartCandles.length - startIdx;
+    
+    // If it's way off screen, return -1
+    if (replayVisibleIdx < -2 || replayVisibleIdx > n + rightGapBars + 2) return -1;
+    return PAD.l + replayVisibleIdx * barW;
+  }
+
   function _updateReplayFromMouse(clientX) {
     var cv = document.getElementById('chartCanvas');
     if (!cv || !_btAllCandles) return;
@@ -3674,7 +3689,7 @@ var _origRenderChart = null;
     var CW   = W - PAD.l - PAD.r;
     var mouseX = clientX - rect.left;
     
-    /* Calculate visible range */
+    /* Calculate visible range based on current zoom */
     var n = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
     var rightGapBars = Math.max(4, Math.round(n * 0.08));
     var barW = CW / (n + rightGapBars);
@@ -3682,10 +3697,19 @@ var _origRenderChart = null;
     /* Mouse X to visible bar index */
     var visibleBarIdx = Math.floor((mouseX - PAD.l) / barW);
     
-    /* Convert to absolute index in _btAllCandles */
-    var absoluteIdx = chartView.offset + visibleBarIdx;
+    /* Convert to absolute index in _btAllCandles. 
+       startIdx is relative to the currently sliced chartCandles. */
+    var startIdx = Math.max(0, chartCandles.length - n - chartView.offset);
+    var absoluteIdx = startIdx + visibleBarIdx;
     absoluteIdx = Math.max(10, Math.min(_btAllCandles.length - 1, absoluteIdx));
     
+    /* Calculate how index changes so we can keep right edge stable by adjusting offset */
+    var shift = absoluteIdx - _replayIndex;
+    if (shift !== 0) {
+      /* Keep the view visually stable during drag if possible */
+      chartView.offset = Math.max(0, chartView.offset - shift);
+    }
+
     /* Update replayIndex and slice */
     _replayIndex = absoluteIdx;
     chartCandles = _btAllCandles.slice(0, _replayIndex);
@@ -3701,17 +3725,33 @@ var _origRenderChart = null;
 
     cv.addEventListener('mousedown', function(e) {
       if (!_btActive || e.button !== 0) return;
-      _dragging = true;
-      cv.style.cursor = 'ew-resize';
-      _updateReplayFromMouse(e.clientX);
-      e.preventDefault();
-      e.stopPropagation();
+      var curX = _getReplayX();
+      var rect = cv.getBoundingClientRect();
+      var mouseX = e.clientX - rect.left;
+      if (curX > 0 && Math.abs(mouseX - curX) <= 20) {
+        _dragging = true;
+        cv.style.cursor = 'ew-resize';
+        _updateReplayFromMouse(e.clientX);
+        e.preventDefault();
+        e.stopPropagation();
+      }
     }, true);
 
     document.addEventListener('mousemove', function(e) {
-      if (!_dragging || !_btActive) return;
-      _updateReplayFromMouse(e.clientX);
-      e.preventDefault();
+      if (!_btActive) return;
+      if (_dragging) {
+        _updateReplayFromMouse(e.clientX);
+        e.preventDefault();
+      } else {
+        var curX = _getReplayX();
+        var rect = cv.getBoundingClientRect();
+        var mouseX = e.clientX - rect.left;
+        if (curX > 0 && Math.abs(mouseX - curX) <= 20) {
+          cv.style.cursor = 'ew-resize';
+        } else if (cv.style.cursor === 'ew-resize') {
+          cv.style.cursor = 'crosshair';
+        }
+      }
     });
 
     document.addEventListener('mouseup', function(e) {
@@ -3731,11 +3771,16 @@ var _origRenderChart = null;
     /* Touch support */
     cv.addEventListener('touchstart', function(e) {
       if (!_btActive) return;
-      _dragging = true;
+      var curX = _getReplayX();
+      var rect = cv.getBoundingClientRect();
       var touch = e.touches[0];
-      _updateReplayFromMouse(touch.clientX);
-      e.preventDefault();
-      e.stopPropagation();
+      var mouseX = touch.clientX - rect.left;
+      if (curX > 0 && Math.abs(mouseX - curX) <= 30) {
+        _dragging = true;
+        _updateReplayFromMouse(touch.clientX);
+        e.preventDefault();
+        e.stopPropagation();
+      }
     }, { passive: false, capture: true });
 
     document.addEventListener('touchmove', function(e) {
