@@ -3989,6 +3989,7 @@ var sma50On         = false;
 var sma200On        = false;
 var sma400On        = false;
 var complexFractalOn = false;
+var vpvrOn           = false;
 var allCandleData   = {};
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0 };
@@ -4560,6 +4561,92 @@ function renderChart() {
   chartCtx.fillText('FRACTAL AI AGENT', W*0.75, H*0.75);
   
   chartCtx.restore();
+
+  /* ── VPVR overlay ── */
+  if (vpvrOn) drawVPVR(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
+}
+
+/* ── Volume Profile Visible Range (VPVR) ── */
+function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
+  if (!visible || visible.length < 2) return;
+  var BUCKETS = 60;
+  var BAR_MAX_W = 52; /* max bar width in px — sits inside PAD.r */
+  var buckets = new Array(BUCKETS).fill(0);
+  var buyBuckets = new Array(BUCKETS).fill(0);
+
+  /* Accumulate volume into price buckets */
+  visible.forEach(function(c) {
+    var vol = c.v || 0;
+    if (!vol) return;
+    var lo = Math.max(c.l, mn), hi = Math.min(c.h, mx);
+    if (hi <= lo) return;
+    var idxLo = Math.floor((lo - mn) / range * BUCKETS);
+    var idxHi = Math.floor((hi - mn) / range * BUCKETS);
+    idxLo = Math.max(0, Math.min(BUCKETS - 1, idxLo));
+    idxHi = Math.max(0, Math.min(BUCKETS - 1, idxHi));
+    var span = idxHi - idxLo + 1;
+    var perBucket = vol / span;
+    var isBull = c.c >= c.o;
+    for (var b = idxLo; b <= idxHi; b++) {
+      buckets[b]   += perBucket;
+      if (isBull) buyBuckets[b] += perBucket;
+    }
+  });
+
+  var maxVol = Math.max.apply(null, buckets) || 1;
+  var pocIdx = buckets.indexOf(maxVol);
+  var bucketH = CH / BUCKETS;
+  var barX = W - PAD.r + 2; /* anchored just inside right margin */
+
+  ctx.save();
+
+  for (var i = 0; i < BUCKETS; i++) {
+    if (!buckets[i]) continue;
+    var barW  = (buckets[i] / maxVol) * BAR_MAX_W;
+    var buyW  = (buyBuckets[i] / maxVol) * BAR_MAX_W;
+    /* Y: bucket 0 = bottom price, bucket BUCKETS-1 = top price */
+    var y = PAD.t + CH - (i + 1) * bucketH;
+
+    /* Bear portion (red) */
+    ctx.fillStyle = 'rgba(239,83,80,0.35)';
+    ctx.fillRect(barX, y, barW, bucketH - 1);
+
+    /* Bull portion (green) — drawn on top of red */
+    ctx.fillStyle = 'rgba(38,166,154,0.45)';
+    ctx.fillRect(barX, y, buyW, bucketH - 1);
+
+    /* POC — gold highlight */
+    if (i === pocIdx) {
+      ctx.fillStyle = 'rgba(201,168,76,0.18)';
+      ctx.fillRect(barX, y, BAR_MAX_W, bucketH - 1);
+      /* POC dashed line across full chart width */
+      ctx.save();
+      ctx.strokeStyle = '#c9a84c';
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 4]);
+      var midY = y + bucketH / 2;
+      ctx.beginPath();
+      ctx.moveTo(PAD.l, midY);
+      ctx.lineTo(W - PAD.r, midY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      /* POC label */
+      ctx.font = 'bold 9px "DM Mono",monospace';
+      ctx.fillStyle = '#c9a84c';
+      ctx.textAlign = 'left';
+      var pocPrice = mn + (i + 0.5) / BUCKETS * range;
+      ctx.fillText('POC ' + (pocPrice < 1 ? pocPrice.toFixed(5) : pocPrice < 100 ? pocPrice.toFixed(3) : Math.round(pocPrice)), barX + 2, midY - 2);
+      ctx.restore();
+    }
+  }
+
+  /* VPVR label */
+  ctx.font = 'bold 8px "DM Mono",monospace';
+  ctx.fillStyle = 'rgba(201,168,76,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('VPVR', barX + 2, PAD.t + 10);
+
+  ctx.restore();
 }
 
 /* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
@@ -5386,6 +5473,10 @@ var GROUPS = [
   { id:'complexfractal_grp',
     icon:S('<path d="M2 11 Q5 4 8 8 Q11 12 14 5" fill="none" stroke-width="2"/><circle cx="5" cy="9" r="1.5" fill="currentColor" stroke="none"/><circle cx="11" cy="7" r="1.5" fill="currentColor" stroke="none"/>'),
     tooltip:'Complex Fractal Index', single:true, complexfractaltool:true, cur:'default', toggle:true },
+  /* ── Volume Profile (VPVR) ── */
+  { id:'vpvr_grp',
+    icon:S('<rect x="9" y="3" width="5" height="2" rx="0.5"/><rect x="6" y="6" width="8" height="2" rx="0.5"/><rect x="4" y="9" width="10" height="2" rx="0.5"/><rect x="7" y="12" width="6" height="2" rx="0.5"/>'),
+    tooltip:'Volume Profile (VPVR)', single:true, vpvrtool:true, cur:'default', toggle:true },
   'sep',
   /* ── Fibonacci ── */
   { id:'fib_grp', icon:S('<line x1="2" y1="2" x2="14" y2="2"/><line x1="2" y1="6" x2="14" y2="6" opacity=".7"/><line x1="2" y1="10" x2="14" y2="10" opacity=".5"/><line x1="2" y1="14" x2="14" y2="14" opacity=".3"/><line x1="4" y1="2" x2="4" y2="14"/>'), tooltip:'Fibonacci',
@@ -5492,7 +5583,7 @@ function buildToolbar() {
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
-      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:g.complexfractaltool?complexFractalOn:lockedDraw);
+      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:g.complexfractaltool?complexFractalOn:g.vpvrtool?vpvrOn:lockedDraw);
       btn.title=g.tooltip;
       btn.onclick=function(e){ e.stopPropagation(); handleSingle(g); };
       var tip=document.createElement('div'); tip.className='tb-tooltip'; tip.textContent=g.tooltip;
@@ -5620,6 +5711,7 @@ function handleSingle(g) {
   if (g.locktool)   { lockedDraw=!lockedDraw; buildToolbar(); return; }
   if (g.measuretool){ activeTool='measure'; activeItem=g; measuring=true; measurePts=[]; setCursor('crosshair'); buildToolbar(); return; }
   if (g.complexfractaltool){ complexFractalOn=!complexFractalOn; buildToolbar(); renderChart&&renderChart(); return; }
+  if (g.vpvrtool)          { vpvrOn=!vpvrOn; buildToolbar(); renderChart&&renderChart(); return; }
 }
 
 function setCursor(cur) {
