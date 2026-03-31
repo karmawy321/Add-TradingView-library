@@ -4585,29 +4585,42 @@ function renderChart() {
   /* Time axis — smart adaptive labels */
   renderTimeAxis(visible, px, W, H, PAD);
 
-  /* Current price line + HTML badge */
-  if (visible.length > 0) {
-    var lastC = visible[visible.length-1];
-    var lastY = py(lastC.c);
-    var isUp  = lastC.c >= lastC.o;
-    /* Dashed line across chart area */
+  /* Current price line + HTML badge (Always fixed to price axis regardless of scroll) */
+  if (candles.length > 0) {
+    var liveC = candles[candles.length-1];
+    /* Clamp the vertical position so it always stays visible on the scale */
+    var pyVal = py(liveC.c);
+    var lastY = Math.max(PAD.t + 10, Math.min(H - PAD.b - 10, pyVal));
+    
     chartCtx.save();
-    chartCtx.strokeStyle = isUp ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
-    chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
-    chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
-    chartCtx.setLineDash([]); chartCtx.restore();
-    /* Price badge — drawn in right axis zone, with 4px gap from canvas edge */
-    chartCtx.save();
+    /* Check if the actual live bar is visible horizontally to decide on drawing the dashed line */
+    var isLiveVisible = (chartView.offset === 0);
+    if (isLiveVisible && pyVal >= PAD.t && pyVal <= H - PAD.b) {
+      chartCtx.strokeStyle = 'rgba(52,152,219,0.5)';
+      chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
+      chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
+      chartCtx.setLineDash([]);
+    }
+    
+    /* Price badge pinned to the price axis on the right side */
     chartCtx.font='bold 11px DM Mono';
-    var priceStr2=formatPrice(lastC.c);
+    var priceStr2=formatPrice(liveC.c);
     var bdgW=chartCtx.measureText(priceStr2).width+16;
-    var bdgX=W-4-bdgW;  /* 4px gap from right edge */
-    chartCtx.fillStyle=isUp?'#26a69a':'#ef5350';
+    var bdgX=W-4-bdgW;  /* Just next to the right margin */
+    
+    chartCtx.fillStyle='#3498db'; /* requested blue color */
     chartCtx.fillRect(bdgX,lastY-10,bdgW,20);
+    
+    /* Draw left-pointing tag arrow to match TV indicator styling */
+    chartCtx.beginPath();
+    chartCtx.moveTo(bdgX, lastY-10);
+    chartCtx.lineTo(bdgX-6, lastY);
+    chartCtx.lineTo(bdgX, lastY+10);
+    chartCtx.fill();
+    
     chartCtx.fillStyle='#fff'; chartCtx.textAlign='center';
     chartCtx.fillText(priceStr2,bdgX+bdgW/2,lastY+4);
     chartCtx.restore();
-
   }
 
   /* Watermarks - 5 positions */
