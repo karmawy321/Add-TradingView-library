@@ -728,59 +728,12 @@ if (isEmbedded) {
 
 var activeIframeId = null;
 
-function switchLayout(panels) {
-  var wrap = document.getElementById('chartCanvasWrap');
-  var multi = document.getElementById('multiLayout');
-  var activeSym = window.currentSymbol || document.getElementById('pairIn').value || '';
-  
-  if (panels == 1) {
-    wrap.style.display = 'block';
-    if(multi) multi.remove();
-    activeIframeId = null;
-  } else {
-    wrap.style.display = 'none';
-    if (!multi) {
-      multi = document.createElement('div');
-      multi.id = 'multiLayout';
-      wrap.parentNode.insertBefore(multi, wrap.nextSibling);
-    }
-    multi.className = 'multi-layout layout-' + panels;
-    multi.style.height = 'calc(100vh - 100px)';
-    multi.innerHTML = '';
-    
-    // Preset coins for dynamic grids
-    var defaultCoins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
-    
-    for (var i = 0; i < panels; i++) {
-      var _id = 'pane-' + i;
-      var sym = defaultCoins[i] || 'BTCUSDT';
-      var inf = document.createElement('iframe');
-      inf.id = _id;
-      inf.src = window.location.pathname + '?embed=true&paneId=' + _id + '&symbol=' + sym;
-      
-      var wrapper = document.createElement('div');
-      wrapper.style.position = 'relative';
-      wrapper.style.width = '100%';
-      wrapper.style.height = '100%';
-      wrapper.style.border = '2px solid transparent';
-      wrapper.style.boxSizing = 'border-box';
-      wrapper.style.transition = 'border-color 0.2s';
-      wrapper.id = 'wrap-' + _id;
-      wrapper.className = 'iframe-wrap-node';
-      
-      wrapper.appendChild(inf);
-      multi.appendChild(wrapper);
-    }
-    setTimeout(function(){ focusPane('pane-0'); }, 300);
+    setTimeout(function(){ activeIframeId = 'pane-0'; }, 300);
   }
 }
 
 function focusPane(id) {
   activeIframeId = id;
-  document.querySelectorAll('.iframe-wrap-node').forEach(function(w) {
-    // Show a gold border explicitly telling the user THIS pane is focused
-    w.style.border = (w.id === 'wrap-' + id) ? '2px solid #c9a84c' : '2px solid transparent';
-  });
 }
 
 window.addEventListener('message', function(e) {
@@ -1066,12 +1019,7 @@ window.addEventListener('message', function(e) {
               <option value="area">Area</option>
               <option value="line">Line</option>
             </select>
-            <!-- Layout selector -->
-            <select id="layoutIn" onchange="switchLayout(parseInt(this.value))" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
-              <option value="1">1 Pane</option>
-              <option value="2">2 Panes</option>
-              <option value="4">4 Panes</option>
-            </select>
+
             <!-- Upload fallback -->
             <label id="uploadLabel" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
               ↑ UPLOAD
@@ -4730,8 +4678,8 @@ if(chartCanvas){
     var W=chartCanvas.width/dpr;
     var PADl=8, PADr=75;
     var CW=W-PADl-PADr;
-    /* Default anchor focus point on the current/rightmost price bar, but use mouse pointer if Ctrl is held */
-    var cursorRatio=e.ctrlKey ? Math.max(0,Math.min(1,(cssX-PADl)/CW)) : 1;
+    /* Default anchor focus point on the current/rightmost price bar, but use mouse pointer if Ctrl or Meta/Cmd is held */
+    var cursorRatio = (e.ctrlKey || e.metaKey || e.shiftKey) ? Math.max(0,Math.min(1,(cssX-PADl)/CW)) : 1;
     /* Direct bar-level zoom manipulation for instant tick response (fixes integer boundary lag) */
     var n=chartCandles.length;
     var oldZoom=chartView.zoom;
