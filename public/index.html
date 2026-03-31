@@ -4563,14 +4563,13 @@ if(chartCanvas){
       var hh=d2.getHours().toString().padStart(2,'0');
       var mm=d2.getMinutes().toString().padStart(2,'0');
       var ss=d2.getSeconds().toString().padStart(2,'0');
-      /* Smart date string: 2 fields contextual to zoom level */
-      var dateStr;
-      if(spanDay2>365)      dateStr=MO2[d2.getMonth()]+' '+d2.getFullYear();
-      else if(spanDay2>60)  dateStr=d2.getDate()+' '+MO2[d2.getMonth()];
-      else if(spanDay2>7)   dateStr=d2.getDate()+' '+MO2[d2.getMonth()];
-      else if(spanDay2>1)   dateStr=hh+':'+mm+'  '+d2.getDate()+'/'+MO2[d2.getMonth()];
-      else if(spanDay2>0.1) dateStr=hh+':'+mm;
-      else                  dateStr=hh+':'+mm+':'+ss;
+      /* Full detailed TradingView style label: Day Name, Date, Month, Year, Time (24h) */
+      var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      var dayName = days[d2.getDay()];
+      var dd = d2.getDate().toString().padStart(2, '0');
+      var mo = MO2[d2.getMonth()];
+      var yy = d2.getFullYear().toString().slice(-2);
+      var dateStr = dayName + ' ' + dd + ' ' + mo + " '" + yy + '  ' + hh + ':' + mm;
       var barCenterX=PAD2.l+(bi2+0.5)*barW2;
       /* OHLCV compact string to show beside date */
       var isUpD=candle2.c>=candle2.o;
