@@ -310,11 +310,20 @@ function processTick(sym, price, volume, tsMs) {
   pushSSE(sym);
 }
 
+/* Throttle SSE: coalesce all ticks within 1 second into one push.
+   Prevents 100+/sec Binance aggTrades from flooding connected clients. */
+const _ssePending = {};
 function pushSSE(sym) {
   const clients = sseClients[sym];
   if (!clients || clients.size === 0) return;
-  const msg = `data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`;
-  clients.forEach(res => { try { res.write(msg); } catch(e) { clients.delete(res); } });
+  if (_ssePending[sym]) return;
+  _ssePending[sym] = setTimeout(() => {
+    delete _ssePending[sym];
+    const cs = sseClients[sym];
+    if (!cs || cs.size === 0) return;
+    const msg = `data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`;
+    cs.forEach(res => { try { res.write(msg); } catch(e) { cs.delete(res); } });
+  }, 1000);
 }
 
 const binanceWs      = {};
@@ -399,9 +408,29 @@ function fetchBinanceHistory(symbol) {
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.use(cors({ origin: true, credentials: true }));
+/* Trust Cloudflare so req.ip = real visitor IP */
+app.set('trust proxy', 1);
+
+/* CORS — only your domain + localhost for dev */
+const _allowedOrigins = ['https://fractalaiagent.com','https://www.fractalaiagent.com','http://localhost:3000','http://localhost:8080'];
+app.use(cors({ origin: (o, cb) => cb(null, !o || _allowedOrigins.includes(o)), credentials: true }));
+
+/* Simple rate limiter — no extra package needed */
+const _rlMap = new Map();
+function getClientIp(req) { return req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for']||'').split(',')[0].trim() || req.ip; }
+function rateLimit(max, ms) {
+  return (req, res, next) => {
+    const ip = getClientIp(req), now = Date.now();
+    let e = _rlMap.get(ip);
+    if (!e || now > e.reset) { e = { count:0, reset:now+ms }; _rlMap.set(ip, e); }
+    if (++e.count > max) return res.status(429).json({ error:'Too many requests' });
+    next();
+  };
+}
+setInterval(() => { const now = Date.now(); _rlMap.forEach((v,k) => { if (now > v.reset) _rlMap.delete(k); }); }, 600000);
+
 app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 /* ═══════════════════════════════════════════════════
@@ -434,8 +463,8 @@ app.get('/api/profile', async (req, res) => {
 // /profile page redirect
 app.get('/profile', (req, res) => sendPage('profile.html', res));
 
-// Candles endpoint with query param (?tf=)
-app.get('/candles/:symbol', (req, res) => {
+// Candles endpoint — 60 req/min per IP
+app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
   const { symbol } = req.params;
   const tf = req.query.tf || '1h';
   const sym = symbol.toUpperCase();
@@ -445,8 +474,13 @@ app.get('/candles/:symbol', (req, res) => {
   res.json(arr);
 });
 
-// Subscribe SSE endpoint
-app.get('/subscribe/:symbol', (req, res) => {
+// Subscribe SSE — max 5 concurrent connections per IP
+const _sseConnCount = new Map();
+app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
+  const ip = getClientIp(req);
+  const cur = _sseConnCount.get(ip) || 0;
+  if (cur >= 5) return res.status(429).json({ error:'Too many SSE connections' });
+  _sseConnCount.set(ip, cur + 1);
   const sym = req.params.symbol.toUpperCase();
   connectBinance(sym);
   ensureSymbol(sym);
@@ -455,7 +489,11 @@ app.get('/subscribe/:symbol', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
   sseClients[sym].add(res);
-  res.on('close', () => sseClients[sym].delete(res));
+  res.on('close', () => {
+    sseClients[sym].delete(res);
+    const n = (_sseConnCount.get(ip) || 1) - 1;
+    if (n <= 0) _sseConnCount.delete(ip); else _sseConnCount.set(ip, n);
+  });
   res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
 });
 
