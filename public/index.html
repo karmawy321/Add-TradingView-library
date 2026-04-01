@@ -4024,6 +4024,7 @@ var sma200On        = false;
 var sma400On        = false;
 var complexFractalOn = false;
 var vpvrOn           = false;
+var liqHeatmapOn     = false;
 var vpvrAnchorX      = null;  /* null = auto right edge (W-PAD.r-2); set by drag */
 var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
@@ -4606,6 +4607,9 @@ function renderChart() {
     var _vpvrGapW    = _vpvrRight - _lastCandleX;
     drawVPVR(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, _vpvrGapW);
   }
+
+  /* ── Liquidity Heatmap overlay ── */
+  if (liqHeatmapOn) drawLiqHeatmap(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
 }
 
 /* ── Volume Profile Visible Range (VPVR) ── */
@@ -4689,6 +4693,86 @@ function drawVPVR(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, gapW) {
   ctx.fillStyle = 'rgba(201,168,76,0.55)';
   ctx.textAlign = 'right';
   ctx.fillText('VPVR', rightEdge - 2, PAD.t + 10);
+
+  ctx.restore();
+}
+
+/* ── Liquidity Heatmap — equal-high / equal-low clusters + round numbers ── */
+function drawLiqHeatmap(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
+  if (!visible || visible.length < 3) return;
+
+  var TOL = 0.002; /* 0.2% tolerance for equal-high/low clustering */
+
+  /* Sort-and-group: returns array of {price, count} for clusters of 2+ touches */
+  function findClusters(prices) {
+    var sorted = prices.slice().sort(function(a, b) { return a - b; });
+    var clusters = [];
+    var i = 0;
+    while (i < sorted.length) {
+      var base = sorted[i], j = i + 1;
+      while (j < sorted.length && (sorted[j] - base) / base <= TOL) j++;
+      if (j - i >= 2) {
+        var sum = 0;
+        for (var k = i; k < j; k++) sum += sorted[k];
+        clusters.push({ price: sum / (j - i), count: j - i });
+      }
+      i = j;
+    }
+    return clusters;
+  }
+
+  var resClusters = findClusters(visible.map(function(c) { return c.h; }));
+  var supClusters = findClusters(visible.map(function(c) { return c.l; }));
+
+  ctx.save();
+
+  /* Draw a semi-transparent horizontal band centered on `price` */
+  function drawBand(price, count, rv, gv, bv) {
+    if (price <= mn || price >= mx) return;
+    var py   = PAD.t + CH - ((price - mn) / range) * CH;
+    var alpha = Math.min(0.40, 0.12 + count * 0.06);
+    var bandH = Math.max(3, Math.min(12, 2 + count));
+    /* filled band */
+    ctx.fillStyle = 'rgba(' + rv + ',' + gv + ',' + bv + ',' + alpha + ')';
+    ctx.fillRect(PAD.l, py - bandH / 2, CW, bandH);
+    /* thin center line */
+    ctx.strokeStyle = 'rgba(' + rv + ',' + gv + ',' + bv + ',' + Math.min(0.75, alpha + 0.25) + ')';
+    ctx.lineWidth = 0.8;
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(PAD.l, py); ctx.lineTo(W - PAD.r, py); ctx.stroke();
+    /* count label on left edge */
+    if (count >= 3) {
+      ctx.font = '7px "DM Mono",monospace';
+      ctx.fillStyle = 'rgba(' + rv + ',' + gv + ',' + bv + ',0.70)';
+      ctx.textAlign = 'left';
+      ctx.fillText(count + 'x', PAD.l + 3, py - bandH / 2 - 1);
+    }
+  }
+
+  /* Resistance (equal highs) — red */
+  resClusters.forEach(function(cl) { drawBand(cl.price, cl.count, 239, 83, 80); });
+  /* Support (equal lows) — teal */
+  supClusters.forEach(function(cl) { drawBand(cl.price, cl.count, 38, 166, 154); });
+
+  /* Round number dashed lines — magnitude based on visible price range */
+  var roundMag  = Math.pow(10, Math.floor(Math.log10(range)));
+  var roundStep = roundMag / 2;
+  var rStart    = Math.ceil(mn / roundStep) * roundStep;
+  ctx.lineWidth   = 0.5;
+  ctx.strokeStyle = 'rgba(201,168,76,0.18)';
+  ctx.setLineDash([2, 8]);
+  for (var rp = rStart; rp <= mx; rp += roundStep) {
+    if (rp <= mn) continue;
+    var ry = PAD.t + CH - ((rp - mn) / range) * CH;
+    ctx.beginPath(); ctx.moveTo(PAD.l, ry); ctx.lineTo(W - PAD.r, ry); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  /* "LIQ" label — top-left of chart */
+  ctx.font      = 'bold 8px "DM Mono",monospace';
+  ctx.fillStyle = 'rgba(201,168,76,0.55)';
+  ctx.textAlign = 'left';
+  ctx.fillText('LIQ', PAD.l + 4, PAD.t + 10);
 
   ctx.restore();
 }
@@ -5599,6 +5683,10 @@ var GROUPS = [
   { id:'vpvr_grp',
     icon:S('<rect x="9" y="3" width="5" height="2" rx="0.5"/><rect x="6" y="6" width="8" height="2" rx="0.5"/><rect x="4" y="9" width="10" height="2" rx="0.5"/><rect x="7" y="12" width="6" height="2" rx="0.5"/>'),
     tooltip:'Volume Profile (VPVR)', single:true, vpvrtool:true, cur:'default', toggle:true },
+  /* ── Liquidity Heatmap ── */
+  { id:'liqheatmap_grp',
+    icon:S('<rect x="2" y="3" width="12" height="2" rx="0.4" fill="rgba(239,83,80,0.85)"/><rect x="2" y="7" width="12" height="2" rx="0.4" fill="rgba(201,168,76,0.7)"/><rect x="2" y="11" width="12" height="2" rx="0.4" fill="rgba(38,166,154,0.85)"/>'),
+    tooltip:'Liquidity Heatmap', single:true, liqheatmaptool:true, cur:'default', toggle:true },
   'sep',
   /* ── Fibonacci ── */
   { id:'fib_grp', icon:S('<line x1="2" y1="2" x2="14" y2="2"/><line x1="2" y1="6" x2="14" y2="6" opacity=".7"/><line x1="2" y1="10" x2="14" y2="10" opacity=".5"/><line x1="2" y1="14" x2="14" y2="14" opacity=".3"/><line x1="4" y1="2" x2="4" y2="14"/>'), tooltip:'Fibonacci',
@@ -5705,7 +5793,7 @@ function buildToolbar() {
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
-      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:g.complexfractaltool?complexFractalOn:g.vpvrtool?vpvrOn:lockedDraw);
+      if (g.toggle) btn.classList.toggle('active', g.magnettool?magnetOn:g.complexfractaltool?complexFractalOn:g.vpvrtool?vpvrOn:g.liqheatmaptool?liqHeatmapOn:lockedDraw);
       btn.title=g.tooltip;
       btn.onclick=function(e){ e.stopPropagation(); handleSingle(g); };
       var tip=document.createElement('div'); tip.className='tb-tooltip'; tip.textContent=g.tooltip;
@@ -5834,6 +5922,7 @@ function handleSingle(g) {
   if (g.measuretool){ activeTool='measure'; activeItem=g; measuring=true; measurePts=[]; setCursor('crosshair'); buildToolbar(); return; }
   if (g.complexfractaltool){ complexFractalOn=!complexFractalOn; buildToolbar(); renderChart&&renderChart(); return; }
   if (g.vpvrtool)          { vpvrOn=!vpvrOn; buildToolbar(); renderChart&&renderChart(); return; }
+  if (g.liqheatmaptool)    { liqHeatmapOn=!liqHeatmapOn; buildToolbar(); renderChart&&renderChart(); return; }
 }
 
 function setCursor(cur) {
