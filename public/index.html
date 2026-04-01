@@ -4812,44 +4812,59 @@ function drawVolumeBubbles(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW)
     var priceH  = ((g.hi - g.lo) / range) * CH;
     var ry      = Math.max(4, priceH * 0.45 * ratio);
 
-    /* Proportional pie split:
-       buy  = CCW from angle 0 (right side), passes through top — arc grows as buy dominates
-       sell = CW  from angle 0 (right side), passes through bottom — arc grows as sell dominates
-       At 50/50 the result is exactly a top/bottom split.  */
+    /* Closed ellipse with proportional horizontal fill:
+       splitY = dividing line that moves up/down based on buy ratio.
+       Top portion (above splitY) = teal buy, bottom = red sell.
+       buyRatio=0.5 → line at center; buyRatio=0.7 → line 40% below center (teal gets more). */
     var buyRatio = vol > 0 ? g.buyVol / vol : 0.5;
-    var buyAng   = buyRatio * 2 * Math.PI;
-    var selAng   = (1 - buyRatio) * 2 * Math.PI;
+    var splitY   = cy + ry * (2 * buyRatio - 1);   /* cy-ry=all-teal … cy+ry=all-red */
 
-    /* Buy slice (teal) */
+    /* 1. Full ellipse filled red (sell = bottom color) */
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, buyAng, true);  /* anticlockwise = true → top */
-    ctx.closePath();
-    ctx.fillStyle   = 'rgba(38,166,154,0.35)';
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(239,83,80,0.32)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(38,166,154,0.72)';
+
+    /* 2. Clip to rect above splitY, overdraw teal (buy = top color) */
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cx - rx - 1, cy - ry - 1, (rx + 1) * 2, splitY - (cy - ry) + 1);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(38,166,154,0.40)';
+    ctx.fill();
+    ctx.restore();
+
+    /* 3. Ellipse outline */
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(180,180,180,0.35)';
     ctx.lineWidth   = 0.8;
     ctx.stroke();
 
-    /* Sell slice (red) */
+    /* 4. Percentage dividing chord */
+    var dy       = (splitY - cy) / ry;                            /* normalized −1..+1 */
+    var chordHW  = rx * Math.sqrt(Math.max(0, 1 - dy * dy));     /* half-width at splitY */
+    ctx.strokeStyle = 'rgba(201,168,76,0.75)';
+    ctx.lineWidth   = 0.7;
+    ctx.setLineDash([2, 3]);
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, selAng, false); /* clockwise = false → bottom */
-    ctx.closePath();
-    ctx.fillStyle   = 'rgba(239,83,80,0.35)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(239,83,80,0.72)';
-    ctx.lineWidth   = 0.8;
+    ctx.moveTo(cx - chordHW, splitY);
+    ctx.lineTo(cx + chordHW, splitY);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    /* Volume labels inside each half */
+    /* 5. Volume labels — buy above chord, sell below chord */
     if (ry > 12) {
       ctx.font      = '7px "DM Mono",monospace';
       ctx.textAlign = 'center';
+      var buyLabelY  = Math.max(cy - ry + 9, (cy - ry + splitY) / 2 + 3);
+      var selLabelY  = Math.min(cy + ry - 2,  (splitY + cy + ry) / 2 + 3);
       ctx.fillStyle = 'rgba(38,166,154,0.90)';
-      ctx.fillText(formatVol(g.buyVol),  cx, cy - ry * 0.32);
+      ctx.fillText(formatVol(g.buyVol),  cx, buyLabelY);
       ctx.fillStyle = 'rgba(239,83,80,0.90)';
-      ctx.fillText(formatVol(g.sellVol), cx, cy + ry * 0.32 + 7);
+      ctx.fillText(formatVol(g.sellVol), cx, selLabelY);
     }
 
     /* Dashed day-boundary separator at last candle of group */
