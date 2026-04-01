@@ -5035,36 +5035,50 @@ function loadChart(symbol,interval){
   chartSSE.onmessage=function(e){
     try{
       var data=JSON.parse(e.data);
-      /* Loading status — Railway is fetching, show message */
       if(data.status==='loading'){ showChartMsg('Loading '+sym+'\u2026\nRailway fetching from TwelveData'); return; }
-      if(!data.candles||!data.candles[currentInterval])return;
-      if(sym!==currentSymbol)return;
-      
-      /* ── BACKTEST GUARD ── 
-         If user is replaying old history, we must NOT let live ticks steal the screen! 
-         We quietly update the hidden data and exit. */
-      if (typeof _btActive !== 'undefined' && _btActive) {
+      if(sym!==currentSymbol) return;
+
+      /* ── Full history on initial connect ── */
+      if(data.candles){
+        if(!data.candles[currentInterval]) return;
         if(!allCandleData[sym]) allCandleData[sym]={};
-        allCandleData[sym][currentInterval] = data.candles[currentInterval];
-        _btAllCandles = data.candles[currentInterval];
-        
-        var liveC = data.candles[currentInterval];
-        var lastL = liveC[liveC.length-1];
-        var prevL = liveC.length>1 ? liveC[liveC.length-2].c : lastL.o;
-        showLivePrice({symbol:sym,price:lastL.c,change_24h:((lastL.c-prevL)/prevL*100).toFixed(3),trend_24h:lastL.c>=prevL?'up':'dn'});
+        allCandleData[sym][currentInterval]=data.candles[currentInterval];
+        if(typeof _btActive!=='undefined'&&_btActive){ _btAllCandles=data.candles[currentInterval]; return; }
+        chartCandles=data.candles[currentInterval];
+        renderChart();
+        var last0=chartCandles[chartCandles.length-1];
+        var prev0=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last0.o;
+        showLivePrice({symbol:sym,price:last0.c,change_24h:((last0.c-prev0)/prev0*100).toFixed(3),trend_24h:last0.c>=prev0?'up':'dn'});
+        lwChartInstance=true;
+        var btn0=document.getElementById('azBtn');if(btn0)btn0.disabled=false;
+        if(typeof buildToolGrid==='function') buildToolGrid();
         return;
       }
 
-      chartCandles=data.candles[currentInterval];
-      if(!allCandleData[sym])allCandleData[sym]={};
-      allCandleData[sym][currentInterval]=data.candles[currentInterval];
-      renderChart();
-      var last=chartCandles[chartCandles.length-1];
-      var prev=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last.o;
-      showLivePrice({symbol:sym,price:last.c,change_24h:((last.c-prev)/prev*100).toFixed(3),trend_24h:last.c>=prev?'up':'dn'});
-      lwChartInstance=true;
-      var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
-      if(typeof buildToolGrid==='function') buildToolGrid();
+      /* ── Tick delta: only the latest candle per timeframe ── */
+      if(data.tick){
+        var tc=data.tick[currentInterval];
+        if(!tc||!chartCandles.length) return;
+        var last=chartCandles[chartCandles.length-1];
+        if(last.t===tc.t){
+          /* Update current candle in-place */
+          last.c=tc.c; last.h=tc.h; last.l=tc.l; last.v=tc.v;
+        } else {
+          /* New candle opened */
+          chartCandles.push(tc);
+          if(chartCandles.length>500) chartCandles.shift();
+        }
+        if(!allCandleData[sym]) allCandleData[sym]={};
+        allCandleData[sym][currentInterval]=chartCandles;
+        /* Backtest guard — update data silently, don't re-render */
+        if(typeof _btActive!=='undefined'&&_btActive){ _btAllCandles=chartCandles; }
+        else {
+          renderChart();
+        }
+        var last2=chartCandles[chartCandles.length-1];
+        var prev2=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last2.o;
+        showLivePrice({symbol:sym,price:last2.c,change_24h:((last2.c-prev2)/prev2*100).toFixed(3),trend_24h:last2.c>=prev2?'up':'dn'});
+      }
     }catch(err){}
   };
   chartSSE.onerror=function(){console.warn('[SSE] error for',sym);};

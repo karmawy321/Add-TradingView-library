@@ -321,7 +321,10 @@ function pushSSE(sym) {
     delete _ssePending[sym];
     const cs = sseClients[sym];
     if (!cs || cs.size === 0) return;
-    const msg = `data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`;
+    /* Send only the latest candle per timeframe — ~360 bytes vs 180KB for full history */
+    const tick = {};
+    TIMEFRAMES.forEach(tf => { const a = candles[sym][tf]; if (a && a.length) tick[tf] = a[a.length - 1]; });
+    const msg = `data: ${JSON.stringify({ symbol: sym, tick })}\n\n`;
     cs.forEach(res => { try { res.write(msg); } catch(e) { cs.delete(res); } });
   }, 1000);
 }
