@@ -4812,21 +4812,31 @@ function drawVolumeBubbles(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW)
     var priceH  = ((g.hi - g.lo) / range) * CH;
     var ry      = Math.max(4, priceH * 0.45 * ratio);
 
-    /* Top half = buy (teal) — angles π → 2π pass through the top of canvas ellipse */
+    /* Proportional pie split:
+       buy  = CCW from angle 0 (right side), passes through top — arc grows as buy dominates
+       sell = CW  from angle 0 (right side), passes through bottom — arc grows as sell dominates
+       At 50/50 the result is exactly a top/bottom split.  */
+    var buyRatio = vol > 0 ? g.buyVol / vol : 0.5;
+    var buyAng   = buyRatio * 2 * Math.PI;
+    var selAng   = (1 - buyRatio) * 2 * Math.PI;
+
+    /* Buy slice (teal) */
     ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 2 * Math.PI);
+    ctx.moveTo(cx, cy);
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, buyAng, true);  /* anticlockwise = true → top */
     ctx.closePath();
-    ctx.fillStyle   = 'rgba(38,166,154,0.32)';
+    ctx.fillStyle   = 'rgba(38,166,154,0.35)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(38,166,154,0.72)';
     ctx.lineWidth   = 0.8;
     ctx.stroke();
 
-    /* Bottom half = sell (red) — angles 0 → π pass through the bottom */
+    /* Sell slice (red) */
     ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI);
+    ctx.moveTo(cx, cy);
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, selAng, false); /* clockwise = false → bottom */
     ctx.closePath();
-    ctx.fillStyle   = 'rgba(239,83,80,0.32)';
+    ctx.fillStyle   = 'rgba(239,83,80,0.35)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(239,83,80,0.72)';
     ctx.lineWidth   = 0.8;
