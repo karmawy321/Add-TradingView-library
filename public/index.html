@@ -4026,6 +4026,9 @@ var complexFractalOn = false;
 var vpvrOn           = false;
 var liqHeatmapOn     = false;
 var volBubblesOn     = false;
+var hurstOn          = false;
+var garchBandsOn     = false;
+var fractalSignalOn  = false;
 var vpvrAnchorX      = null;  /* null = auto right edge (W-PAD.r-2); set by drag */
 var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
@@ -4614,6 +4617,11 @@ function renderChart() {
 
   /* ── Volume Bubbles overlay ── */
   if (volBubblesOn) drawVolumeBubbles(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
+
+  /* ── Quantitative overlays ── */
+  if (hurstOn)         drawHurst(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
+  if (garchBandsOn)    drawGARCH(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
+  if (fractalSignalOn) drawFractalSignal(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
 }
 
 /* ── Volume Profile Visible Range (VPVR) ── */
@@ -4879,6 +4887,159 @@ function drawVolumeBubbles(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW)
       ctx.setLineDash([]);
     }
   });
+
+  ctx.restore();
+}
+
+/* ════════════════════════════════════════════════════
+   QUANTITATIVE ANALYSIS — HURST · GARCH · SIGNAL
+   ════════════════════════════════════════════════════ */
+
+/* R/S Hurst Exponent on an array of close prices */
+function _computeHurst(prices) {
+  var n = prices.length;
+  if (n < 10) return 0.5;
+  var logR = [];
+  for (var i = 1; i < n; i++) {
+    if (prices[i - 1] > 0 && prices[i] > 0)
+      logR.push(Math.log(prices[i] / prices[i - 1]));
+  }
+  var m = logR.length;
+  if (m < 5) return 0.5;
+  var mean = logR.reduce(function(s, v) { return s + v; }, 0) / m;
+  var acc = 0, cumDev = [];
+  for (var i = 0; i < m; i++) { acc += logR[i] - mean; cumDev.push(acc); }
+  var R = Math.max.apply(null, cumDev) - Math.min.apply(null, cumDev);
+  var S = Math.sqrt(logR.reduce(function(s, v) { return s + (v - mean) * (v - mean); }, 0) / m);
+  if (!R || !S) return 0.5;
+  return Math.max(0.1, Math.min(0.9, Math.log(R / S) / Math.log(m)));
+}
+
+/* GARCH(1,1) — returns per-candle σ array (one value per visible candle) */
+function _computeGARCH(visible) {
+  if (visible.length < 5) return [];
+  var omega = 2e-6, alpha = 0.1, beta = 0.85;
+  var logR = [0];
+  for (var i = 1; i < visible.length; i++)
+    logR.push(visible[i - 1].c > 0 && visible[i].c > 0 ? Math.log(visible[i].c / visible[i - 1].c) : 0);
+  var init = logR.slice(1, Math.min(21, logR.length));
+  var mu   = init.reduce(function(s, v) { return s + v; }, 0) / (init.length || 1);
+  var iv   = init.reduce(function(s, v) { return s + (v - mu) * (v - mu); }, 0) / (init.length || 1);
+  var sig  = [Math.sqrt(Math.max(iv, 1e-10))];
+  for (var i = 1; i < visible.length; i++) {
+    var e  = logR[i] - mu;
+    var s2 = omega + alpha * e * e + beta * sig[sig.length - 1] * sig[sig.length - 1];
+    sig.push(Math.sqrt(s2));
+  }
+  return sig;
+}
+
+/* ── Hurst Exponent overlay — tint + regime badge ── */
+function drawHurst(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
+  if (!visible || visible.length < 10) return;
+  var hv  = _computeHurst(visible.map(function(c) { return c.c; }));
+  var rv, gv, bv;
+  if      (hv > 0.55) { rv=38;  gv=166; bv=154; } /* teal  — trending      */
+  else if (hv < 0.45) { rv=63;  gv=84;  bv=186; } /* blue  — mean-reverting */
+  else                { rv=201; gv=168; bv=76;  } /* gold  — random noise  */
+
+  ctx.save();
+  ctx.fillStyle = 'rgba('+rv+','+gv+','+bv+',0.04)';
+  ctx.fillRect(PAD.l, PAD.t, CW, CH);
+
+  var label = hv > 0.55 ? 'TREND' : hv < 0.45 ? 'REVERT' : 'NOISE';
+  ctx.font      = 'bold 9px "DM Mono",monospace';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba('+rv+','+gv+','+bv+',0.80)';
+  ctx.fillText('H='+hv.toFixed(2)+'  '+label, W - PAD.r - 4, PAD.t + 24);
+  ctx.restore();
+}
+
+/* ── GARCH Volatility Bands — ±2σ dynamic channel ── */
+function drawGARCH(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW) {
+  if (!visible || visible.length < 5 || !barW) return;
+  var sig = _computeGARCH(visible);
+  var upper = [], lower = [];
+
+  for (var i = 0; i < visible.length; i++) {
+    var bw = visible[i].c * sig[i] * 2;
+    var uP = visible[i].c + bw, lP = visible[i].c - bw;
+    if (uP > mx * 1.15 || lP < mn * 0.85) continue;
+    var x = PAD.l + (i + 0.5) * barW;
+    upper.push([x, PAD.t + CH - ((uP - mn) / range) * CH]);
+    lower.push([x, PAD.t + CH - ((lP - mn) / range) * CH]);
+  }
+  if (upper.length < 2) return;
+
+  ctx.save();
+
+  /* fill between bands */
+  ctx.beginPath();
+  ctx.moveTo(upper[0][0], upper[0][1]);
+  for (var i = 1; i < upper.length; i++) ctx.lineTo(upper[i][0], upper[i][1]);
+  for (var i = lower.length - 1; i >= 0; i--) ctx.lineTo(lower[i][0], lower[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(201,168,76,0.05)';
+  ctx.fill();
+
+  ctx.setLineDash([3, 5]);
+  ctx.lineWidth   = 1;
+  ctx.strokeStyle = 'rgba(201,168,76,0.50)';
+
+  ctx.beginPath(); ctx.moveTo(upper[0][0], upper[0][1]);
+  for (var i = 1; i < upper.length; i++) ctx.lineTo(upper[i][0], upper[i][1]);
+  ctx.stroke();
+
+  ctx.beginPath(); ctx.moveTo(lower[0][0], lower[0][1]);
+  for (var i = 1; i < lower.length; i++) ctx.lineTo(lower[i][0], lower[i][1]);
+  ctx.stroke();
+
+  ctx.setLineDash([]);
+  ctx.font      = 'bold 8px "DM Mono",monospace';
+  ctx.fillStyle = 'rgba(201,168,76,0.60)';
+  ctx.textAlign = 'left';
+  ctx.fillText('GARCH ±2σ', PAD.l + 4, PAD.t + 24);
+  ctx.restore();
+}
+
+/* ── Fractal Signal — composite gauge: Trend(H) × Volatility(GARCH) ── */
+function drawFractalSignal(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
+  if (!visible || visible.length < 10) return;
+  var hv      = _computeHurst(visible.map(function(c) { return c.c; }));
+  var sig     = _computeGARCH(visible);
+  var volNorm = sig[sig.length - 1] / (Math.max.apply(null, sig) || 1);
+  var dir     = visible[visible.length - 1].c >= visible[0].c ? 1 : -1;
+  var trend   = Math.max(0, (hv - 0.5) * 2);                  /* 0..1, only for H>0.5 */
+  var signal  = Math.max(-1, Math.min(1, dir * trend * (1 - volNorm * 0.5)));
+
+  var gY  = PAD.t + 3, gH = 5, gX = PAD.l, mid = gX + CW / 2;
+
+  ctx.save();
+
+  /* gauge track */
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(gX, gY, CW, gH);
+
+  /* signal fill */
+  var fw  = Math.abs(signal) * CW / 2;
+  var fx  = signal >= 0 ? mid : mid - fw;
+  var col = signal >= 0 ? 'rgba(38,166,154,0.82)' : 'rgba(239,83,80,0.82)';
+  ctx.fillStyle = col;
+  ctx.fillRect(fx, gY, fw, gH);
+
+  /* center tick */
+  ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+  ctx.lineWidth   = 0.5;
+  ctx.beginPath(); ctx.moveTo(mid, gY); ctx.lineTo(mid, gY + gH); ctx.stroke();
+
+  /* score label */
+  var score  = Math.round(Math.abs(signal) * 100);
+  var regime = hv > 0.55 ? 'TREND' : hv < 0.45 ? 'REVERT' : 'NOISE';
+  var arrow  = signal >= 0 ? '▲' : '▼';
+  ctx.font      = 'bold 8px "DM Mono",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = signal >= 0 ? 'rgba(38,166,154,1)' : 'rgba(239,83,80,1)';
+  ctx.fillText(arrow + ' ' + score + '%  ' + regime, W / 2, gY + gH + 9);
 
   ctx.restore();
 }
@@ -5797,6 +5958,15 @@ var GROUPS = [
   { id:'volbubbles_grp',
     icon:S('<ellipse cx="8" cy="5.5" rx="5.5" ry="3.2" fill="rgba(38,166,154,0.75)" stroke="rgba(38,166,154,1)" stroke-width="0.6"/><ellipse cx="8" cy="10.5" rx="5.5" ry="3.2" fill="rgba(239,83,80,0.75)" stroke="rgba(239,83,80,1)" stroke-width="0.6"/>'),
     tooltip:'Volume Bubbles', single:true, volbubblestool:true, cur:'default', toggle:true },
+  /* ── Quantitative Analysis ── */
+  { id:'quant_grp', quantgroup:true,
+    icon:S('<path d="M2 12 Q5 5 8 9 Q11 13 14 4" stroke-width="1.5" fill="none"/><circle cx="14" cy="4" r="1.5" fill="currentColor" stroke="none"/>'),
+    tooltip:'Quantitative Analysis',
+    items:[
+      { id:'hurst',      label:'Hurst Exponent',         icon:S('<path d="M2 12 L5 4 L8 9 L11 4 L14 9" stroke-width="1.5" fill="none"/>'),                                                                                                                       toggle:true, hursttool:true,        getState:function(){ return hurstOn; } },
+      { id:'garch',      label:'GARCH Volatility Bands',  icon:S('<path d="M2 4 Q8 2.5 14 4" stroke-width="1.5"/><path d="M2 12 Q8 13.5 14 12" stroke-width="1.5"/><path d="M2 8 Q8 8 14 8" stroke-width="1" stroke-dasharray="3 2" opacity=".6"/>'),             toggle:true, garchbandstool:true,  getState:function(){ return garchBandsOn; } },
+      { id:'fractalsig', label:'Fractal Signal Score',    icon:S('<circle cx="8" cy="10" r="5" stroke-width="1.2"/><path d="M8 10 L11 6" stroke-width="1.5"/><path d="M3.4 12.5 A5 5 0 0 1 12.6 12.5" stroke-width="1" stroke-dasharray="1.5 2" opacity=".6"/>'), toggle:true, fractalsignaltool:true, getState:function(){ return fractalSignalOn; } },
+    ]},
   'sep',
   /* ── Fibonacci ── */
   { id:'fib_grp', icon:S('<line x1="2" y1="2" x2="14" y2="2"/><line x1="2" y1="6" x2="14" y2="6" opacity=".7"/><line x1="2" y1="10" x2="14" y2="10" opacity=".5"/><line x1="2" y1="14" x2="14" y2="14" opacity=".3"/><line x1="4" y1="2" x2="4" y2="14"/>'), tooltip:'Fibonacci',
@@ -5899,7 +6069,7 @@ function buildToolbar() {
     }
     var wrap=document.createElement('div'); wrap.className='tb-group';
     var btn=document.createElement('button');
-    btn.className='tb-main'+(isActive(g)?' active':'');
+    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn)))?' active':'');
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
@@ -5944,7 +6114,8 @@ function buildToolbar() {
       fly.addEventListener('mouseleave', hideFly);
       fly.addEventListener('click', function(){ clearTimeout(_flyTimer); });
       g.items.forEach(function(item){
-        var row=document.createElement('button'); row.className='tb-item'+(activeItem&&activeItem.id===item.id?' active':'');
+        var _itemActive=(activeItem&&activeItem.id===item.id)||(item.getState&&item.getState());
+        var row=document.createElement('button'); row.className='tb-item'+(_itemActive?' active':'');
         /* Fib Spiral — show $1 lock badge if not yet paid */
         var lockBadge='';
         if(item.id==='fibspiral'){
@@ -5997,6 +6168,11 @@ function pickItem(item) {
   if(item.undotool)  { doUndo(); return; }
   if(item.redotool)  { doRedo(); return; }
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
+
+  /* ── Quantitative overlays — toggle on/off from dropdown ── */
+  if(item.hursttool)        { hurstOn=!hurstOn;        buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.garchbandstool)   { garchBandsOn=!garchBandsOn;  buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.fractalsignaltool){ fractalSignalOn=!fractalSignalOn; buildToolbar(); renderChart&&renderChart(); return; }
 
   /* ── Fib Spiral gate — requires $1 Stripe payment ── */
   if(item.id === 'fibspiral') {
