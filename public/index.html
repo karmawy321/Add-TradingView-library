@@ -4030,6 +4030,8 @@ var hurstOn          = false;
 var garchBandsOn     = false;
 var fractalSignalOn  = false;
 var complexFractalOn = false;
+var gbmOn            = false;
+var ouOn             = false;
 var vpvrAnchorX      = null;  /* null = auto right edge (W-PAD.r-2); set by drag */
 var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
@@ -4624,6 +4626,8 @@ function renderChart() {
   if (garchBandsOn)    drawGARCH(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
   if (fractalSignalOn) drawFractalSignal(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
   if (complexFractalOn) drawComplexFractal(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
+  if (gbmOn) drawGBM(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
+  if (ouOn)  drawOU(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
 }
 
 /* ── Volume Profile Visible Range (VPVR) ── */
@@ -5174,6 +5178,141 @@ function drawComplexFractal(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW
   ctx.font = 'bold 9px "DM Mono",monospace'; ctx.fillStyle = '#9b59b6';
   ctx.textAlign = 'left'; ctx.globalAlpha = 0.9;
   ctx.fillText('COMPLEX FRACTAL', PAD.l + 4, PAD.t + 36);
+  ctx.restore();
+}
+
+/* ── Geometric Brownian Motion — forward projection fan ── */
+function drawGBM(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW) {
+  if (!visible || visible.length < 20 || !barW) return;
+  /* Estimate drift (μ) and volatility (σ) from log returns */
+  var logR = [];
+  for (var i = 1; i < visible.length; i++) logR.push(Math.log(visible[i].c / visible[i-1].c));
+  var n = logR.length;
+  var muR = logR.reduce(function(a,b){return a+b;},0) / n;
+  var varR = logR.reduce(function(s,r){return s+(r-muR)*(r-muR);},0) / (n-1);
+  var sigma = Math.sqrt(varR);
+  var drift = muR - 0.5 * varR; /* GBM log-drift */
+  var S0    = visible[visible.length-1].c;
+  var STEPS = Math.min(50, Math.round(visible.length * 0.25));
+  var lastX = PAD.l + (visible.length - 0.5) * barW;
+  function py(p){return PAD.t+CH-((p-mn)/range)*CH;}
+  ctx.save();
+  /* Fill between ±1σ bands */
+  var u1=[],l1=[];
+  for(var t=1;t<=STEPS;t++){
+    var x=lastX+t*barW; if(x>W-PAD.r)break;
+    u1.push([x, S0*Math.exp(drift*t+sigma*Math.sqrt(t))]);
+    l1.push([x, S0*Math.exp(drift*t-sigma*Math.sqrt(t))]);
+  }
+  if(u1.length>1){
+    ctx.beginPath();
+    ctx.moveTo(lastX, py(S0));
+    for(var i=0;i<u1.length;i++) ctx.lineTo(u1[i][0],py(u1[i][1]));
+    for(var i=l1.length-1;i>=0;i--) ctx.lineTo(l1[i][0],py(l1[i][1]));
+    ctx.closePath(); ctx.fillStyle='rgba(201,168,76,0.06)'; ctx.fill();
+  }
+  /* Quantile paths: Z = -2, -1, 0, +1, +2 */
+  var qs=[
+    {z:-2, col:'rgba(231,76,60,0.45)',  lbl:'-2\u03c3', w:1,   dash:[3,3]},
+    {z:-1, col:'rgba(231,76,60,0.70)',  lbl:'-1\u03c3', w:1,   dash:[3,3]},
+    {z: 0, col:'rgba(201,168,76,0.95)', lbl:'E[S]',     w:1.5, dash:[]},
+    {z: 1, col:'rgba(39,174,96,0.70)',  lbl:'+1\u03c3', w:1,   dash:[3,3]},
+    {z: 2, col:'rgba(39,174,96,0.45)',  lbl:'+2\u03c3', w:1,   dash:[3,3]},
+  ];
+  qs.forEach(function(q){
+    ctx.strokeStyle=q.col; ctx.lineWidth=q.w; ctx.setLineDash(q.dash); ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.moveTo(lastX, py(S0));
+    var endX=lastX, endP=S0;
+    for(var t=1;t<=STEPS;t++){
+      var x=lastX+t*barW; if(x>W-PAD.r)break;
+      var price=S0*Math.exp(drift*t+sigma*Math.sqrt(t)*q.z);
+      var y=py(price);
+      ctx.lineTo(x,y); endX=x; endP=price;
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    var ey=py(endP);
+    if(ey>=PAD.t&&ey<=PAD.t+CH){
+      ctx.font='bold 8px DM Mono'; ctx.fillStyle=q.col;
+      ctx.textAlign='left'; ctx.fillText(q.lbl,endX+3,ey+3);
+    }
+  });
+  /* Label */
+  ctx.font='bold 9px "DM Mono",monospace'; ctx.fillStyle='rgba(201,168,76,0.85)';
+  ctx.textAlign='left'; ctx.globalAlpha=1;
+  ctx.fillText('GBM  \u03c3='+( sigma*100).toFixed(2)+'%/bar', PAD.l+4, PAD.t+50);
+  ctx.restore();
+}
+
+/* ── Ornstein-Uhlenbeck Process — mean reversion model ── */
+function drawOU(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW) {
+  if (!visible || visible.length < 20 || !barW) return;
+  var closes = visible.map(function(c){return c.c;});
+  var n = closes.length;
+  /* AR(1) fit: X(t+1) = a + b*X(t) + ε  →  θ = 1-b,  μ = a/(1-b) */
+  var mx0=0, my0=0;
+  for(var i=0;i<n-1;i++){mx0+=closes[i]; my0+=closes[i+1];}
+  mx0/=(n-1); my0/=(n-1);
+  var cov=0, vx=0;
+  for(var i=0;i<n-1;i++){cov+=(closes[i]-mx0)*(closes[i+1]-my0); vx+=(closes[i]-mx0)*(closes[i]-mx0);}
+  var b=Math.max(0.001,Math.min(0.9999, cov/(vx+1e-12)));
+  var a=my0-b*mx0;
+  var ouMu=a/(1-b);                /* long-run mean */
+  var theta=1-b;                   /* mean-reversion speed per bar */
+  /* Residual std (diffusion per bar) */
+  var rss=0;
+  for(var i=0;i<n-1;i++){var res=closes[i+1]-(a+b*closes[i]); rss+=res*res;}
+  var sigBar=Math.sqrt(rss/Math.max(1,n-3));
+  /* Stationary std dev: σ_stat = σ / √(2θ) */
+  var sigStat=sigBar/Math.sqrt(2*theta+1e-9);
+  var halfLife=Math.log(2)/(theta+1e-9);
+  var S0=closes[n-1];
+  var STEPS=Math.min(60,Math.round(halfLife*3)||30);
+  var lastX=PAD.l+(n-0.5)*barW;
+  function py(p){return PAD.t+CH-((p-mn)/range)*CH;}
+  var chartTop=PAD.t, chartBot=PAD.t+CH;
+  ctx.save();
+  /* ±2σ fill */
+  var p2u=ouMu+2*sigStat, p2l=ouMu-2*sigStat;
+  var y2u=py(p2u), y2l=py(p2l);
+  if(y2u<chartBot&&y2l>chartTop){
+    ctx.fillStyle='rgba(52,152,219,0.04)';
+    ctx.fillRect(PAD.l,Math.max(chartTop,y2u),CW,Math.min(chartBot,y2l)-Math.max(chartTop,y2u));
+  }
+  /* Band lines ±1σ, ±2σ */
+  [-2,-1,1,2].forEach(function(m){
+    var by=py(ouMu+m*sigStat); if(by<chartTop||by>chartBot)return;
+    ctx.strokeStyle=Math.abs(m)===2?'rgba(52,152,219,0.30)':'rgba(52,152,219,0.55)';
+    ctx.lineWidth=1; ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(PAD.l,by); ctx.lineTo(W-PAD.r,by); ctx.stroke(); ctx.setLineDash([]);
+    ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(52,152,219,0.65)';
+    ctx.textAlign='right'; ctx.fillText((m>0?'+':'')+m+'\u03c3', W-PAD.r-2,by-3);
+  });
+  /* Long-run mean line */
+  var meanY=py(ouMu);
+  if(meanY>=chartTop&&meanY<=chartBot){
+    ctx.strokeStyle='rgba(52,152,219,0.65)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(PAD.l,meanY); ctx.lineTo(W-PAD.r,meanY); ctx.stroke(); ctx.setLineDash([]);
+    ctx.font='bold 8px DM Mono'; ctx.fillStyle='rgba(52,152,219,0.8)';
+    ctx.textAlign='right'; ctx.fillText('\u03bc '+formatPrice(ouMu),W-PAD.r-2,meanY-3);
+  }
+  /* Expected reversion path: E[X(t)] = μ + (S0-μ)·e^(-θt) */
+  ctx.strokeStyle='rgba(52,152,219,0.90)'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(lastX,py(S0));
+  for(var t=1;t<=STEPS;t++){
+    var x=lastX+t*barW; if(x>W-PAD.r)break;
+    var ep=ouMu+(S0-ouMu)*Math.exp(-theta*t);
+    var y=py(ep); if(y<chartTop-5||y>chartBot+5)break;
+    ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  /* Deviation badge */
+  var devSig=(S0-ouMu)/(sigStat+1e-10);
+  var devCol=devSig>0?'rgba(231,76,60,0.9)':'rgba(39,174,96,0.9)';
+  ctx.font='bold 9px "DM Mono",monospace'; ctx.textAlign='left'; ctx.globalAlpha=1;
+  ctx.fillStyle='rgba(52,152,219,0.85)';
+  ctx.fillText('O-U  \u03b8='+theta.toFixed(3)+'  t\u00bd='+halfLife.toFixed(1)+'bars',PAD.l+4,PAD.t+50);
+  ctx.fillStyle=devCol;
+  ctx.fillText('dev='+(devSig>=0?'+':'')+devSig.toFixed(2)+'\u03c3',PAD.l+4,PAD.t+62);
   ctx.restore();
 }
 
@@ -6101,6 +6240,14 @@ var GROUPS = [
       { id:'fractalsig', label:'Fractal Signal Score',    icon:S('<circle cx="8" cy="10" r="5" stroke-width="1.2"/><path d="M8 10 L11 6" stroke-width="1.5"/><path d="M3.4 12.5 A5 5 0 0 1 12.6 12.5" stroke-width="1" stroke-dasharray="1.5 2" opacity=".6"/>'), toggle:true, fractalsignaltool:true, getState:function(){ return fractalSignalOn; } },
       { id:'complexfractal', label:'Complex Fractal Model', icon:S('<line x1="2" y1="8" x2="14" y2="8" stroke-width="1.5"/><line x1="2" y1="4" x2="14" y2="4" stroke-width="1" stroke-dasharray="3 2" opacity=".6"/><line x1="2" y1="12" x2="14" y2="12" stroke-width="1" stroke-dasharray="3 2" opacity=".4"/><circle cx="5" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="10" cy="4" r="1.2" fill="currentColor" stroke="none"/>'), toggle:true, complexfractaltool:true, getState:function(){ return complexFractalOn; } },
     ]},
+  /* ── Stochastic Models ── */
+  { id:'stoch_grp', stochgroup:true,
+    icon:S('<path d="M2 10 Q5 3 8 8 Q11 13 14 6" stroke-width="1.5" fill="none"/><path d="M2 8 L14 8" stroke-width="0.7" stroke-dasharray="2 2" opacity=".4"/>'),
+    tooltip:'Stochastic Models',
+    items:[
+      { id:'gbm', label:'Brownian Motion (GBM)',       icon:S('<path d="M2 8 L6 8"/><line x1="6" y1="8" x2="13" y2="4" opacity=".9"/><line x1="6" y1="8" x2="13" y2="6" opacity=".7"/><line x1="6" y1="8" x2="13" y2="8" opacity=".5"/><line x1="6" y1="8" x2="13" y2="10" opacity=".7"/><line x1="6" y1="8" x2="13" y2="12" opacity=".9"/>'), toggle:true, gbmtool:true, getState:function(){ return gbmOn; } },
+      { id:'ou',  label:'Ornstein-Uhlenbeck Process',  icon:S('<line x1="2" y1="8" x2="14" y2="8" stroke-dasharray="3 2" opacity=".5"/><path d="M2 5 Q5 3 8 8 Q11 13 14 8" stroke-width="1.5" fill="none"/>'), toggle:true, outool:true, getState:function(){ return ouOn; } },
+    ]},
   'sep',
   /* ── Fibonacci ── */
   { id:'fib_grp', icon:S('<line x1="2" y1="2" x2="14" y2="2"/><line x1="2" y1="6" x2="14" y2="6" opacity=".7"/><line x1="2" y1="10" x2="14" y2="10" opacity=".5"/><line x1="2" y1="14" x2="14" y2="14" opacity=".3"/><line x1="4" y1="2" x2="4" y2="14"/>'), tooltip:'Fibonacci',
@@ -6206,7 +6353,7 @@ function buildToolbar() {
     }
     var wrap=document.createElement('div'); wrap.className='tb-group';
     var btn=document.createElement('button');
-    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||complexFractalOn)))?' active':'');
+    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||complexFractalOn))||(g.stochgroup&&(gbmOn||ouOn)))?' active':'');
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
@@ -6311,6 +6458,8 @@ function pickItem(item) {
   if(item.garchbandstool)   { garchBandsOn=!garchBandsOn;  buildToolbar(); renderChart&&renderChart(); return; }
   if(item.fractalsignaltool){ fractalSignalOn=!fractalSignalOn; buildToolbar(); renderChart&&renderChart(); return; }
   if(item.complexfractaltool){ complexFractalOn=!complexFractalOn; buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.gbmtool){ gbmOn=!gbmOn; buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.outool) { ouOn=!ouOn;   buildToolbar(); renderChart&&renderChart(); return; }
 
   /* ── Fib Spiral gate — requires $1 Stripe payment ── */
   if(item.id === 'fibspiral') {
