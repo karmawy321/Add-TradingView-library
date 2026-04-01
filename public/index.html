@@ -5375,7 +5375,7 @@ function handleCaptureUpload(input){
   r.readAsDataURL(input.files[0]);
 }
 
-function executeTool(tool,imgData){
+function executeTool(tool,imgData,candlePayload){
   var btn=document.getElementById('tbtn-'+tool.id);
   function resetCard(stateIcon,stateColor){
     if(!btn)return;
@@ -5389,8 +5389,8 @@ function executeTool(tool,imgData){
       '</div>'+
       (stateIcon?'<div class="ai-tc-state" style="color:'+stateColor+'">'+stateIcon+'</div>':'');
   }
-  if(!imgData){showErr('Load a chart first');return;}
-  dataUrl=imgData;
+  if(!candlePayload && !imgData){showErr('Load a chart first');return;}
+  if(imgData) dataUrl=imgData;
   if(btn){btn.setAttribute('disabled',true);resetCard('…','rgba(201,168,76,.8)');}
 
   /* Show spinner on the tool-result-hd row + auto-open panel */
@@ -5405,9 +5405,13 @@ function executeTool(tool,imgData){
   var pair=currentSymbol||(document.getElementById('pairIn')||{}).value||'';
   var token=localStorage.getItem('fractal_token');
   var langVal=localStorage.getItem('fractal_lang')||'en';
-  var b64=imgData.split(',')[1], mType=imgData.split(';')[0].split(':')[1];
   var _smaCtx = (typeof smaContextStr !== 'undefined') ? smaContextStr : '';
-  callBackend(tool.endpoint,{image:b64,mediaType:mType,pair:pair,timeframe:currentInterval,language:langVal,_token:token,sma_context:_smaCtx})
+  var _ep_payload = candlePayload
+    ? Object.assign({pair:pair,timeframe:currentInterval,language:langVal,_token:token}, candlePayload)
+    : (function(){ var b64=imgData.split(',')[1],mType=imgData.split(';')[0].split(':')[1]; return {image:b64,mediaType:mType,pair:pair,timeframe:currentInterval,language:langVal,_token:token,sma_context:_smaCtx}; })();
+  if(tool.id==='vol'){ _ep_payload.account_size=parseFloat((document.getElementById('vol-acct')||{}).value)||10000; _ep_payload.risk_pct=parseFloat((document.getElementById('vol-risk')||{}).value)||1; }
+  if(tool.id==='journal'){ _ep_payload.trade_notes=(document.getElementById('journal-notes')||{}).value; _ep_payload.outcome=(document.getElementById('journal-outcome')||{}).value; _ep_payload.pnl=(document.getElementById('journal-pnl')||{}).value; }
+  callBackend(tool.endpoint, _ep_payload)
   .then(function(result){
     if(result&&result.error){
       showErr(result.error);
@@ -5452,9 +5456,25 @@ function executeTool(tool,imgData){
 }
 
 function runSingleTool(tool){
-  var img = captureForTool();
-  if(!img){ showErr('Load a chart first — type a pair or upload a screenshot.'); return; }
-  executeTool(tool, img);
+  if(chartCandles && chartCandles.length >= 2){
+    captureAndStore();
+    var _sBars = Math.max(20, Math.floor(chartCandles.length / chartView.zoom));
+    var _sStart = Math.max(0, chartCandles.length - _sBars - chartView.offset);
+    var _sEnd   = Math.min(chartCandles.length, _sStart + _sBars);
+    var _sVisC  = chartCandles.slice(_sStart, _sEnd);
+    var _sPMin  = Math.min.apply(null, _sVisC.map(function(c){ return c.l; }));
+    var _sPMax  = Math.max.apply(null, _sVisC.map(function(c){ return c.h; }));
+    var _sRng   = _sPMax - _sPMin;
+    _sPMin -= _sRng * 0.05; _sPMax += _sRng * 0.05;
+    window._lastVisiblePriceMin    = _sPMin;
+    window._lastVisiblePriceMax    = _sPMax;
+    window._lastVisibleCandleCount = _sVisC.length;
+    executeTool(tool, dataUrl, { candles: _sVisC, priceMin: _sPMin, priceMax: _sPMax });
+  } else {
+    var img = captureForTool();
+    if(!img){ showErr('Load a chart first — type a pair or upload a screenshot.'); return; }
+    executeTool(tool, img, null);
+  }
 }
 
 
