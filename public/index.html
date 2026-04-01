@@ -4029,6 +4029,7 @@ var volBubblesOn     = false;
 var hurstOn          = false;
 var garchBandsOn     = false;
 var fractalSignalOn  = false;
+var complexFractalOn = false;
 var vpvrAnchorX      = null;  /* null = auto right edge (W-PAD.r-2); set by drag */
 var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
@@ -4622,6 +4623,7 @@ function renderChart() {
   if (hurstOn)         drawHurst(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
   if (garchBandsOn)    drawGARCH(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
   if (fractalSignalOn) drawFractalSignal(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
+  if (complexFractalOn) drawComplexFractal(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
 }
 
 /* ── Volume Profile Visible Range (VPVR) ── */
@@ -5041,6 +5043,137 @@ function drawFractalSignal(ctx, visible, mn, mx, range, W, H, PAD, CW, CH) {
   ctx.fillStyle = signal >= 0 ? 'rgba(38,166,154,1)' : 'rgba(239,83,80,1)';
   ctx.fillText(arrow + ' ' + score + '%  ' + regime, W / 2, gY + gH + 9);
 
+  ctx.restore();
+}
+
+/* ── Complex Fractal Model — 9-SMA regime overlay (ported from Pine Script) ── */
+function drawComplexFractal(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW) {
+  var all = (typeof chartCandles !== 'undefined') ? chartCandles : visible;
+  if (!all || all.length < 50 || !visible || visible.length < 2 || !barW) return;
+
+  /* Build SMA over full history using O(n) sliding window */
+  function buildSMA(period) {
+    var res = new Array(all.length).fill(null);
+    var sum = 0;
+    for (var i = 0; i < all.length; i++) {
+      sum += all[i].c;
+      if (i >= period) sum -= all[i - period].c;
+      if (i >= period - 1) res[i] = sum / period;
+    }
+    return res;
+  }
+
+  var e1 = buildSMA(14);
+  var e4 = buildSMA(100);
+  var e5 = buildSMA(200);
+  var e6 = buildSMA(400);
+  var e7 = buildSMA(1500);
+
+  var visibleBars = Math.max(20, Math.floor(all.length / chartView.zoom));
+  var startIdx    = Math.max(0, all.length - visibleBars - chartView.offset);
+  var visLen      = visible.length;
+
+  function py(p) { return PAD.t + CH - ((p - mn) / range) * CH; }
+  function bx(vi){ return PAD.l + (vi + 0.5) * barW; }
+  var chartTop = PAD.t, chartBot = PAD.t + CH;
+
+  ctx.save();
+
+  /* 1. Background tint: close vs 100 SMA as simplified Supertrend proxy */
+  var lastE4 = e4[startIdx + visLen - 1];
+  if (lastE4 !== null) {
+    ctx.fillStyle = visible[visLen-1].c > lastE4 ? 'rgba(39,174,96,0.03)' : 'rgba(231,76,60,0.03)';
+    ctx.fillRect(PAD.l, PAD.t, CW, CH);
+  }
+
+  /* 2. e7 (1500 SMA) — purple solid line */
+  ctx.strokeStyle = '#9b59b6'; ctx.lineWidth = 2; ctx.setLineDash([]); ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  var started = false;
+  for (var vi = 0; vi < visLen; vi++) {
+    var val = e7[startIdx + vi];
+    if (val === null) { started = false; continue; }
+    var y = py(val);
+    if (y < chartTop - 5 || y > chartBot + 5) { started = false; continue; }
+    started ? ctx.lineTo(bx(vi), y) : (ctx.moveTo(bx(vi), y), started = true);
+  }
+  ctx.stroke();
+
+  /* 3. e4 (100 SMA) — faint white dashed */
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1; ctx.setLineDash([2,3]); ctx.globalAlpha = 1;
+  ctx.beginPath(); started = false;
+  for (var vi = 0; vi < visLen; vi++) {
+    var val = e4[startIdx + vi];
+    if (val === null) { started = false; continue; }
+    var y = py(val);
+    if (y < chartTop - 5 || y > chartBot + 5) { started = false; continue; }
+    started ? ctx.lineTo(bx(vi), y) : (ctx.moveTo(bx(vi), y), started = true);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  /* 4. Cross events */
+  for (var vi = 1; vi < visLen; vi++) {
+    var gi = startIdx + vi;
+    var x  = bx(vi);
+
+    /* e4 × e6 (100 × 400) — white dashed vertical + horizontal at e4 extending 200 bars */
+    if (e4[gi] !== null && e6[gi] !== null && e4[gi-1] !== null && e6[gi-1] !== null) {
+      if ((e4[gi-1] < e6[gi-1]) !== (e4[gi] < e6[gi])) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([4,4]);
+        ctx.beginPath(); ctx.moveTo(x, chartTop); ctx.lineTo(x, chartBot); ctx.stroke();
+        var hY = py(e4[gi]);
+        if (hY >= chartTop && hY <= chartBot) {
+          var extX = Math.min(W - PAD.r, x + 200 * barW);
+          ctx.beginPath(); ctx.moveTo(x, hY); ctx.lineTo(extX, hY); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.font = 'bold 8px DM Mono'; ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.textAlign = 'left';
+          ctx.fillText('100\u00d7400', x + 3, hY - 3);
+        }
+        ctx.setLineDash([]);
+      }
+    }
+
+    /* e5 × e6 (200 × 400) — green/red dashed vertical + horizontal at e6 */
+    if (e5[gi] !== null && e6[gi] !== null && e5[gi-1] !== null && e6[gi-1] !== null) {
+      var wasBelow = e5[gi-1] < e6[gi-1], nowAbove = e5[gi] >= e6[gi];
+      var wasAbove = e5[gi-1] > e6[gi-1], nowBelow = e5[gi] <= e6[gi];
+      if ((wasBelow && nowAbove) || (wasAbove && nowBelow)) {
+        var col56 = (wasBelow && nowAbove) ? '#27ae60' : '#e74c3c';
+        ctx.strokeStyle = col56; ctx.lineWidth = 2; ctx.setLineDash([4,4]);
+        ctx.beginPath(); ctx.moveTo(x, chartTop); ctx.lineTo(x, chartBot); ctx.stroke();
+        var hY6 = py(e6[gi]);
+        if (hY6 >= chartTop && hY6 <= chartBot) {
+          var extX6 = Math.min(W - PAD.r, x + 200 * barW);
+          ctx.beginPath(); ctx.moveTo(x, hY6); ctx.lineTo(extX6, hY6); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.font = 'bold 8px DM Mono'; ctx.fillStyle = col56; ctx.textAlign = 'left';
+          ctx.fillText('200\u00d7400 ' + (wasBelow ? '\u25b2' : '\u25bc'), x + 3, hY6 - 3);
+        }
+        ctx.setLineDash([]);
+      }
+    }
+
+    /* e1 × e7 (14 × 1500) — white horizontal at e7 level */
+    if (e1[gi] !== null && e7[gi] !== null && e1[gi-1] !== null && e7[gi-1] !== null) {
+      if ((e1[gi-1] < e7[gi-1]) !== (e1[gi] < e7[gi])) {
+        var hY7 = py(e7[gi]);
+        if (hY7 >= chartTop && hY7 <= chartBot) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(Math.max(PAD.l, x - 150 * barW), hY7);
+          ctx.lineTo(Math.min(W - PAD.r, x + 150 * barW), hY7);
+          ctx.stroke();
+          ctx.font = 'bold 8px DM Mono'; ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.textAlign = 'left';
+          ctx.fillText('14\u00d71500', x + 3, hY7 + 10);
+        }
+      }
+    }
+  }
+
+  /* 5. Label badge */
+  ctx.font = 'bold 9px "DM Mono",monospace'; ctx.fillStyle = '#9b59b6';
+  ctx.textAlign = 'left'; ctx.globalAlpha = 0.9;
+  ctx.fillText('COMPLEX FRACTAL', PAD.l + 4, PAD.t + 36);
   ctx.restore();
 }
 
@@ -5966,6 +6099,7 @@ var GROUPS = [
       { id:'hurst',      label:'Hurst Exponent',         icon:S('<path d="M2 12 L5 4 L8 9 L11 4 L14 9" stroke-width="1.5" fill="none"/>'),                                                                                                                       toggle:true, hursttool:true,        getState:function(){ return hurstOn; } },
       { id:'garch',      label:'GARCH Volatility Bands',  icon:S('<path d="M2 4 Q8 2.5 14 4" stroke-width="1.5"/><path d="M2 12 Q8 13.5 14 12" stroke-width="1.5"/><path d="M2 8 Q8 8 14 8" stroke-width="1" stroke-dasharray="3 2" opacity=".6"/>'),             toggle:true, garchbandstool:true,  getState:function(){ return garchBandsOn; } },
       { id:'fractalsig', label:'Fractal Signal Score',    icon:S('<circle cx="8" cy="10" r="5" stroke-width="1.2"/><path d="M8 10 L11 6" stroke-width="1.5"/><path d="M3.4 12.5 A5 5 0 0 1 12.6 12.5" stroke-width="1" stroke-dasharray="1.5 2" opacity=".6"/>'), toggle:true, fractalsignaltool:true, getState:function(){ return fractalSignalOn; } },
+      { id:'complexfractal', label:'Complex Fractal Model', icon:S('<line x1="2" y1="8" x2="14" y2="8" stroke-width="1.5"/><line x1="2" y1="4" x2="14" y2="4" stroke-width="1" stroke-dasharray="3 2" opacity=".6"/><line x1="2" y1="12" x2="14" y2="12" stroke-width="1" stroke-dasharray="3 2" opacity=".4"/><circle cx="5" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="10" cy="4" r="1.2" fill="currentColor" stroke="none"/>'), toggle:true, complexfractaltool:true, getState:function(){ return complexFractalOn; } },
     ]},
   'sep',
   /* ── Fibonacci ── */
@@ -6072,7 +6206,7 @@ function buildToolbar() {
     }
     var wrap=document.createElement('div'); wrap.className='tb-group';
     var btn=document.createElement('button');
-    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn)))?' active':'');
+    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||complexFractalOn)))?' active':'');
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
@@ -6176,6 +6310,7 @@ function pickItem(item) {
   if(item.hursttool)        { hurstOn=!hurstOn;        buildToolbar(); renderChart&&renderChart(); return; }
   if(item.garchbandstool)   { garchBandsOn=!garchBandsOn;  buildToolbar(); renderChart&&renderChart(); return; }
   if(item.fractalsignaltool){ fractalSignalOn=!fractalSignalOn; buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.complexfractaltool){ complexFractalOn=!complexFractalOn; buildToolbar(); renderChart&&renderChart(); return; }
 
   /* ── Fib Spiral gate — requires $1 Stripe payment ── */
   if(item.id === 'fibspiral') {
