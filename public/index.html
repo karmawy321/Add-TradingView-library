@@ -2235,11 +2235,12 @@ azBtn.addEventListener('click', function(){
   /* Capture screenshot for outCanvas background (preserves visual style) */
   captureAndStore();
 
-  /* Capture visible candle data for accurate AI analysis */
+  /* Capture visible candle data for accurate AI analysis (capped at 80 to control token cost) */
   var _vBars = Math.max(20, Math.floor(chartCandles.length / chartView.zoom));
   var _sIdx  = Math.max(0, chartCandles.length - _vBars - chartView.offset);
   var _eIdx  = Math.min(chartCandles.length, _sIdx + _vBars);
   var _visC  = chartCandles.slice(_sIdx, _eIdx);
+  if(_visC.length > 80) _visC = _visC.slice(_visC.length - 80);
   var _pMin  = Math.min.apply(null, _visC.map(function(c){ return c.l; }));
   var _pMax  = Math.max.apply(null, _visC.map(function(c){ return c.h; }));
   var _rng   = _pMax - _pMin;
@@ -2896,11 +2897,12 @@ function runTool(tool){
   /* Capture screenshot for outCanvas background (preserves visual style) */
   captureAndStore();
 
-  /* Capture visible candle data for accurate AI analysis */
+  /* Capture visible candle data for accurate AI analysis (capped at 80 to control token cost) */
   var _tvBars = Math.max(20, Math.floor(chartCandles.length / chartView.zoom));
   var _tsIdx  = Math.max(0, chartCandles.length - _tvBars - chartView.offset);
   var _teIdx  = Math.min(chartCandles.length, _tsIdx + _tvBars);
   var _tvisC  = chartCandles.slice(_tsIdx, _teIdx);
+  if(_tvisC.length > 80) _tvisC = _tvisC.slice(_tvisC.length - 80);
   var _tpMin  = Math.min.apply(null, _tvisC.map(function(c){ return c.l; }));
   var _tpMax  = Math.max.apply(null, _tvisC.map(function(c){ return c.h; }));
   var _trng   = _tpMax - _tpMin;
@@ -5462,6 +5464,7 @@ function runSingleTool(tool){
     var _sStart = Math.max(0, chartCandles.length - _sBars - chartView.offset);
     var _sEnd   = Math.min(chartCandles.length, _sStart + _sBars);
     var _sVisC  = chartCandles.slice(_sStart, _sEnd);
+    if(_sVisC.length > 80) _sVisC = _sVisC.slice(_sVisC.length - 80);
     var _sPMin  = Math.min.apply(null, _sVisC.map(function(c){ return c.l; }));
     var _sPMax  = Math.max.apply(null, _sVisC.map(function(c){ return c.h; }));
     var _sRng   = _sPMax - _sPMin;

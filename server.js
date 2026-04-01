@@ -529,6 +529,7 @@ function callAnthropic(apiKey, model, prompt, image, mediaType, maxTok, res, tra
 }
 
 const rl = l => l==='ar' ? 'Arabic' : l==='pt' ? 'Portuguese' : 'English';
+const candleLine = (c, i) => `${i+1}. O:${(+c.o).toFixed(2)} H:${(+c.h).toFixed(2)} L:${(+c.l).toFixed(2)} C:${(+c.c).toFixed(2)}`;
 
 /* ═══════════════════════════════════════════════════
    AI TOOL ENDPOINTS
@@ -542,7 +543,7 @@ app.post('/analyze', async (req, res) => {
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _azUserId = null;
   try { const _azR = await verifyAndDeduct(_token, 12); _azUserId = _azR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are a fractal market analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto-detected'} timeframe (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -562,7 +563,7 @@ app.post('/bar-pattern', async (req, res) => {
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _bpUserId = null;
   try { const _bpR = await verifyAndDeduct(_token, 12); _bpUserId = _bpR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are a bar pattern self-similarity analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -581,7 +582,7 @@ app.post('/weierstrass', async (req, res) => {
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are a Weierstrass fractal decomposition analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -599,7 +600,7 @@ app.post('/mtf', async (req, res) => {
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _mtfUserId = null;
   try { const _mtfR = await verifyAndDeduct(_token, 20); _mtfUserId = _mtfR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are an MTF (Multi-Timeframe) confluence analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -619,7 +620,7 @@ app.post('/fractal-age', async (req, res) => {
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _ageUserId = null;
   try { const _ageR = await verifyAndDeduct(_token, 15); _ageUserId = _ageR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are a fractal cycle age analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -646,7 +647,7 @@ app.post('/projection', async (req, res) => {
     return res.status(402).json({ error: e.message });
   }
 
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const lastClose = candles[candles.length - 1].c;
   const p = `You are a price projection analyst. Analyze this OHLCV data for ${pair||'asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}, current price: ${lastClose}). 3 forward scenarios. Reply in ${rl(l)}.
 
@@ -690,7 +691,7 @@ app.post('/fibonacci', async (req, res) => {
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _fibUserId = null;
   try { const _fibR = await verifyAndDeduct(_token, 12); _fibUserId = _fibR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are a Fibonacci analysis expert. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -710,7 +711,7 @@ app.post('/smc', async (req, res) => {
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _smcUserId = null;
   try { const _smcR = await verifyAndDeduct(_token, 16); _smcUserId = _smcR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are a Smart Money Concepts analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -730,7 +731,7 @@ app.post('/volatility', async (req, res) => {
   try { await verifyAndDeduct(_token, 12); } catch(e) { return res.status(402).json({ error: e.message }); }
   const acct = account_size || 10000;
   const riskP = risk_pct || 1;
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are a volatility regime analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Account size: $${acct}, Risk: ${riskP}%. Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -749,7 +750,7 @@ app.post('/liquidity', async (req, res) => {
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   let _liqUserId = null;
   try { const _liqR = await verifyAndDeduct(_token, 20); _liqUserId = _liqR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const p = `You are a liquidity mapping analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
@@ -768,7 +769,7 @@ app.post('/journal', async (req, res) => {
   const { candles, priceMin, priceMax, pair, timeframe, language: l, trade_notes, outcome, pnl, _token } = req.body;
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
   try { await verifyAndDeduct(_token, 20); } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map((c, i) => `${i+1}. O:${c.o} H:${c.h} L:${c.l} C:${c.c}`).join('\n');
+  const candleText = candles.map(candleLine).join('\n');
   const context = [trade_notes&&`Notes: ${trade_notes}`, outcome&&`Outcome: ${outcome}`, pnl&&`P&L: ${pnl}`].filter(Boolean).join('. ');
   const p = `You are an expert trading coach grading a trade. Asset: ${pair||'asset'} ${timeframe||'auto'} (${candles.length} candles, price range ${(priceMin||0).toFixed(4)} - ${(priceMax||0).toFixed(4)}). ${context}. Reply in ${rl(l)}.
 
