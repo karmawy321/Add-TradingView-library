@@ -5976,6 +5976,9 @@ var GROUPS = [
       { id:'fibcirc',   label:'Fib Circles',     icon:S('<circle cx="6" cy="8" r="5"/><circle cx="6" cy="8" r="3"/><circle cx="6" cy="8" r="1.2" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2, fibtype:'circle' },
       { id:'fibfan',    label:'Fib Fan',          icon:S('<line x1="2" y1="13" x2="14" y2="5"/><line x1="2" y1="13" x2="14" y2="8" opacity=".6"/><line x1="2" y1="13" x2="14" y2="11" opacity=".4"/>'), cur:'crosshair', points:2, fibtype:'fan' },
       { id:'fibspiral', label:'Fib Spiral',       icon:S('<path d="M8 8 m0-5 a5 5 0 0 1 5 5 a3.8 3.8 0 0 1-3.8 3.8 a2.9 2.9 0 0 1-2.9-2.9 a2.2 2.2 0 0 1 2.2-2.2"/>'), cur:'crosshair', points:2, fibtype:'spiral' },
+      { id:'fibtimezones',     label:'Fib Time Zones',       icon:S('<line x1="2" y1="3" x2="2" y2="13"/><line x1="5" y1="3" x2="5" y2="13" opacity=".8"/><line x1="9" y1="3" x2="9" y2="13" opacity=".6"/><line x1="14" y1="3" x2="14" y2="13" opacity=".4"/>'), cur:'crosshair', points:2, fibtype:'timezones' },
+      { id:'fibspiral_fc',     label:'Spiral Forecasting',   icon:S('<path d="M2 12 Q5 2 9 12" fill="none" stroke-width="1.3"/><path d="M2 12 Q8 1 15 12" fill="none" stroke-width="1" opacity=".6"/><circle cx="2" cy="12" r="1.5" fill="currentColor" stroke="none"/>'), cur:'crosshair', points:2, fibtype:'spiral_forecast' },
+      { id:'fibfractal_spiral',label:'Fractal Spiral Model',  icon:S('<path d="M8 8 m0-5 a5 5 0 0 1 5 5 a3.8 3.8 0 0 1-3.8 3.8 a2.9 2.9 0 0 1-2.9-2.9" stroke-width="1.3"/><path d="M11.5 5 m0-2 a2 2 0 0 1 2 2 a1.5 1.5 0 0 1-1.5 1.5" stroke-width="1" opacity=".55"/>'), cur:'crosshair', points:2, fibtype:'fractal_spiral' },
     ]},
   /* ── Bar Pattern ── */
   { id:'barpattern_grp', icon:S('<rect x="2" y="5" width="3" height="8"/><rect x="6.5" y="3" width="3" height="10"/><rect x="11" y="6" width="3" height="6"/><line x1="3.5" y1="3" x2="3.5" y2="5"/><line x1="3.5" y1="13" x2="3.5" y2="15"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/>'), tooltip:'Bar Pattern',
@@ -7308,6 +7311,111 @@ function drawOne(ctx,d,co,prev){
     ctx.restore(); /* undo translate+rotate */
     ctx.restore(); /* undo ctx.save at top of drawOne */
     return;
+  }
+
+  /* ── Fibonacci Time Zones ── */
+  if(d.fibtype==='timezones'){
+    var fibNums=[0,1,2,3,5,8,13,21,34];
+    var dx=x2-x1;
+    var chartTop=PAD.t, chartBot=co.H-PAD.b;
+    ctx.font='bold 9px DM Mono';
+    fibNums.forEach(function(n,i){
+      var vx=x1+n*dx;
+      if(vx<PAD.l-2||vx>co.W-PAD.r+2)return;
+      ctx.strokeStyle=FIB_C[i%FIB_C.length]; ctx.globalAlpha=.65; ctx.setLineDash([3,3]); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(vx,chartTop); ctx.lineTo(vx,chartBot); ctx.stroke();
+      ctx.globalAlpha=1; ctx.setLineDash([]);
+      ctx.fillStyle=FIB_C[i%FIB_C.length]; ctx.textAlign='center';
+      ctx.fillText(String(n),vx,chartTop+10);
+    });
+    ctx.fillStyle=gold;
+    ctx.beginPath(); ctx.arc(x1,y1,3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x2,y2,3,0,Math.PI*2); ctx.fill();
+    ctx.restore(); return;
+  }
+
+  /* ── Spiral Forecasting ── */
+  if(d.fibtype==='spiral_forecast'){
+    var PHI=1.6180339887;
+    var baseR=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+    if(baseR<4){ctx.restore();return;}
+    var ang=Math.atan2(y2-y1,x2-x1);
+    var arcLevels=[0.236,0.382,0.5,0.618,0.786,1.0,1.618,2.618];
+    /* Draw forward-facing arcs at each Fibonacci ratio */
+    arcLevels.forEach(function(lv,i){
+      var r=baseR*lv;
+      ctx.strokeStyle=FIB_C[i%FIB_C.length]; ctx.globalAlpha=.6; ctx.setLineDash([3,3]); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(x1,y1,r,ang-Math.PI/2,ang+Math.PI/2); ctx.stroke();
+      ctx.globalAlpha=1; ctx.setLineDash([]);
+      ctx.fillStyle=FIB_C[i%FIB_C.length]; ctx.font='bold 9px DM Mono'; ctx.textAlign='left';
+      var tipX=x1+r*Math.cos(ang), tipY=y1+r*Math.sin(ang);
+      ctx.fillText((lv*100).toFixed(1)+'%',tipX+3,tipY);
+    });
+    /* Golden spiral path connecting the arc tips */
+    var spSteps=120;
+    ctx.strokeStyle=gold; ctx.globalAlpha=.45; ctx.lineWidth=1; ctx.setLineDash([2,3]);
+    ctx.beginPath();
+    for(var si=0;si<=spSteps;si++){
+      var t=si/spSteps;
+      var spAng=ang+t*Math.PI*1.5;
+      var spR=baseR*Math.pow(PHI,t*2-2);
+      var sx=x1+spR*Math.cos(spAng), sy=y1+spR*Math.sin(spAng);
+      si===0?ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
+    }
+    ctx.stroke();
+    ctx.globalAlpha=1; ctx.setLineDash([]);
+    ctx.strokeStyle=gold; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.fillStyle=gold;
+    ctx.beginPath(); ctx.arc(x1,y1,3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x2,y2,3,0,Math.PI*2); ctx.fill();
+    ctx.restore(); return;
+  }
+
+  /* ── Fractal Spiral Models ── */
+  if(d.fibtype==='fractal_spiral'){
+    var PHI=1.6180339887;
+    var baseR=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+    if(baseR<4){ctx.restore();return;}
+    var initAngle=Math.atan2(y2-y1,x2-x1);
+    var TURNS=4*Math.PI; var steps=200;
+    function drawFractalArm(cx,cy,bR,startAngle,alpha,colorIdx){
+      ctx.save(); ctx.translate(cx,cy); ctx.rotate(startAngle);
+      ctx.globalAlpha=alpha; ctx.strokeStyle=FIB_C[colorIdx%FIB_C.length]; ctx.lineWidth=1; ctx.setLineDash([]);
+      ctx.beginPath();
+      for(var si=0;si<=steps;si++){
+        var theta=-(si/steps)*TURNS;
+        var rr=bR*Math.pow(PHI,theta/(Math.PI/2));
+        var sx=rr*Math.cos(theta),sy=rr*Math.sin(theta);
+        si===0?ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
+      }
+      ctx.stroke(); ctx.restore();
+    }
+    /* Main spiral */
+    drawFractalArm(x1,y1,baseR,initAngle,0.85,0);
+    /* Two nested sub-spirals at φ⁻¹ and φ⁻² scale along spiral direction */
+    var sub1R=baseR/PHI, sub1Ang=initAngle+Math.PI/2;
+    var sub1X=x1+sub1R*Math.cos(sub1Ang), sub1Y=y1+sub1R*Math.sin(sub1Ang);
+    drawFractalArm(sub1X,sub1Y,sub1R,initAngle-Math.PI/2,0.5,1);
+    var sub2R=baseR/(PHI*PHI), sub2Ang=initAngle+Math.PI;
+    var sub2X=x1+sub2R*Math.cos(sub2Ang), sub2Y=y1+sub2R*Math.sin(sub2Ang);
+    drawFractalArm(sub2X,sub2Y,sub2R,initAngle+Math.PI/2,0.3,2);
+    /* Ring labels at φ powers */
+    ctx.save(); ctx.translate(x1,y1); ctx.rotate(initAngle);
+    [[0,'1'],[1,'φ'],[2,'φ²'],[3,'φ³']].forEach(function(lv,i){
+      var rRing=baseR*Math.pow(PHI,-lv[0]);
+      if(rRing<2||rRing>baseR*1.05)return;
+      ctx.strokeStyle=FIB_C[i%FIB_C.length]; ctx.globalAlpha=.25; ctx.lineWidth=.7; ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.arc(0,0,rRing,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1; ctx.setLineDash([]);
+      ctx.fillStyle=FIB_C[i%FIB_C.length]; ctx.font='bold 8px DM Mono'; ctx.textAlign='left';
+      ctx.fillText(lv[1],rRing+3,-3);
+    });
+    ctx.restore();
+    ctx.fillStyle=gold; ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.arc(x1,y1,3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x2,y2,3,0,Math.PI*2); ctx.fill();
+    ctx.restore(); return;
   }
 
   /* ── Bar Pattern — draggable + resizable golden copy ── */
