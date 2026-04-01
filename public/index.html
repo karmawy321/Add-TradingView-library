@@ -7747,7 +7747,7 @@ function drawOne(ctx,d,co,prev){
     if(baseR<4){ctx.restore();return;}
     var initAngle=Math.atan2(y2-y1,x2-x1);
     var TURNS=4*Math.PI; var steps=200;
-    function drawFractalArm(cx,cy,bR,startAngle,alpha,colorIdx){
+    var drawFractalArm=function(cx,cy,bR,startAngle,alpha,colorIdx){
       ctx.save(); ctx.translate(cx,cy); ctx.rotate(startAngle);
       ctx.globalAlpha=alpha; ctx.strokeStyle=FIB_C[colorIdx%FIB_C.length]; ctx.lineWidth=1; ctx.setLineDash([]);
       ctx.beginPath();
@@ -7758,7 +7758,7 @@ function drawOne(ctx,d,co,prev){
         si===0?ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
       }
       ctx.stroke(); ctx.restore();
-    }
+    };
     /* Main spiral */
     drawFractalArm(x1,y1,baseR,initAngle,0.85,0);
     /* Two nested sub-spirals at φ⁻¹ and φ⁻² scale along spiral direction */
