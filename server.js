@@ -332,7 +332,7 @@ async function verifyAndDeduct(token, cost) {
   const { data: { user }, error } = await sbAdmin.auth.getUser(token);
   if (error || !user) throw new Error('Invalid token');
 
-  const { data: profile } = await sbAdmin
+  let { data: profile } = await sbAdmin
     .from('profiles')
     .select('credits, plan')
     .eq('id', user.id)
@@ -342,20 +342,35 @@ async function verifyAndDeduct(token, cost) {
     const username = user.email.split('@')[0];
     await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
     sendWelcomeEmail(user.email, username);
+    profile = { credits: 50, plan: 'free' };
     if (50 < cost) throw new Error('Insufficient credits');
   } else if (profile.credits === null || profile.credits === undefined) {
     await sbAdmin.from('profiles').update({ credits: 50 }).eq('id', user.id);
+    profile.credits = 50;
     if (50 < cost) throw new Error('Insufficient credits');
   } else if (profile.credits < cost) {
     throw new Error('Insufficient credits');
   }
 
+  const current = profile.credits;
+
+  // Try RPC first
   const { error: deductErr } = await sbAdmin.rpc('deduct_credits', { user_id: user.id, amount: cost });
-  if (deductErr) {
-    const current = profile ? (profile.credits ?? 50) : 50;
-    if (current < cost) throw new Error('Insufficient credits');
+  let rpcWorked = false;
+  
+  if (!deductErr) {
+    // If no error, double check that it actually changed
+    const { data: check } = await sbAdmin.from('profiles').select('credits').eq('id', user.id).single();
+    if (check && check.credits < current) { // it decreased
+       rpcWorked = true;
+    }
+  }
+
+  if (!rpcWorked) {
+    // Fallback if RPC failed or didn't decrease credits
     await sbAdmin.from('profiles').update({ credits: current - cost }).eq('id', user.id);
   }
+  
   return { userId: user.id };
 }
 
@@ -364,12 +379,21 @@ async function getUserProfile(token) {
   if (!token)   return null;
   const { data: { user }, error } = await sbAdmin.auth.getUser(token);
   if (error || !user) return null;
-  const { data: profile } = await sbAdmin
+  
+  let { data: profile } = await sbAdmin
     .from('profiles')
     .select('credits, plan, username')
     .eq('id', user.id)
     .single();
-  return profile ? { ...profile, userId: user.id, email: user.email } : null;
+    
+  if (!profile) {
+    const username = user.email.split('@')[0];
+    await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
+    sendWelcomeEmail(user.email, username);
+    return { credits: 50, plan: 'free', username, userId: user.id, email: user.email };
+  }
+  
+  return { ...profile, userId: user.id, email: user.email };
 }
 
 /* ═══════════════════════════════════════════════════
