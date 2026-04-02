@@ -490,12 +490,14 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 #chartWatermark:hover{
   opacity:1 !important;
 }
-/* Drawing toolbar stays full chart height */
+/* Drawing toolbar stays full chart height — scrollable, no visible scrollbar */
 #drawToolbar{
   height:100%;
   overflow-y:auto;
   overflow-x:hidden;
+  scrollbar-width:none;
 }
+#drawToolbar::-webkit-scrollbar{display:none}
 /* Upload preview fills the wrapper */
 #chartCanvasWrap .img-pv{
   position:absolute;
@@ -671,9 +673,9 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   box-shadow:6px 4px 24px rgba(0,0,0,.9);
   display:none;
 }
-.tb-item{width:100%;height:30px;background:transparent;border:none;color:rgba(240,244,250,.75);cursor:pointer;border-radius:3px;display:flex;align-items:center;gap:9px;padding:0 10px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.04em;transition:background .1s,color .1s;white-space:nowrap}
-.tb-item svg{flex-shrink:0;stroke-width:1.8;width:14px;height:14px;opacity:.8}
-.tb-item:hover,.tb-item.active{background:rgba(201,168,76,.14);color:#e8c97a}
+.tb-item{width:100%;height:30px;background:transparent;border:none;color:rgba(201,168,76,.7);cursor:pointer;border-radius:3px;display:flex;align-items:center;gap:9px;padding:0 10px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.04em;transition:background .1s,color .1s;white-space:nowrap}
+.tb-item svg{flex-shrink:0;stroke-width:1.8;width:14px;height:14px;opacity:.7}
+.tb-item:hover,.tb-item.active{background:rgba(201,168,76,.14);color:#f0d878}
 .tb-item:hover svg,.tb-item.active svg{opacity:1}
 .tb-tooltip{position:fixed;left:56px;top:0;background:#0a0d15;border:1px solid rgba(201,168,76,.25);border-radius:3px;padding:5px 9px;white-space:nowrap;pointer-events:none;display:none;z-index:9999;font-family:'DM Mono',monospace;font-size:9px;color:#c9a84c;letter-spacing:.06em;box-shadow:4px 4px 14px rgba(0,0,0,.6)}
 
@@ -1007,7 +1009,7 @@ if (isEmbedded) {
           <!-- Custom Fractal Chart -->
           <div id="chartArea">
             <!-- Drawing toolbar — left strip -->
-            <div id="drawToolbar" style="width:44px;flex-shrink:0;background:#07090e;border-right:1px solid rgba(201,168,76,.13);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;overflow:visible"></div>
+            <div id="drawToolbar" style="width:52px;flex-shrink:0;background:#07090e;border-right:1px solid rgba(201,168,76,.13);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;overflow-y:auto;overflow-x:hidden"></div>
             <!-- Canvas wrapper -->
             <div id="chartCanvasWrap" style="position:relative">
               
