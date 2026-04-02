@@ -4040,7 +4040,7 @@ var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
 var allCandleData   = {};
 var lwChartInstance = null; /* truthy flag for compatibility */
-var chartView       = { offset: 0, zoom: 1.0, rightPad: 0 };
+var chartView       = { offset: 0, zoom: 1.0, rightPad: 0, yScale: 1 };
 var C = { up:'#26a69a', dn:'#ef5350', bg:'#06080d', grid:'rgba(201,168,76,0.05)', sma50:'#c9a84c', sma200:'#3498db', crosshair:'rgba(201,168,76,0.4)' };
 
 function resizeCanvas() {
@@ -4321,6 +4321,11 @@ function renderChart() {
   var mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
   var range = mx-mn||mn*0.001||0.0001;
   mn -= range*0.05; mx += range*0.05; range = mx-mn;
+  if (chartView.yScale !== 1) {
+    var _ymid = (mn + mx) / 2;
+    var _yhalf = (mx - mn) / 2 * chartView.yScale;
+    mn = _ymid - _yhalf; mx = _ymid + _yhalf; range = mx - mn;
+  }
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
   /* ── TradingView-style right gap: base 8% + user-dragged extra space (VPVR fills this) ── */
   var rightGapBars = Math.max(4, Math.round(visible.length * 0.08)) + (chartView.rightPad || 0);
@@ -5583,48 +5588,44 @@ if(chartCanvas){
     if(tip) setTimeout(function(){tip.style.display='none';},1500);
   },{passive:false});
 
-  /* Pan — middle click; drag right = history, drag left past latest candle = grow right gap (VPVR expands) */
-  var _panStart=null, _panOffset=0, _panRightPad=0;
+  /* Pan — left-click crosshair OR middle-click; drag right = history, drag left = future gap */
+  window._panStart=null; window._panOffset=0; window._panRightPad=0;
   chartCanvas.addEventListener('mousedown',function(e){
     if(e.button!==1) return;
     e.preventDefault();
-    _panStart    = e.clientX;
-    _panOffset   = chartView.offset;
-    _panRightPad = chartView.rightPad || 0;
+    window._panStart    = e.clientX;
+    window._panOffset   = chartView.offset;
+    window._panRightPad = chartView.rightPad || 0;
     chartCanvas.style.cursor='grabbing';
   });
   document.addEventListener('mousemove',function(e){
-    if(_panStart===null) return;
+    if(window._panStart===null) return;
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
     var baseGap=Math.max(4,Math.round(vis*0.08));
-    var barW=(W-8-75)/Math.max(vis+baseGap+_panRightPad,1);
-    var dx=e.clientX-_panStart;
-    /* drag right = positive bars = going into history
-       drag left  = negative bars = going toward / into the future gap */
+    var barW=(W-8-75)/Math.max(vis+baseGap+window._panRightPad,1);
+    var dx=e.clientX-window._panStart;
     var bars=Math.round(dx/barW);
-    /* Combined scroll position: positive = history, negative = future gap */
-    var scrollPos = (_panOffset - _panRightPad) + bars;
+    var scrollPos = (window._panOffset - window._panRightPad) + bars;
     var maxOff = Math.max(0,(chartCandles&&chartCandles.length-20)||0);
     if (scrollPos >= 0) {
       chartView.offset   = Math.min(scrollPos, maxOff);
       chartView.rightPad = 0;
     } else {
       chartView.offset   = 0;
-      chartView.rightPad = Math.min(-scrollPos, 80); /* cap at 80 extra bars */
+      chartView.rightPad = Math.min(-scrollPos, 80);
     }
     renderChart();
   });
   document.addEventListener('mouseup',function(e){
-    if(_panStart!==null && (e.button===1 || e.button===0)){
-      _panStart=null;
+    if(window._panStart!==null && (e.button===1 || e.button===0)){
+      window._panStart=null;
       chartCanvas.style.cursor=(typeof activeItem!=='undefined'&&activeItem)?(activeItem.cur||'crosshair'):'crosshair';
     }
   });
-  /* Show grab cursor only while middle button is held */
   chartCanvas.addEventListener('mouseleave',function(){
-    if(_panStart===null) chartCanvas.style.cursor='crosshair';
+    if(window._panStart===null) chartCanvas.style.cursor='crosshair';
   });
 
   /* ── VPVR drag: left-click on the handle pill to move it horizontally ── */
@@ -5655,6 +5656,62 @@ if(chartCanvas){
 
   document.addEventListener('mouseup', function(e) {
     if (_vpvrDragging) { _vpvrDragging = false; }
+  });
+
+  /* ── Date-axis drag (bottom strip): horizontal stretch/compress ── */
+  var _dateAxisDrag = null;
+  /* ── Price-axis drag (right strip): vertical stretch/compress ── */
+  var _priceAxisDrag = null;
+
+  chartCanvas.addEventListener('mousedown', function(e) {
+    if (e.button !== 0) return;
+    var dpr = window.devicePixelRatio || 1;
+    var r   = chartCanvas.getBoundingClientRect();
+    var cx  = e.clientX - r.left;
+    var cy  = e.clientY - r.top;
+    var H2  = chartCanvas.height / dpr;
+    var W2  = chartCanvas.width  / dpr;
+    /* Price axis: right 75px strip */
+    if (cx > W2 - 75) {
+      _priceAxisDrag = { startY: e.clientY, startYScale: chartView.yScale };
+      chartCanvas.style.cursor = 'ns-resize';
+      e.stopPropagation(); return;
+    }
+    /* Date axis: bottom 56px strip */
+    if (cy > H2 - 56) {
+      _dateAxisDrag = { startX: e.clientX, startZoom: chartView.zoom };
+      chartCanvas.style.cursor = 'ew-resize';
+      e.stopPropagation(); return;
+    }
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (_dateAxisDrag) {
+      var dx = e.clientX - _dateAxisDrag.startX;
+      /* drag left = zoom in (fewer bars), drag right = zoom out (more bars) */
+      chartView.zoom = Math.max(0.3, Math.min(12, _dateAxisDrag.startZoom * Math.pow(1.003, -dx)));
+      renderChart && renderChart(); return;
+    }
+    if (_priceAxisDrag) {
+      var dy = e.clientY - _priceAxisDrag.startY;
+      /* drag up (dy<0) = zoom in (tighter range), drag down = zoom out (wider range) */
+      chartView.yScale = Math.max(0.1, Math.min(10, _priceAxisDrag.startYScale * Math.pow(1.003, dy)));
+      renderChart && renderChart(); return;
+    }
+  });
+
+  document.addEventListener('mouseup', function(e) {
+    if (_dateAxisDrag)  { _dateAxisDrag  = null; chartCanvas.style.cursor = 'crosshair'; }
+    if (_priceAxisDrag) { _priceAxisDrag = null; chartCanvas.style.cursor = 'crosshair'; }
+  });
+
+  /* Double-click price axis = reset vertical zoom */
+  chartCanvas.addEventListener('dblclick', function(e) {
+    var dpr = window.devicePixelRatio || 1;
+    var r   = chartCanvas.getBoundingClientRect();
+    var cx  = e.clientX - r.left;
+    var W2  = chartCanvas.width / dpr;
+    if (cx > W2 - 75) { chartView.yScale = 1; renderChart && renderChart(); }
   });
 }
 
@@ -6900,8 +6957,9 @@ function initDrawEvents(){
     
     /* Crosshair Left-Click Panning */
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') {
-      window._panStart = e.clientX;
-      window._panOffset = chartView.offset;
+      window._panStart    = e.clientX;
+      window._panOffset   = chartView.offset;
+      window._panRightPad = chartView.rightPad || 0;
       cv.style.cursor = 'grabbing';
       return;
     }
@@ -7077,7 +7135,14 @@ function initDrawEvents(){
             cursorSet=true; break;
           }
         }
-        if(!cursorSet) cv.style.cursor=activeItem?(activeItem.cur||'crosshair'):'crosshair';
+        if(!cursorSet){
+          var _dpr2=window.devicePixelRatio||1, _rc2=cv.getBoundingClientRect();
+          var _cx2=e.clientX-_rc2.left, _cy2=e.clientY-_rc2.top;
+          var _W2=cv.width/_dpr2, _H2=cv.height/_dpr2;
+          if(_cx2>_W2-75)       cv.style.cursor='ns-resize';
+          else if(_cy2>_H2-56)  cv.style.cursor='ew-resize';
+          else                   cv.style.cursor=activeItem?(activeItem.cur||'crosshair'):'crosshair';
+        }
       }
       _rafPending=true;
       requestAnimationFrame(function(){ renderChart(); _rafPending=false; });
