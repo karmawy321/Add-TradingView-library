@@ -35,12 +35,12 @@ function requireAdmin(req, res, next) {
   if (!ADMIN_SECRET) {
     return res.status(503).send('Admin access not configured. Set ADMIN_SECRET env var.');
   }
-  const key = req.query.key || req.headers['x-admin-key'];
+  const key = req.headers['x-admin-key'];
   if (!key || key !== ADMIN_SECRET) {
     const wantsJson = req.headers.accept?.includes('application/json') || req.path.startsWith('/api/');
     return wantsJson
       ? res.status(401).json({ error: 'Unauthorized' })
-      : res.status(401).send('401 Unauthorized — provide ?key=<ADMIN_SECRET>');
+      : res.status(401).send('401 Unauthorized — provide X-Admin-Key header');
   }
   next();
 }
@@ -485,7 +485,7 @@ app.get('/privacy', (req, res) => sendPage('privacy.html', res));
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: Date.now() }));
 
 // /profile API endpoint (returns user data as JSON)
-app.get('/api/profile', async (req, res) => {
+app.get('/api/profile', rateLimit(30, 60000), async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   const prof  = await getUserProfile(token);
   res.json(prof || { credits: 0, plan: 'free', userId: null });
@@ -556,7 +556,7 @@ app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
 });
 
 // Current price endpoint
-app.get('/price/:symbol', (req, res) => {
+app.get('/price/:symbol', rateLimit(30, 60000), (req, res) => {
   const sym = req.params.symbol.toUpperCase();
   connectBinance(sym);
   ensureSymbol(sym);
@@ -632,7 +632,7 @@ const candleLine = (c, i) => `${i+1}. O:${(+c.o).toFixed(2)} H:${(+c.h).toFixed(
    ═══════════════════════════════════════════════════ */
 
 // /analyze - General fractal analysis (fields match renderFractal in frontend)
-app.post('/analyze', async (req, res) => {
+app.post('/analyze', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, focus, matches, _token } = req.body;
@@ -652,7 +652,7 @@ Include 3-6 meaningful annotations at key price levels (support, resistance, ent
 });
 
 // /bar-pattern - Bar pattern self-similarity (fields match renderBarPattern in frontend)
-app.post('/bar-pattern', async (req, res) => {
+app.post('/bar-pattern', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -672,7 +672,7 @@ Include 2-3 bar clusters showing self-similar patterns found at different locati
 });
 
 // /weierstrass - Weierstrass decomposition (fields match renderWeierstrass in frontend)
-app.post('/weierstrass', async (req, res) => {
+app.post('/weierstrass', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -689,7 +689,7 @@ Respond with ONLY a valid JSON object, no markdown, no explanation. Use exactly 
 });
 
 // /mtf (MTF Confluence)
-app.post('/mtf', async (req, res) => {
+app.post('/mtf', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -709,7 +709,7 @@ path arrays must have exactly 10 floats (0=top, 1=bottom) — these are shape in
 });
 
 // /fractal-age
-app.post('/fractal-age', async (req, res) => {
+app.post('/fractal-age', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -729,7 +729,7 @@ cycle_path must have 20 floats (0=top, 1=bottom) — shape indicator only. targe
 });
 
 // /projection - WITH PREDICTION TRACKING
-app.post('/projection', async (req, res) => {
+app.post('/projection', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -780,7 +780,7 @@ path arrays must start near current price (${lastClose}) and project forward as 
    ═══════════════════════════════════════════════════ */
 
 // /fibonacci - Fibonacci retracements & extensions (fields match renderFibonacci)
-app.post('/fibonacci', async (req, res) => {
+app.post('/fibonacci', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -800,7 +800,7 @@ barIndex must be between 0 and ${candles.length - 1}.`;
 });
 
 // /smc - Smart Money Concepts (fields match renderSMC)
-app.post('/smc', async (req, res) => {
+app.post('/smc', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -819,7 +819,7 @@ Respond with ONLY a valid JSON object, no markdown. Use real prices for all pric
 });
 
 // /volatility - Volatility regime & position sizing (fields match renderVolatility)
-app.post('/volatility', async (req, res) => {
+app.post('/volatility', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, account_size, risk_pct, _token } = req.body;
@@ -839,7 +839,7 @@ Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
 });
 
 // /liquidity - Liquidity map & stop hunt targets (fields match renderLiquidity)
-app.post('/liquidity', async (req, res) => {
+app.post('/liquidity', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -859,7 +859,7 @@ barIndex must be between 0 and ${candles.length - 1}.`;
 });
 
 // /journal - AI Trade Journal grader (fields match renderJournal)
-app.post('/journal', async (req, res) => {
+app.post('/journal', rateLimit(10, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, trade_notes, outcome, pnl, _token } = req.body;
@@ -1189,7 +1189,7 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
    STRIPE ENDPOINTS
    ═══════════════════════════════════════════════════ */
 
-app.post('/create-checkout', async (req, res) => {
+app.post('/create-checkout', rateLimit(5, 60000), async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
   const { plan, token } = req.body;
   if (!plan || !PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
@@ -1221,7 +1221,7 @@ app.post('/create-checkout', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/manage-billing', async (req, res) => {
+app.post('/manage-billing', rateLimit(5, 60000), async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
   const { token } = req.body;
   const profile = await getUserProfile(token);
@@ -1235,7 +1235,7 @@ app.post('/manage-billing', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/fib-spiral-checkout', async (req, res) => {
+app.post('/fib-spiral-checkout', rateLimit(5, 60000), async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
   const { token } = req.body;
   const profile = await getUserProfile(token);
@@ -1260,7 +1260,7 @@ app.post('/fib-spiral-checkout', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/fib-spiral-verify', async (req, res) => {
+app.post('/fib-spiral-verify', rateLimit(5, 60000), async (req, res) => {
   if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
   const { sessionId } = req.body;
   if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
