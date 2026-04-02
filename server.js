@@ -2,6 +2,8 @@ require('dotenv').config();
 const express   = require('express');
 const cors      = require('cors');
 const helmet    = require('helmet');
+const { Resend } = require('resend');
+const resend    = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const https     = require('https');
 const WebSocket = require('ws');
 const path      = require('path');
@@ -17,6 +19,66 @@ const SUPABASE_SERVICE = process.env.SUPABASE_SERVICE_KEY || '';
 const sbAdmin = SUPABASE_URL && SUPABASE_SERVICE
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
+
+/* ═══════════════════════════════════════════════════
+   EMAIL
+   ═══════════════════════════════════════════════════ */
+async function sendWelcomeEmail(email, username) {
+  if (!resend) return;
+  try {
+    await resend.emails.send({
+      from: 'Fractal AI Agent <hello@fractalaiagent.com>',
+      to: email,
+      subject: 'Welcome to Fractal AI Agent',
+      html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#0a0c12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0c12;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#0d1018;border:1px solid rgba(201,168,76,0.2);border-radius:16px;overflow:hidden;max-width:560px;">
+        <tr>
+          <td align="center" style="padding:40px 40px 24px;border-bottom:1px solid rgba(201,168,76,0.1);">
+            <img src="https://fractalaiagent.com/logo.svg" width="64" height="64" alt="Fractal AI Agent" style="display:block;margin:0 auto 16px;">
+            <p style="margin:0;color:rgba(201,168,76,0.7);font-size:11px;letter-spacing:3px;text-transform:uppercase;">Fractal AI Agent</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h1 style="margin:0 0 8px;color:#f0d878;font-size:22px;font-weight:600;">Welcome, ${escapeHtml(username)}</h1>
+            <p style="margin:0 0 24px;color:rgba(255,255,255,0.6);font-size:14px;line-height:1.7;">Your account is ready. You have <strong style="color:#c9a84c;">50 free credits</strong> to explore the platform — use them to run AI analysis on any asset.</p>
+            <table cellpadding="0" cellspacing="0" style="margin:0 0 32px;width:100%;">
+              <tr><td style="padding:8px 0;border-bottom:1px solid rgba(201,168,76,0.08);">
+                <span style="color:#c9a84c;margin-right:10px;">▸</span>
+                <span style="color:rgba(255,255,255,0.6);font-size:14px;">Fractal &amp; SMC analysis</span>
+              </td></tr>
+              <tr><td style="padding:8px 0;border-bottom:1px solid rgba(201,168,76,0.08);">
+                <span style="color:#c9a84c;margin-right:10px;">▸</span>
+                <span style="color:rgba(255,255,255,0.6);font-size:14px;">AI price projections &amp; volatility maps</span>
+              </td></tr>
+              <tr><td style="padding:8px 0;">
+                <span style="color:#c9a84c;margin-right:10px;">▸</span>
+                <span style="color:rgba(255,255,255,0.6);font-size:14px;">Liquidity heatmaps &amp; quant overlays</span>
+              </td></tr>
+            </table>
+            <a href="https://fractalaiagent.com" style="display:inline-block;background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12;text-decoration:none;font-weight:700;font-size:14px;padding:14px 32px;border-radius:8px;letter-spacing:0.5px;">Open the Chart →</a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px 40px;border-top:1px solid rgba(201,168,76,0.1);">
+            <p style="margin:0;color:rgba(255,255,255,0.25);font-size:12px;line-height:1.6;">You're receiving this because you created an account at fractalaiagent.com<br>© 2026 Fractal AI Agent</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+    });
+  } catch(e) {
+    console.error('[Email] Welcome email failed:', e.message);
+  }
+}
 
 /* ═══════════════════════════════════════════════════
    ADMIN AUTH
@@ -277,7 +339,9 @@ async function verifyAndDeduct(token, cost) {
     .single();
 
   if (!profile) {
-    await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username: user.email.split('@')[0] });
+    const username = user.email.split('@')[0];
+    await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
+    sendWelcomeEmail(user.email, username);
     if (50 < cost) throw new Error('Insufficient credits');
   } else if (profile.credits === null || profile.credits === undefined) {
     await sbAdmin.from('profiles').update({ credits: 50 }).eq('id', user.id);
