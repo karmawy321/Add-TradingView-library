@@ -5763,7 +5763,17 @@ function loadChart(symbol,interval){
       /* ── Tick delta: only the latest candle per timeframe ── */
       if(data.tick){
         var tc=data.tick[currentInterval];
-        if(!tc||!chartCandles.length) return;
+        if(!tc) return;
+        /* Backtest guard — update _btAllCandles directly, never touch chartCandles (replay slice) */
+        if(typeof _btActive!=='undefined'&&_btActive){
+          if(_btAllCandles&&_btAllCandles.length){
+            var btLast=_btAllCandles[_btAllCandles.length-1];
+            if(btLast.t===tc.t){btLast.c=tc.c;btLast.h=tc.h;btLast.l=tc.l;btLast.v=tc.v;}
+            else{_btAllCandles.push(tc);}
+          }
+          return;
+        }
+        if(!chartCandles.length) return;
         var last=chartCandles[chartCandles.length-1];
         if(last.t===tc.t){
           /* Update current candle in-place */
@@ -5775,11 +5785,7 @@ function loadChart(symbol,interval){
         }
         if(!allCandleData[sym]) allCandleData[sym]={};
         allCandleData[sym][currentInterval]=chartCandles;
-        /* Backtest guard — update data silently, don't re-render */
-        if(typeof _btActive!=='undefined'&&_btActive){ _btAllCandles=chartCandles; }
-        else {
-          renderChart();
-        }
+        renderChart();
         var last2=chartCandles[chartCandles.length-1];
         var prev2=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last2.o;
         showLivePrice({symbol:sym,price:last2.c,change_24h:((last2.c-prev2)/prev2*100).toFixed(3),trend_24h:last2.c>=prev2?'up':'dn'});
