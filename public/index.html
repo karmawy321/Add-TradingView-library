@@ -5491,7 +5491,7 @@ if(chartCanvas){
     var oldZoom=chartView.zoom;
     var oldVis=Math.floor(n/oldZoom);
     
-    var deltaBars=Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) * 0.03));
+    var deltaBars=Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) * 0.12));
     var newVis=Math.max(10, Math.min(n, oldVis + deltaBars));
     var newZoom=n/newVis;
     var oldSi=Math.max(0,n-oldVis-chartView.offset);
