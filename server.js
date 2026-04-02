@@ -37,7 +37,10 @@ function requireAdmin(req, res, next) {
     return res.status(503).send('Admin access not configured. Set ADMIN_SECRET env var.');
   }
   const key = req.headers['x-admin-key'];
-  if (!key || key !== ADMIN_SECRET) {
+  const keyBuf = Buffer.from(key || '');
+  const secBuf = Buffer.from(ADMIN_SECRET);
+  const valid = keyBuf.length === secBuf.length && crypto.timingSafeEqual(keyBuf, secBuf);
+  if (!valid) {
     const wantsJson = req.headers.accept?.includes('application/json') || req.path.startsWith('/api/');
     return wantsJson
       ? res.status(401).json({ error: 'Unauthorized' })
@@ -516,11 +519,11 @@ app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
 app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
   const sym     = req.params.symbol.toUpperCase();
   const tf      = req.query.tf || '4h';
-  const endTime = req.query.endTime;
+  const endTime = parseInt(req.query.endTime, 10);
   if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
   const tfMap   = { '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' };
   const interval = tfMap[tf];
-  if (!interval || !endTime) return res.status(400).json({ candles: [] });
+  if (!interval || !endTime || endTime < 0) return res.status(400).json({ candles: [] });
   const path = `/api/v3/klines?symbol=${sym}&interval=${interval}&limit=500&endTime=${endTime}`;
   const breq = https.request({ hostname:'api.binance.com', path, method:'GET' }, bres => {
     let data = '';
