@@ -3397,16 +3397,18 @@ async function refreshSession(){
   currentUser = data.session.user;
   localStorage.setItem('fractal_token', data.session.access_token);
   localStorage.setItem('fractal_user', JSON.stringify({ id: currentUser.id, email: currentUser.email }));
-  /* Fetch balance + username from Supabase */
-  var { data: profile } = await sb.from('profiles').select('credits, username, display_name').eq('id', currentUser.id).single();
-  if(profile){
-    /* Guard: null/undefined credits = new user, treat as 50 */
-    creditBalance = (profile.credits !== null && profile.credits !== undefined) ? profile.credits : 50;
-    localStorage.setItem('fractal_credits', creditBalance);
-    var displayName = profile.username || profile.display_name || currentUser.email.split('@')[0];
-    localStorage.setItem('fractal_username', displayName);
-    showLoggedIn(currentUser.email, creditBalance);
-  }
+  /* Fetch balance + username from server (uses admin key, bypasses RLS) */
+  try {
+    var profResp = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + data.session.access_token } });
+    var profile = await profResp.json();
+    if(profile && profile.userId){
+      creditBalance = (profile.credits !== null && profile.credits !== undefined) ? profile.credits : 50;
+      localStorage.setItem('fractal_credits', creditBalance);
+      var displayName = profile.username || currentUser.email.split('@')[0];
+      localStorage.setItem('fractal_username', displayName);
+      showLoggedIn(currentUser.email, creditBalance);
+    }
+  } catch(e){}
 }
 
 function showLoggedIn(email, credits){

@@ -352,7 +352,7 @@ async function verifyAndDeduct(token, cost) {
 
   const { error: deductErr } = await sbAdmin.rpc('deduct_credits', { user_id: user.id, amount: cost });
   if (deductErr) {
-    const current = profile ? (profile.credits || 50) : 50;
+    const current = profile ? (profile.credits ?? 50) : 50;
     if (current < cost) throw new Error('Insufficient credits');
     await sbAdmin.from('profiles').update({ credits: current - cost }).eq('id', user.id);
   }

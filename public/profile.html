@@ -699,20 +699,29 @@ function boot(){
 }
 
 async function loadProfile(){
-  var { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  /* Use server endpoint (admin key) — bypasses RLS, always returns correct data */
+  var sess = await sb.auth.getSession();
+  var tok = sess.data && sess.data.session && sess.data.session.access_token;
+  var data = null;
+  if(tok){
+    try {
+      var r = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + tok } });
+      var d = await r.json();
+      if(d && d.userId) data = d;
+    } catch(e){}
+  }
   if(!data){
     /* Profile row missing — auto-create it then retry */
     try {
-      var sess = await sb.auth.getSession();
-      var tok = sess.data && sess.data.session && sess.data.session.access_token;
       if(tok){
         await fetch('/init-profile', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ token: tok })
         });
-        var retry = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
-        data = retry.data;
+        var r2 = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + tok } });
+        var d2 = await r2.json();
+        if(d2 && d2.userId) data = d2;
       }
     } catch(e){}
   }
