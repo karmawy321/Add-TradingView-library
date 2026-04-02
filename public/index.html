@@ -4017,9 +4017,11 @@ function drawProjectionCanvas(r){
 /* ══ CANVAS CHART ENGINE ══ */
 var chartCanvas     = document.getElementById('chartCanvas');
 var chartCtx        = chartCanvas ? chartCanvas.getContext('2d') : null;
-var chartCandles    = [];
-var currentSymbol   = '';
-var currentInterval = '4h';
+var chartCandles      = [];
+var currentSymbol     = '';
+var currentInterval   = '4h';
+var _historyLoading   = false;
+var _historyDepleted  = false;
 var chartSSE        = null;
 var sma50On         = false;
 var sma200On        = false;
@@ -4315,6 +4317,8 @@ function renderChart() {
   var endIdx   = Math.min(candles.length, startIdx + visibleBars);
   var visible  = candles.slice(startIdx, endIdx);
   if (!visible.length) return;
+  /* Lazy-load older history when scrolled within 80 bars of the beginning */
+  if (startIdx <= 80 && !_historyLoading && !_historyDepleted) _fetchMoreHistory();
   var PAD = { l:8, r:75, t:16, b:56, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
   var mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
@@ -5760,7 +5764,7 @@ function loadChart(symbol,interval){
   vpvrAnchorX = null; chartView.rightPad = 0; /* reset VPVR gap on new symbol */
   var empty=document.getElementById('chartEmpty');if(empty)empty.style.display='none';
   if(chartSSE){chartSSE.close();chartSSE=null;}
-  chartCandles=[];
+  chartCandles=[]; _historyLoading=false; _historyDepleted=false;
   resizeCanvas();
   if(chartCtx){
     var _dpr=window.devicePixelRatio||1;
@@ -5953,6 +5957,7 @@ function onTfChange(){
   var tf=document.getElementById('tfIn');
   if(!tf||!currentSymbol)return;
   currentInterval=tf.value;
+  _historyLoading=false; _historyDepleted=false;
   if(allCandleData[currentSymbol]&&allCandleData[currentSymbol][currentInterval]&&allCandleData[currentSymbol][currentInterval].length>0){
     chartCandles=allCandleData[currentSymbol][currentInterval];
     renderChart();
@@ -5970,6 +5975,27 @@ function onTfChange(){
         autoBarPattern();
       } else { fetchBinanceFallback(currentSymbol,currentInterval); }
     }).catch(function(){ fetchBinanceFallback(currentSymbol,currentInterval); });
+}
+
+function _fetchMoreHistory(){
+  if(_historyLoading||_historyDepleted||!chartCandles.length||!currentSymbol) return;
+  _historyLoading=true;
+  /* Pass endTime = oldest candle open time - 1ms so Binance returns candles strictly before it */
+  var endTime=chartCandles[0].t - 1;
+  fetch(BACKEND_URL+'/history/'+currentSymbol+'?tf='+currentInterval+'&endTime='+endTime)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      _historyLoading=false;
+      if(!d.candles||d.candles.length<2){ _historyDepleted=true; return; }
+      /* Filter out any overlap just in case */
+      var batch=d.candles.filter(function(c){ return c.t<chartCandles[0].t; });
+      if(!batch.length){ _historyDepleted=true; return; }
+      /* Prepend and shift offset so the view doesn't jump */
+      Array.prototype.unshift.apply(chartCandles, batch);
+      chartView.offset+=batch.length;
+      renderChart&&renderChart();
+    })
+    .catch(function(){ _historyLoading=false; });
 }
 
 function toggleSMA(period){

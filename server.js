@@ -18,6 +18,34 @@ const sbAdmin = SUPABASE_URL && SUPABASE_SERVICE
   : null;
 
 /* ═══════════════════════════════════════════════════
+   ADMIN AUTH
+   ═══════════════════════════════════════════════════ */
+const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function requireAdmin(req, res, next) {
+  if (!ADMIN_SECRET) {
+    return res.status(503).send('Admin access not configured. Set ADMIN_SECRET env var.');
+  }
+  const key = req.query.key || req.headers['x-admin-key'];
+  if (!key || key !== ADMIN_SECRET) {
+    const wantsJson = req.headers.accept?.includes('application/json') || req.path.startsWith('/api/');
+    return wantsJson
+      ? res.status(401).json({ error: 'Unauthorized' })
+      : res.status(401).send('401 Unauthorized — provide ?key=<ADMIN_SECRET>');
+  }
+  next();
+}
+
+/* ═══════════════════════════════════════════════════
    🆕 PREDICTION TRACKING SYSTEM
    ═══════════════════════════════════════════════════ */
 const cron = require('node-cron');
@@ -477,6 +505,33 @@ app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
   res.json(arr);
 });
 
+// Historical candles endpoint — lazy scroll pagination
+app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
+  const sym     = req.params.symbol.toUpperCase();
+  const tf      = req.query.tf || '4h';
+  const endTime = req.query.endTime;
+  const tfMap   = { '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' };
+  const interval = tfMap[tf];
+  if (!interval || !endTime) return res.status(400).json({ candles: [] });
+  const path = `/api/v3/klines?symbol=${sym}&interval=${interval}&limit=500&endTime=${endTime}`;
+  const breq = https.request({ hostname:'api.binance.com', path, method:'GET' }, bres => {
+    let data = '';
+    bres.on('data', c => { data += c; });
+    bres.on('end', () => {
+      try {
+        const klines = JSON.parse(data);
+        if (!Array.isArray(klines)) return res.json({ candles: [] });
+        res.json({ candles: klines.map(k => ({
+          t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]),
+          l: parseFloat(k[3]), c: parseFloat(k[4]), v: parseFloat(k[5])
+        }))});
+      } catch(e) { res.json({ candles: [] }); }
+    });
+  });
+  breq.on('error', () => res.json({ candles: [] }));
+  breq.end();
+});
+
 // Subscribe SSE — max 5 concurrent connections per IP
 const _sseConnCount = new Map();
 app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
@@ -826,7 +881,7 @@ Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
    🆕 PREDICTION TRACKING API ROUTES
    ═══════════════════════════════════════════════════ */
 
-app.get('/api/predictions/stats', async (req, res) => {
+app.get('/api/predictions/stats', requireAdmin, async (req, res) => {
   if (!sbAdmin) return res.status(500).json({ error: 'Database not configured' });
   
   try {
@@ -888,7 +943,7 @@ app.get('/api/predictions/stats', async (req, res) => {
   }
 });
 
-app.post('/api/predictions/check-now', async (req, res) => {
+app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
   try {
     await checkPredictions();
     res.json({ success: true, message: 'Prediction check completed' });
@@ -898,7 +953,7 @@ app.post('/api/predictions/check-now', async (req, res) => {
   }
 });
 
-app.get('/admin/stats', async (req, res) => {
+app.get('/admin/stats', requireAdmin, async (req, res) => {
   if (!sbAdmin) return res.status(500).send('Database not configured');
   
   try {
@@ -1061,22 +1116,25 @@ app.get('/admin/stats', async (req, res) => {
         </tr>
       </thead>
       <tbody>
-        ${predictions.map(p => `
+        ${predictions.map(p => {
+          const safeResult = ['correct','wrong','pending'].includes(p.result) ? p.result : 'pending';
+          const resultLabel = safeResult === 'correct' ? '✓ CORRECT' : safeResult === 'wrong' ? '✗ WRONG' : '⏳ PENDING';
+          const currentPrice = isNaN(parseFloat(p.current_price)) ? '—' : '$' + parseFloat(p.current_price).toLocaleString();
+          const predictedPrice = isNaN(parseFloat(p.predicted_price)) ? '—' : '$' + parseFloat(p.predicted_price).toLocaleString();
+          const actualPrice = p.actual_price && !isNaN(parseFloat(p.actual_price)) ? '$' + parseFloat(p.actual_price).toLocaleString() : '—';
+          const targetDate = p.target_date ? new Date(p.target_date).toLocaleDateString() : '—';
+          return `
           <tr>
-            <td>${p.tool_name}</td>
-            <td><strong>${p.asset}</strong></td>
-            <td>$${parseFloat(p.current_price).toLocaleString()}</td>
-            <td>$${parseFloat(p.predicted_price).toLocaleString()}</td>
-            <td>${p.actual_price ? '$' + parseFloat(p.actual_price).toLocaleString() : '—'}</td>
-            <td>${new Date(p.target_date).toLocaleDateString()}</td>
-            <td>
-              <span class="badge badge-${p.result}">
-                ${p.result === 'correct' ? '✓ CORRECT' : p.result === 'wrong' ? '✗ WRONG' : '⏳ PENDING'}
-              </span>
-            </td>
-            <td>${p.accuracy_percentage ? p.accuracy_percentage + '%' : '—'}</td>
-          </tr>
-        `).join('')}
+            <td>${escapeHtml(p.tool_name)}</td>
+            <td><strong>${escapeHtml(p.asset)}</strong></td>
+            <td>${escapeHtml(currentPrice)}</td>
+            <td>${escapeHtml(predictedPrice)}</td>
+            <td>${escapeHtml(actualPrice)}</td>
+            <td>${escapeHtml(targetDate)}</td>
+            <td><span class="badge badge-${escapeHtml(safeResult)}">${resultLabel}</span></td>
+            <td>${p.accuracy_percentage ? escapeHtml(String(p.accuracy_percentage)) + '%' : '—'}</td>
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>
 
@@ -1086,15 +1144,19 @@ app.get('/admin/stats', async (req, res) => {
   </div>
 
   <script>
+    const _adminKey = new URLSearchParams(location.search).get('key') || '';
     async function checkNow() {
       if (!confirm('Run prediction check now?')) return;
-      
+
       const btn = event.target;
       btn.disabled = true;
       btn.textContent = '⏳ Checking...';
-      
+
       try {
-        const res = await fetch('/api/predictions/check-now', { method: 'POST' });
+        const res = await fetch('/api/predictions/check-now', {
+          method: 'POST',
+          headers: { 'x-admin-key': _adminKey }
+        });
         const data = await res.json();
         
         if (data.success) {
@@ -1132,11 +1194,16 @@ app.post('/create-checkout', async (req, res) => {
   const { plan, token } = req.body;
   if (!plan || !PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
   if (!token) return res.status(401).json({ error: 'Please sign in first to subscribe' });
-  let userId = 'guest', userEmail = undefined;
+  let userId, userEmail;
   try {
-    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-    userId = payload.sub || 'guest';
-    userEmail = payload.email;
+    if (!sbAdmin) {
+      userId = 'dev';
+    } else {
+      const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+      if (error || !user) return res.status(401).json({ error: 'Invalid or expired token' });
+      userId = user.id;
+      userEmail = user.email;
+    }
   } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
   const priceId = PLANS[plan].priceId;
   if (!priceId) return res.status(500).json({ error: `Stripe price not configured for ${plan}` });
