@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express   = require('express');
 const cors      = require('cors');
+const helmet    = require('helmet');
 const https     = require('https');
 const WebSocket = require('ws');
 const path      = require('path');
@@ -260,7 +261,7 @@ const FIB_SPIRAL_PRICE_CENTS = 100;
    AUTH HELPERS
    ═══════════════════════════════════════════════════ */
 async function verifyAndDeduct(token, cost) {
-  if (!sbAdmin) return { userId: 'dev' };
+  if (!sbAdmin) throw new Error('Database not configured');
   if (!token)   throw new Error('Not authenticated');
 
   const { data: { user }, error } = await sbAdmin.auth.getUser(token);
@@ -292,7 +293,7 @@ async function verifyAndDeduct(token, cost) {
 }
 
 async function getUserProfile(token) {
-  if (!sbAdmin) return { credits: 9999, plan: 'dev', userId: 'dev' };
+  if (!sbAdmin) return null;
   if (!token)   return null;
   const { data: { user }, error } = await sbAdmin.auth.getUser(token);
   if (error || !user) return null;
@@ -442,6 +443,9 @@ const PORT = process.env.PORT || 8080;
 /* Trust Cloudflare so req.ip = real visitor IP */
 app.set('trust proxy', 1);
 
+/* Security headers */
+app.use(helmet({ contentSecurityPolicy: false }));
+
 /* CORS — only your domain + localhost for dev */
 const _allowedOrigins = ['https://fractalaiagent.com','https://www.fractalaiagent.com','http://localhost:3000','http://localhost:8080'];
 app.use(cors({ origin: (o, cb) => cb(null, !o || _allowedOrigins.includes(o)), credentials: true }));
@@ -461,7 +465,7 @@ function rateLimit(max, ms) {
 setInterval(() => { const now = Date.now(); _rlMap.forEach((v,k) => { if (now > v.reset) _rlMap.delete(k); }); }, 600000);
 
 app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '100kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 /* ═══════════════════════════════════════════════════
@@ -482,6 +486,8 @@ app.get('/privacy', (req, res) => sendPage('privacy.html', res));
    API ENDPOINTS
    ═══════════════════════════════════════════════════ */
 
+function validSymbol(s) { return typeof s === 'string' && /^[A-Z0-9]{2,20}$/.test(s); }
+
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: Date.now() }));
 
 // /profile API endpoint (returns user data as JSON)
@@ -499,6 +505,7 @@ app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
   const { symbol } = req.params;
   const tf = req.query.tf || '1h';
   const sym = symbol.toUpperCase();
+  if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
   connectBinance(sym);
   ensureSymbol(sym);
   const arr = candles[sym][tf] || [];
@@ -510,6 +517,7 @@ app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
   const sym     = req.params.symbol.toUpperCase();
   const tf      = req.query.tf || '4h';
   const endTime = req.query.endTime;
+  if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
   const tfMap   = { '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' };
   const interval = tfMap[tf];
   if (!interval || !endTime) return res.status(400).json({ candles: [] });
@@ -538,6 +546,7 @@ app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
   const ip = getClientIp(req);
   const cur = _sseConnCount.get(ip) || 0;
   if (cur >= 5) return res.status(429).json({ error:'Too many SSE connections' });
+  if (!validSymbol(req.params.symbol.toUpperCase())) return res.status(400).json({ error: 'Invalid symbol' });
   _sseConnCount.set(ip, cur + 1);
   const sym = req.params.symbol.toUpperCase();
   connectBinance(sym);
@@ -558,6 +567,7 @@ app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
 // Current price endpoint
 app.get('/price/:symbol', rateLimit(30, 60000), (req, res) => {
   const sym = req.params.symbol.toUpperCase();
+  if (!validSymbol(sym)) return res.status(400).json({ price: 0 });
   connectBinance(sym);
   ensureSymbol(sym);
   const tf = '1m';
