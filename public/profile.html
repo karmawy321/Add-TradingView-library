@@ -356,37 +356,39 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;padding:16px 48px;display:fl
             <div class="pack-grid">
               <div class="pack" onclick="selectPack(this,'starter')" id="pack-starter">
                 <div class="pack-name">Starter</div>
-                <div class="pack-price">$9</div>
-                <div class="pack-credits">50 credits</div>
-                <div class="pack-tools">~16 Fractal analyses<br>or ~6 SMC analyses<br>or mix of any tools</div>
-                <div class="pack-badge">$0.18 / credit</div>
+                <div class="pack-price">$69<span style="font-size:13px;color:var(--muted)">/mo</span></div>
+                <div class="pack-credits">500 credits / month</div>
+                <div class="pack-tools">~4 full sessions/mo<br>All Sonnet 4 tools<br>Fractal · Fib · SMC · Volatility · Liquidity</div>
+                <div class="pack-badge">$0.14 / credit</div>
               </div>
-              <div class="pack" onclick="selectPack(this,'trader')" id="pack-trader">
-                <div class="pack-name">Trader</div>
-                <div class="pack-price">$19</div>
-                <div class="pack-credits">150 credits</div>
-                <div class="pack-tools">~50 Fractal analyses<br>or ~18 Opus 4 tools<br>Best for weekly traders</div>
-                <div class="pack-badge">$0.13 / credit · Popular</div>
+              <div class="pack sel" onclick="selectPack(this,'pro')" id="pack-pro">
+                <div class="pack-name">Pro <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);letter-spacing:.08em">MOST POPULAR</span></div>
+                <div class="pack-price">$149<span style="font-size:13px;color:var(--muted)">/mo</span></div>
+                <div class="pack-credits">1,500 credits / month</div>
+                <div class="pack-tools">~13 full sessions/mo<br>All tools unlocked · Opus 4<br>MTF · Projection · Fractal Age · Journal</div>
+                <div class="pack-badge">$0.10 / credit · All tools</div>
               </div>
-              <div class="pack" onclick="selectPack(this,'pro')" id="pack-pro">
-                <div class="pack-name">Pro</div>
-                <div class="pack-price">$39</div>
-                <div class="pack-credits">400 credits</div>
-                <div class="pack-tools">~133 Fractal analyses<br>or ~50 Opus 4 tools<br>Best for daily traders</div>
-                <div class="pack-badge">$0.10 / credit</div>
+              <div class="pack" onclick="selectPack(this,'elite')" id="pack-elite">
+                <div class="pack-name">Elite</div>
+                <div class="pack-price">$299<span style="font-size:13px;color:var(--muted)">/mo</span></div>
+                <div class="pack-credits">4,000 credits / month</div>
+                <div class="pack-tools">~36 full sessions/mo<br>Everything in Pro<br>Daily report · Telegram · Live session</div>
+                <div class="pack-badge">$0.07 / credit</div>
               </div>
-              <div class="pack" onclick="selectPack(this,'studio')" id="pack-studio">
-                <div class="pack-name">Studio</div>
-                <div class="pack-price">$79</div>
-                <div class="pack-credits">1000 credits</div>
-                <div class="pack-tools">~333 Fractal analyses<br>Best value for power users<br>Run all 11 tools daily</div>
-                <div class="pack-badge">$0.08 / credit · Best value</div>
+              <div class="pack" onclick="selectPack(this,'institutional')" id="pack-institutional">
+                <div class="pack-name">Institutional</div>
+                <div class="pack-price">$999<span style="font-size:13px;color:var(--muted)">/mo</span></div>
+                <div class="pack-credits">15,000 credits / month</div>
+                <div class="pack-tools">~136 full sessions/mo<br>White-label · Custom analysis<br>Direct support · 99.9% SLA</div>
+                <div class="pack-badge">$0.07 / credit · Best value</div>
               </div>
             </div>
 
-            <div style="margin-top:20px;padding:14px 16px;background:var(--dark3);border:1px solid var(--border2);font-size:12px;color:var(--muted);line-height:1.8">
-              ◈ Payment coming soon — <span style="color:var(--gold)">Lemon Squeezy</span> integration in progress. Credit cards, PIX and international payments will be accepted.
+            <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+              <button class="btn-gold" id="checkout-btn" onclick="startCheckout(_selectedPlan, this)">Subscribe — Get Started</button>
+              <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">Billed monthly via Stripe · Cancel anytime</span>
             </div>
+            <div class="msg" id="checkout-msg"></div>
           </div>
         </div>
 
@@ -398,17 +400,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;padding:16px 48px;display:fl
             <table class="history-table">
               <thead><tr><th>Tool</th><th>Model</th><th>Credits</th><th>Tier</th></tr></thead>
               <tbody>
-                <tr><td>Fractal Pattern Matcher</td><td>Sonnet 4</td><td><span class="badge-cr">3 cr</span></td><td><span class="badge-tool">FREE</span></td></tr>
-                <tr><td>Fibonacci Auto-Draw</td><td>Sonnet 4</td><td><span class="badge-cr">3 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
-                <tr><td>Smart Money Concepts</td><td>Sonnet 4</td><td><span class="badge-cr">4 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
-                <tr><td>Volatility + Sizing</td><td>Sonnet 4</td><td><span class="badge-cr">3 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
-                <tr><td>Bar Self-Similarity</td><td>Sonnet 4</td><td><span class="badge-cr">4 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
-                <tr><td>Weierstrass · Time Series</td><td>Sonnet 4</td><td><span class="badge-cr">4 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
-                <tr><td>Price Path Projection</td><td>Opus 4</td><td><span class="badge-cr">5 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
-                <tr><td>Liquidity Map</td><td>Sonnet 4</td><td><span class="badge-cr">5 cr</span></td><td><span class="badge-tool">MENTOR</span></td></tr>
-                <tr><td>Multi-Timeframe Confluence</td><td>Opus 4</td><td><span class="badge-cr">8 cr</span></td><td><span class="badge-tool">MENTOR</span></td></tr>
-                <tr><td>Fractal Age · Timing</td><td>Opus 4</td><td><span class="badge-cr">8 cr</span></td><td><span class="badge-tool">MENTOR</span></td></tr>
-                <tr><td>Trade Journal AI</td><td>Opus 4</td><td><span class="badge-cr">8 cr</span></td><td><span class="badge-tool">MENTOR</span></td></tr>
+                <tr><td>Fractal · Bar Pattern · Weierstrass</td><td>Sonnet 4</td><td><span class="badge-cr">15 cr</span></td><td><span class="badge-tool">FREE</span></td></tr>
+                <tr><td>Fibonacci AI</td><td>Sonnet 4</td><td><span class="badge-cr">5 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
+                <tr><td>Smart Money Concepts</td><td>Sonnet 4</td><td><span class="badge-cr">8 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
+                <tr><td>Volatility + Sizing</td><td>Sonnet 4</td><td><span class="badge-cr">5 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
+                <tr><td>Liquidity Map</td><td>Sonnet 4</td><td><span class="badge-cr">8 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
+                <tr><td>Price Path Projection</td><td>Opus 4</td><td><span class="badge-cr">25 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
+                <tr><td>MTF Confluence</td><td>Opus 4</td><td><span class="badge-cr">25 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
+                <tr><td>Fractal Age · Timing</td><td>Opus 4</td><td><span class="badge-cr">25 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
+                <tr><td>Trade Journal AI</td><td>Opus 4</td><td><span class="badge-cr">20 cr</span></td><td><span class="badge-tool">PRO</span></td></tr>
               </tbody>
             </table>
           </div>
@@ -689,9 +689,9 @@ function boot(){
   s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
   s.onload = async function(){
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    var { data } = await sb.auth.getSession();
-    if(!data.session){ window.location.href = '/auth'; return; }
-    currentUser = data.session.user;
+    var { data: { user }, error } = await sb.auth.getUser();
+    if(error || !user){ window.location.href = '/auth'; return; }
+    currentUser = user;
     await loadProfile();
   };
   document.head.appendChild(s);
@@ -699,6 +699,22 @@ function boot(){
 
 async function loadProfile(){
   var { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  if(!data){
+    /* Profile row missing — auto-create it then retry */
+    try {
+      var sess = await sb.auth.getSession();
+      var tok = sess.data && sess.data.session && sess.data.session.access_token;
+      if(tok){
+        await fetch('/init-profile', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ token: tok })
+        });
+        var retry = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+        data = retry.data;
+      }
+    } catch(e){}
+  }
   profile = data || { credits: 0, username: '', display_name: '', language: 'en', analyses_count: 0 };
   renderProfile();
   loadHistory();
@@ -727,9 +743,11 @@ function renderProfile(){
   /* Credit bar */
   document.getElementById('ov-cr-num').textContent  = credits;
   document.getElementById('cr-current').textContent = credits;
-  var startCredits = 50;
+  var planMax = { starter: 500, pro: 1500, elite: 4000, institutional: 15000 };
+  var planName = profile.plan || 'free';
+  var startCredits = planMax[planName] || 50;
   var used = Math.max(0, startCredits - credits);
-  var pct  = Math.min(100, (used / startCredits) * 100);
+  var pct  = credits > startCredits ? 0 : Math.min(100, (used / startCredits) * 100);
   document.getElementById('ov-cr-bar').style.width   = pct + '%';
   document.getElementById('ov-cr-label').textContent = used + ' credits used';
 
@@ -790,9 +808,34 @@ async function changePassword(){
 }
 
 /* ── Pack select ── */
+var _selectedPlan = 'pro';
 function selectPack(el, name){
   document.querySelectorAll('.pack').forEach(function(p){ p.classList.remove('sel'); });
   el.classList.add('sel');
+  _selectedPlan = name;
+}
+
+/* ── Checkout ── */
+async function startCheckout(plan, btn){
+  var token = localStorage.getItem('fractal_token');
+  if(!token){ showMsg('checkout-msg', 'Please sign in first.', 'err'); return; }
+  if(btn){ btn.disabled = true; btn.textContent = 'Redirecting…'; }
+  try {
+    var r = await fetch('/create-checkout', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ plan: plan, token: token })
+    });
+    var d = await r.json();
+    if(d.url){ window.location.href = d.url; }
+    else {
+      showMsg('checkout-msg', 'Error: ' + (d.error || 'Could not create checkout'), 'err');
+      if(btn){ btn.disabled = false; btn.textContent = 'Subscribe — Get Started'; }
+    }
+  } catch(e){
+    showMsg('checkout-msg', 'Network error: ' + e.message, 'err');
+    if(btn){ btn.disabled = false; btn.textContent = 'Subscribe — Get Started'; }
+  }
 }
 
 /* ── Notifications ── */
