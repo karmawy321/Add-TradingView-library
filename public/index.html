@@ -3480,12 +3480,14 @@ function logUsage(toolKey, cost){
   };
   var pair = (document.getElementById('pairIn') && document.getElementById('pairIn').value) || '—';
   var entry = { tool: toolNames[toolKey]||toolKey, pair: pair, cost: cost, ts: Date.now() };
-  var raw = localStorage.getItem('fractal_history');
+  var _u = null; try { _u = JSON.parse(localStorage.getItem('fractal_user')); } catch(e){}
+  var _hKey = _u && _u.id ? 'fractal_history_' + _u.id : 'fractal_history';
+  var raw = localStorage.getItem(_hKey);
   var history = [];
   try { history = JSON.parse(raw)||[]; } catch(e){}
   history.push(entry);
   if(history.length > 100) history = history.slice(-100);
-  localStorage.setItem('fractal_history', JSON.stringify(history));
+  localStorage.setItem(_hKey, JSON.stringify(history));
 }
 
 /* ══ PATCH callBackend to include auth token ══ */

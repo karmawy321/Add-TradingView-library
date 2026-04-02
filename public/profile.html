@@ -527,9 +527,10 @@ var sb = null;
 var currentUser = null;
 var profile = null;
 
-/* ── Usage History (stored in localStorage by main app) ── */
+/* ── Usage History (stored in localStorage by main app, namespaced by user) ── */
 function loadHistory(){
-  var raw = localStorage.getItem('fractal_history');
+  var _hKey = currentUser && currentUser.id ? 'fractal_history_' + currentUser.id : 'fractal_history';
+  var raw = localStorage.getItem(_hKey);
   var history = [];
   try { history = JSON.parse(raw) || []; } catch(e){}
   var tbody = document.getElementById('history-body');
@@ -846,10 +847,12 @@ function saveNotifs(){
 /* ── Sign out ── */
 async function signOut(){
   if(sb) await sb.auth.signOut();
+  var _uid = currentUser && currentUser.id;
   localStorage.removeItem('fractal_token');
   localStorage.removeItem('fractal_user');
   localStorage.removeItem('fractal_credits');
   localStorage.removeItem('fractal_username');
+  if(_uid) localStorage.removeItem('fractal_history_' + _uid);
   window.location.href = '/auth';
 }
 
