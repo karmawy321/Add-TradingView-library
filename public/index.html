@@ -259,8 +259,8 @@ section{padding:96px 48px}
 .sc-f span{color:var(--gold)}
 
 /* ANALYZER */
-#analyzer{background:var(--dark2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:80px 48px}
-.az-wrap{max-width:1100px;margin:0 auto}
+#analyzer{background:var(--dark2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:80px 0}
+.az-wrap{max-width:100%;margin:0 auto}
 .az-box{border:1px solid var(--border);background:var(--dark2)}
 .az-bar{background:var(--dark3);border-bottom:1px solid var(--border2);padding:11px 18px;display:flex;align-items:center;gap:8px}
 .az-dot{width:9px;height:9px;border-radius:50%}
@@ -466,7 +466,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   position:relative;
   display:flex;
   flex-direction:row;
-  height:560px;
+  height:680px;
   overflow:hidden;
   flex-shrink:0;
   background:var(--dark);
@@ -532,7 +532,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   footer{flex-direction:column;text-align:center}
   .divider{padding:0 20px}
   .levels{grid-template-columns:1fr 1fr}
-  #analyzer{padding:60px 20px}
+  #analyzer{padding:60px 0}
   .nd-main{grid-template-columns:1fr !important;grid-template-rows:auto auto}
   #chartArea{height:clamp(260px,55vw,380px) !important}
   .nd-side{width:100% !important;max-width:100% !important;border-left:none !important;border-top:1px solid rgba(255,255,255,.06) !important}
@@ -665,7 +665,7 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 .tb-arr{position:absolute;bottom:4px;right:4px;width:0;height:0;border-left:4px solid transparent;border-bottom:4px solid rgba(201,168,76,.5)}
 .tb-sep{width:38px;height:1px;background:rgba(255,255,255,.08);margin:4px 0}
 .tb-flyout{
-  position:fixed;left:54px;top:0;
+  position:fixed;left:54px;top:0;z-index:200;
   background:#0a0d15;border:1px solid rgba(201,168,76,.3);
   border-radius:0 4px 4px 0;padding:4px;
   flex-direction:column;gap:1px;
@@ -6385,7 +6385,8 @@ var GROUPS = [
       { id:'undo_i',     label:'Undo  (Ctrl+Z)',     icon:S('<path d="M3 8a6 6 0 1 1 1 6"/><path d="M3 4v4h4"/>'), cur:'default', undotool:true },
       { id:'redo_i',     label:'Redo  (Ctrl+Y)',     icon:S('<path d="M13 8a6 6 0 1 0-1 6"/><path d="M13 4v4h-4"/>'), cur:'default', redotool:true },
       { id:'ptreraser',  label:'Click to erase one', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/>'), cur:'crosshair', ptreraser:true },
-      { id:'eraser_all', label:'Clear all drawings', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/><path d="M9 3l4 4-7 7H2v-4z" fill="currentColor" opacity=".3"/>'), cur:'default', erasertool:true },
+      { id:'eraser_all',  label:'Clear all drawings', icon:S('<path d="M2 12l9-9 4 4-9 9z"/><line x1="2" y1="12" x2="12" y2="12"/><path d="M9 3l4 4-7 7H2v-4z" fill="currentColor" opacity=".3"/>'), cur:'default', erasertool:true },
+      { id:'clear_tools', label:'Clear all tools',    icon:S('<circle cx="8" cy="8" r="5.5" stroke-width="1.4"/><line x1="5.5" y1="5.5" x2="10.5" y2="10.5"/><line x1="10.5" y1="5.5" x2="5.5" y2="10.5"/>'), cur:'default', clearalltools:true },
     ]},
 ];
 
@@ -6546,6 +6547,7 @@ function pickItem(item) {
   if(item.undotool)  { doUndo(); return; }
   if(item.redotool)  { doRedo(); return; }
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
+  if(item.clearalltools){ vpvrOn=liqHeatmapOn=volBubblesOn=hurstOn=garchBandsOn=fractalSignalOn=complexFractalOn=kalmanOn=gbmOn=ouOn=false; buildToolbar(); renderChart&&renderChart(); return; }
 
   /* ── Quantitative overlays — toggle on/off from dropdown ── */
   if(item.hursttool)        { hurstOn=!hurstOn;        buildToolbar(); renderChart&&renderChart(); return; }
