@@ -4317,8 +4317,6 @@ function renderChart() {
   var endIdx   = Math.min(candles.length, startIdx + visibleBars);
   var visible  = candles.slice(startIdx, endIdx);
   if (!visible.length) return;
-  /* Lazy-load older history when scrolled within 80 bars of the beginning */
-  if (startIdx <= 80 && !_historyLoading && !_historyDepleted) _fetchMoreHistory();
   var PAD = { l:8, r:75, t:16, b:56, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
   var mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
@@ -5506,6 +5504,7 @@ if(chartCanvas){
     chartView.offset=Math.max(0,Math.min(n-newVis,n-newVis-newSi));
     chartView.zoom=newZoom;
     renderChart();
+    if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
   },{passive:false});
 
   /* ── Touch events for mobile ── */
@@ -5621,6 +5620,7 @@ if(chartCanvas){
       chartView.rightPad = Math.min(-scrollPos, 80);
     }
     renderChart();
+    if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
   });
   document.addEventListener('mouseup',function(e){
     if(window._panStart!==null && (e.button===1 || e.button===0)){
@@ -5977,22 +5977,33 @@ function onTfChange(){
     }).catch(function(){ fetchBinanceFallback(currentSymbol,currentInterval); });
 }
 
+var _historyCheckTimer = null;
+function _scheduleHistoryCheck(){
+  clearTimeout(_historyCheckTimer);
+  _historyCheckTimer = setTimeout(function(){
+    if(!chartCandles.length||!currentSymbol||_historyLoading||_historyDepleted) return;
+    /* Only fire when user has actually scrolled into history (offset>0) */
+    if(chartView.offset < 5) return;
+    var vis = Math.max(20, Math.floor(chartCandles.length / chartView.zoom));
+    var si  = Math.max(0, chartCandles.length - vis - chartView.offset);
+    if(si < 100) _fetchMoreHistory();
+  }, 200);
+}
+
 function _fetchMoreHistory(){
   if(_historyLoading||_historyDepleted||!chartCandles.length||!currentSymbol) return;
   _historyLoading=true;
-  /* Pass endTime = oldest candle open time - 1ms so Binance returns candles strictly before it */
-  var endTime=chartCandles[0].t - 1;
+  var endTime = chartCandles[0].t - 1;
   fetch(BACKEND_URL+'/history/'+currentSymbol+'?tf='+currentInterval+'&endTime='+endTime)
     .then(function(r){ return r.json(); })
     .then(function(d){
       _historyLoading=false;
       if(!d.candles||d.candles.length<2){ _historyDepleted=true; return; }
-      /* Filter out any overlap just in case */
-      var batch=d.candles.filter(function(c){ return c.t<chartCandles[0].t; });
+      var batch = d.candles.filter(function(c){ return c.t < chartCandles[0].t; });
       if(!batch.length){ _historyDepleted=true; return; }
-      /* Prepend and shift offset so the view doesn't jump */
+      /* Prepend and bump offset by exact count — view stays locked, no jump */
       Array.prototype.unshift.apply(chartCandles, batch);
-      chartView.offset+=batch.length;
+      chartView.offset += batch.length;
       renderChart&&renderChart();
     })
     .catch(function(){ _historyLoading=false; });
