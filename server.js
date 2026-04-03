@@ -340,17 +340,17 @@ async function verifyAndDeduct(token, cost) {
 
   if (!profile) {
     const username = user.email.split('@')[0];
-    const { error: insErr } = await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
-    
-    if (insErr) {
-      // Fallback insert if columns like plan/username are missing
-      const { error: insErr2 } = await sbAdmin.from('profiles').insert({ id: user.id, credits: 50 });
-      if (insErr2) throw new Error(`Database Insert Error: ${insErr.message} | ${insErr2.message}`);
+    const { error: insErr } = await sbAdmin.from('profiles')
+      .upsert({ id: user.id, credits: 50, plan: 'free', username }, { onConflict: 'id', ignoreDuplicates: true });
+    if (insErr) throw new Error(`Database Insert Error: ${insErr.message}`);
+    // Re-fetch in case another request created it first
+    const { data: existing } = await sbAdmin.from('profiles').select('*').eq('id', user.id).single();
+    if (existing) { profile = existing; }
+    else {
+      sendWelcomeEmail(user.email, username);
+      profile = { credits: 50, plan: 'free' };
     }
-    
-    sendWelcomeEmail(user.email, username);
-    profile = { credits: 50, plan: 'free' };
-    if (50 < cost) throw new Error('Insufficient credits');
+    if ((profile.credits ?? 50) < cost) throw new Error('Insufficient credits');
   } else if (profile.credits === null || profile.credits === undefined) {
     await sbAdmin.from('profiles').update({ credits: 50 }).eq('id', user.id);
     profile.credits = 50;
@@ -395,15 +395,17 @@ async function getUserProfile(token) {
     
   if (!profile) {
     const username = user.email.split('@')[0];
-    const { error: insErr } = await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
+    const { error: insErr } = await sbAdmin.from('profiles')
+      .upsert({ id: user.id, credits: 50, plan: 'free', username }, { onConflict: 'id', ignoreDuplicates: true });
     if (insErr) {
-      const { error: insErr2 } = await sbAdmin.from('profiles').insert({ id: user.id, credits: 50 });
-      if (insErr2) {
-        console.error("Critical DB Insert Error:", insErr2);
-        return { credits: 0, plan: 'free', username, userId: user.id, email: user.email };
-      }
+      console.error('Profile upsert error:', insErr);
+      return { credits: 50, plan: 'free', username, userId: user.id, email: user.email };
     }
-    
+    // Re-fetch to get actual row (another request may have just created it)
+    const { data: created } = await sbAdmin.from('profiles').select('*').eq('id', user.id).single();
+    if (created) {
+      return { credits: created.credits ?? 50, plan: created.plan || 'free', username: created.username || username, userId: user.id, email: user.email };
+    }
     sendWelcomeEmail(user.email, username);
     return { credits: 50, plan: 'free', username, userId: user.id, email: user.email };
   }
@@ -1325,11 +1327,13 @@ app.post('/save-analysis', rateLimit(30, 60000), async (req, res) => {
       const { data: upData, error: upErr } = await sbAdmin.storage
         .from('charts')
         .upload(fname, buf, { contentType: 'image/webp', upsert: false });
-      if (!upErr && upData) {
+      if (upErr) { console.warn('[save-analysis] storage upload error:', upErr.message); }
+      else if (upData) {
         const { data: pub } = sbAdmin.storage.from('charts').getPublicUrl(upData.path);
         chart_url = pub?.publicUrl || null;
+        console.log('[save-analysis] chart uploaded:', chart_url);
       }
-    } catch (upEx) { console.warn('[save-analysis] storage upload error:', upEx.message); }
+    } catch (upEx) { console.warn('[save-analysis] storage upload exception:', upEx.message); }
   }
 
   const { error: insertErr } = await sbAdmin.from('analyses').insert({
