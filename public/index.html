@@ -3471,9 +3471,9 @@ function checkCredits(toolKey){
 }
 
 /* Save analysis result to DB (fire-and-forget) */
-/* Map tool → canvas ID for screenshot */
+/* Map tool → canvas ID for the annotated result image */
 var TOOL_CANVAS = {
-  analyze: 'chartCanvas', bar: 'chartCanvas', ww: 'wwDecompCanvas',
+  analyze: 'outCanvas', bar: 'outCanvas', ww: 'wwDecompCanvas',
   fib: 'fibCanvas', smc: 'smcCanvas', mtf: 'mtfCanvas',
   age: 'ageCanvas', liq: 'liqCanvas', proj: 'projCanvas',
   vol: 'chartCanvas', journal: 'chartCanvas'
