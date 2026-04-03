@@ -562,10 +562,11 @@ app.use(cors({ origin: (o, cb) => cb(null, !o || _allowedOrigins.includes(o)), c
 const _rlMap = new Map();
 function getClientIp(req) { return req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for']||'').split(',')[0].trim() || req.ip; }
 function rateLimit(max, ms) {
+  const map = new Map();
   return (req, res, next) => {
     const ip = getClientIp(req), now = Date.now();
-    let e = _rlMap.get(ip);
-    if (!e || now > e.reset) { e = { count:0, reset:now+ms }; _rlMap.set(ip, e); }
+    let e = map.get(ip);
+    if (!e || now > e.reset) { e = { count:0, reset:now+ms }; map.set(ip, e); }
     if (++e.count > max) return res.status(429).json({ error:'Too many requests' });
     next();
   };
@@ -750,7 +751,7 @@ const candleLine = (c, i) => `${i+1}. O:${(+c.o).toFixed(2)} H:${(+c.h).toFixed(
    ═══════════════════════════════════════════════════ */
 
 // /analyze - General fractal analysis (fields match renderFractal in frontend)
-app.post('/analyze', rateLimit(10, 60000), async (req, res) => {
+app.post('/analyze', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, focus, matches, _token } = req.body;
@@ -770,7 +771,7 @@ Include 3-6 meaningful annotations at key price levels (support, resistance, ent
 });
 
 // /bar-pattern - Bar pattern self-similarity (fields match renderBarPattern in frontend)
-app.post('/bar-pattern', rateLimit(10, 60000), async (req, res) => {
+app.post('/bar-pattern', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -790,7 +791,7 @@ Include 2-3 bar clusters showing self-similar patterns found at different locati
 });
 
 // /weierstrass - Weierstrass decomposition (fields match renderWeierstrass in frontend)
-app.post('/weierstrass', rateLimit(10, 60000), async (req, res) => {
+app.post('/weierstrass', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -807,7 +808,7 @@ Respond with ONLY a valid JSON object, no markdown, no explanation. Use exactly 
 });
 
 // /mtf (MTF Confluence)
-app.post('/mtf', rateLimit(10, 60000), async (req, res) => {
+app.post('/mtf', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -827,7 +828,7 @@ path arrays must have exactly 10 floats (0=top, 1=bottom) — these are shape in
 });
 
 // /fractal-age
-app.post('/fractal-age', rateLimit(10, 60000), async (req, res) => {
+app.post('/fractal-age', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -847,7 +848,7 @@ cycle_path must have 20 floats (0=top, 1=bottom) — shape indicator only. targe
 });
 
 // /projection - WITH PREDICTION TRACKING
-app.post('/projection', rateLimit(10, 60000), async (req, res) => {
+app.post('/projection', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -898,7 +899,7 @@ path arrays must start near current price (${lastClose}) and project forward as 
    ═══════════════════════════════════════════════════ */
 
 // /fibonacci - Fibonacci retracements & extensions (fields match renderFibonacci)
-app.post('/fibonacci', rateLimit(10, 60000), async (req, res) => {
+app.post('/fibonacci', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -918,7 +919,7 @@ barIndex must be between 0 and ${candles.length - 1}.`;
 });
 
 // /smc - Smart Money Concepts (fields match renderSMC)
-app.post('/smc', rateLimit(10, 60000), async (req, res) => {
+app.post('/smc', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -937,7 +938,7 @@ Respond with ONLY a valid JSON object, no markdown. Use real prices for all pric
 });
 
 // /volatility - Volatility regime & position sizing (fields match renderVolatility)
-app.post('/volatility', rateLimit(10, 60000), async (req, res) => {
+app.post('/volatility', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, account_size, risk_pct, _token } = req.body;
@@ -957,7 +958,7 @@ Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
 });
 
 // /liquidity - Liquidity map & stop hunt targets (fields match renderLiquidity)
-app.post('/liquidity', rateLimit(10, 60000), async (req, res) => {
+app.post('/liquidity', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
@@ -977,7 +978,7 @@ barIndex must be between 0 and ${candles.length - 1}.`;
 });
 
 // /journal - AI Trade Journal grader (fields match renderJournal)
-app.post('/journal', rateLimit(10, 60000), async (req, res) => {
+app.post('/journal', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
   const { candles, priceMin, priceMax, pair, timeframe, language: l, trade_notes, outcome, pnl, _token } = req.body;

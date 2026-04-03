@@ -2056,15 +2056,22 @@ function setToolStatus(tool, state){
 }
 
 /* ── Railway backend calls ── */
-function callBackend(endpoint, payload){
+function callBackend(endpoint, payload, _retry){
   return fetch(BACKEND_URL + endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
-  .then(function(res){ return res.json(); })
+  .then(function(res){
+    if(res.status === 429 && !_retry){
+      /* back off 8 s then retry once */
+      return new Promise(function(resolve){ setTimeout(resolve, 8000); })
+        .then(function(){ return callBackend(endpoint, payload, true); });
+    }
+    return res.json();
+  })
   .then(function(data){
-    if(data.error) throw new Error(data.error);
+    if(data && data.error) throw new Error(data.error);
     return data;
   });
 }
