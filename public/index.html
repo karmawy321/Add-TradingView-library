@@ -2261,17 +2261,17 @@ azBtn.addEventListener('click', function(){
 
   /* Always run fractal (free) */
   callBackend('/analyze', { candles: _visC, priceMin: _pMin, priceMax: _pMax, pair: pair, timeframe: tf, focus: focus, matches: nM, language: lang })
-    .then(function(d){renderFractal(d);setToolStatus('fractal','done');})
+    .then(function(d){renderFractal(d);setToolStatus('fractal','done');saveAnalysis('analyze',d);})
     .catch(function(e){setToolStatus('fractal','error');console.error('Fractal:',e);});
 
   /* All tools run in dev mode */
   if(true){
     callBackend('/bar-pattern', { candles: _visC, priceMin: _pMin, priceMax: _pMax, pair: pair, timeframe: tf, language: lang })
-      .then(function(d){renderBarPattern(d);setToolStatus('bar','done');})
+      .then(function(d){renderBarPattern(d);setToolStatus('bar','done');saveAnalysis('bar',d);})
       .catch(function(e){setToolStatus('bar','error');console.error('Bar:',e);});
 
     callBackend('/weierstrass', { candles: _visC, priceMin: _pMin, priceMax: _pMax, pair: pair, timeframe: tf, language: lang })
-      .then(function(d){renderWeierstrass(d);setToolStatus('ww','done');})
+      .then(function(d){renderWeierstrass(d);setToolStatus('ww','done');saveAnalysis('ww',d);})
       .catch(function(e){setToolStatus('ww','error');console.error('WW:',e);});
   }
 
@@ -2947,6 +2947,7 @@ function runTool(tool){
       if(tool==='liq')     renderLiquidity(d);
       if(tool==='journal') renderJournal(d);
       if(tool==='proj')    renderProjection(d);
+      saveAnalysis(tool, d);
     })
     .catch(function(e){ setToolRunning(tool, false); console.error(tool, e); });
 }
@@ -3460,6 +3461,19 @@ function checkCredits(toolKey){
     return false;
   }
   return true;
+}
+
+/* Save analysis result to DB (fire-and-forget) */
+function saveAnalysis(tool, result){
+  var token = localStorage.getItem('fractal_token');
+  if(!token || !result) return;
+  var pair = (document.getElementById('pairIn') && document.getElementById('pairIn').value) || '—';
+  var tf   = typeof currentInterval !== 'undefined' ? currentInterval : '—';
+  fetch('/save-analysis', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, _token: token })
+  }).catch(function(){});
 }
 
 /* Deduct credits locally (optimistic) + call server to deduct in DB */
