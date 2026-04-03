@@ -340,7 +340,14 @@ async function verifyAndDeduct(token, cost) {
 
   if (!profile) {
     const username = user.email.split('@')[0];
-    await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
+    const { error: insErr } = await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
+    
+    if (insErr) {
+      // Fallback insert if columns like plan/username are missing
+      const { error: insErr2 } = await sbAdmin.from('profiles').insert({ id: user.id, credits: 50 });
+      if (insErr2) throw new Error(`Database Insert Error: ${insErr.message} | ${insErr2.message}`);
+    }
+    
     sendWelcomeEmail(user.email, username);
     profile = { credits: 50, plan: 'free' };
     if (50 < cost) throw new Error('Insufficient credits');
@@ -359,16 +366,16 @@ async function verifyAndDeduct(token, cost) {
   let rpcWorked = false;
   
   if (!deductErr) {
-    // If no error, double check that it actually changed
     const { data: check } = await sbAdmin.from('profiles').select('credits').eq('id', user.id).single();
-    if (check && check.credits < current) { // it decreased
+    if (check && check.credits < current) {
        rpcWorked = true;
     }
   }
 
   if (!rpcWorked) {
     // Fallback if RPC failed or didn't decrease credits
-    await sbAdmin.from('profiles').update({ credits: current - cost }).eq('id', user.id);
+    const { error: upErr } = await sbAdmin.from('profiles').update({ credits: current - cost }).eq('id', user.id);
+    if (upErr) throw new Error(`Database Update Error: ${upErr.message}`);
   }
   
   return { userId: user.id };
@@ -388,7 +395,15 @@ async function getUserProfile(token) {
     
   if (!profile) {
     const username = user.email.split('@')[0];
-    await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
+    const { error: insErr } = await sbAdmin.from('profiles').insert({ id: user.id, credits: 50, plan: 'free', username });
+    if (insErr) {
+      const { error: insErr2 } = await sbAdmin.from('profiles').insert({ id: user.id, credits: 50 });
+      if (insErr2) {
+        console.error("Critical DB Insert Error:", insErr2);
+        return { credits: 0, plan: 'free', username, userId: user.id, email: user.email };
+      }
+    }
+    
     sendWelcomeEmail(user.email, username);
     return { credits: 50, plan: 'free', username, userId: user.id, email: user.email };
   }
