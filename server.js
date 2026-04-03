@@ -1319,6 +1319,7 @@ app.post('/save-analysis', rateLimit(30, 60000), async (req, res) => {
 
   // Upload chart image server-side using admin key (no RLS needed)
   let chart_url = null;
+  console.log('[save-analysis] chart_data type:', typeof chart_data, 'length:', chart_data ? String(chart_data).length : 0);
   if (typeof chart_data === 'string' && chart_data.startsWith('data:image/')) {
     try {
       const base64 = chart_data.split(',')[1];
