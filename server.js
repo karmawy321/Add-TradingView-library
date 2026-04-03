@@ -334,7 +334,7 @@ async function verifyAndDeduct(token, cost) {
 
   let { data: profile } = await sbAdmin
     .from('profiles')
-    .select('credits, plan')
+    .select('*')
     .eq('id', user.id)
     .single();
 
@@ -367,7 +367,7 @@ async function verifyAndDeduct(token, cost) {
   
   if (!deductErr) {
     const { data: check } = await sbAdmin.from('profiles').select('credits').eq('id', user.id).single();
-    if (check && check.credits < current) {
+    if (check && check.credits < current) { // it decreased
        rpcWorked = true;
     }
   }
@@ -389,7 +389,7 @@ async function getUserProfile(token) {
   
   let { data: profile } = await sbAdmin
     .from('profiles')
-    .select('credits, plan, username')
+    .select('*')
     .eq('id', user.id)
     .single();
     
