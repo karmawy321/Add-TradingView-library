@@ -126,12 +126,18 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;padding:16px 48px;display:fl
 .an-cr{font-family:'DM Mono',monospace;font-size:9px;color:#e74c3c;margin-left:8px}
 .an-chev{font-size:9px;color:var(--muted);margin-left:6px;transition:transform .2s}
 .an-chev.open{transform:rotate(90deg)}
-.an-body{display:none;padding:14px 16px;border-top:1px solid var(--border2);font-size:12px;color:var(--light);line-height:1.8;white-space:pre-wrap;word-break:break-word}
+.an-body{display:none;padding:14px 16px;border-top:1px solid var(--border2)}
 .an-body.open{display:block}
-.an-signal{display:inline-block;font-family:'DM Mono',monospace;font-size:9px;padding:2px 8px;border-radius:1px;margin-bottom:10px;text-transform:uppercase;letter-spacing:.08em}
+.an-signal{display:inline-block;font-family:'DM Mono',monospace;font-size:9px;padding:2px 8px;border-radius:1px;text-transform:uppercase;letter-spacing:.08em}
 .an-bull{background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.3);color:#27ae60}
 .an-bear{background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.3);color:#e74c3c}
 .an-neu{background:rgba(138,149,168,.08);border:1px solid rgba(138,149,168,.2);color:var(--muted)}
+.an-row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.an-row:last-child{border-bottom:none}
+.an-row-l{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;margin-right:12px}
+.an-row-v{font-size:11px;color:var(--light);text-align:right}
+.an-sec-title{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.12em;color:var(--gold);text-transform:uppercase;margin:12px 0 6px;opacity:.7}
+.an-text{font-size:12px;color:var(--light);line-height:1.8;margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);white-space:pre-wrap;word-break:break-word}
 
 /* SECURITY */
 .security-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.04)}
@@ -546,46 +552,122 @@ var profile = null;
 /* ── Analysis History (fetched from server DB) ── */
 var _historyOffset = 0;
 var TOOL_LABELS = {
-  analyze:'Fractal Pattern', fib:'Fibonacci AI', smc:'Smart Money',
-  vol:'Volatility', mtf:'MTF Confluence', age:'Fractal Age',
-  liq:'Liquidity Map', proj:'Projection', journal:'Trade Journal',
-  bar:'Bar Pattern', ww:'Weierstrass'
+  analyze:'Fractal Pattern', fib:'Fibonacci AI', smc:'Smart Money Concepts',
+  vol:'Volatility + Sizing', mtf:'MTF Confluence', age:'Fractal Age',
+  liq:'Liquidity Map', proj:'Price Projection', journal:'Trade Journal',
+  bar:'Bar Self-Similarity', ww:'Weierstrass'
 };
 
-function getAnalysisText(tool, result){
-  if(!result) return '';
-  var t = result.analysis || result.confluence_analysis || result.narrative ||
-          result.coach_message || result.key_lesson || result.summary || '';
-  if(!t && result.fractal_age) t = result.fractal_age.phase || '';
-  return String(t).slice(0, 2000);
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function sigBadge(s){
+  if(!s) return '';
+  var cl = s==='bullish'?'an-bull':s==='bearish'?'an-bear':'an-neu';
+  return '<span class="an-signal '+cl+'">'+esc(s.toUpperCase())+'</span> ';
+}
+function row(label, val){
+  if(!val && val!==0) return '';
+  return '<div class="an-row"><span class="an-row-l">'+esc(label)+'</span><span class="an-row-v">'+esc(String(val))+'</span></div>';
+}
+function section(title, html){
+  if(!html) return '';
+  return '<div class="an-sec-title">'+esc(title)+'</div>'+html;
+}
+function textBlock(val){
+  if(!val) return '';
+  return '<div class="an-text">'+esc(String(val)).replace(/\n/g,'<br>')+'</div>';
 }
 
-function getSignal(result){
-  if(!result) return '';
-  return result.signal || result.bias || result.direction || '';
+function renderResult(tool, r){
+  if(!r) return '<span style="color:var(--muted)">No data saved.</span>';
+  var html = '';
+  if(tool === 'analyze'){
+    var sig = r.signal||''; html += sigBadge(sig);
+    html += row('Pattern', r.pattern) + row('Wave', r.wave) + row('Confidence', r.confidence);
+    html += row('Entry', r.entry) + row('Stop Loss', r.stop_loss) + row('TP1', r.target_1) + row('TP2', r.target_2) + row('R:R', r.rr);
+    html += textBlock(r.analysis);
+    html += textBlock(r.prediction_summary);
+  } else if(tool === 'fib'){
+    html += sigBadge(r.signal);
+    html += row('Trend', r.trend) + row('Confidence', r.confidence) + row('Key Zone', r.key_zone);
+    if(r.levels && r.levels.length) html += section('Key Levels', r.levels.map(function(l){ return row(l.label||l.ratio, l.price); }).join(''));
+    html += textBlock(r.analysis);
+  } else if(tool === 'smc'){
+    html += sigBadge(r.signal);
+    html += row('Market Structure', r.market_structure) + row('Bias', r.bias) + row('Zone', r.premium_discount&&r.premium_discount.current_zone);
+    var em = r.entry_model||{};
+    html += row('Entry', em.entry) + row('SL', em.sl) + row('TP1', em.tp1) + row('TP2', em.tp2) + row('R:R', em.rr);
+    html += textBlock(r.analysis);
+  } else if(tool === 'vol'){
+    html += row('Regime', r.regime) + row('Regime Score', r.regime_score&&r.regime_score+'%');
+    var ps = r.position_sizing||{};
+    html += row('Max Position Size', ps.max_position_size) + row('Risk Amount', ps.risk_amount&&'$'+ps.risk_amount);
+    var rc = r.regime_characteristics||{};
+    html += row('Mean Reversion Prob', rc.mean_reversion_probability&&(rc.mean_reversion_probability*100).toFixed(0)+'%');
+    html += row('Trend Continuation', rc.trend_continuation_probability&&(rc.trend_continuation_probability*100).toFixed(0)+'%');
+    html += row('Expected Daily Range', rc.expected_daily_range);
+    html += textBlock(r.analysis);
+  } else if(tool === 'mtf'){
+    html += sigBadge(r.overall_bias||r.signal);
+    if(r.timeframes && r.timeframes.length){
+      html += section('Timeframes', r.timeframes.map(function(t){ return row(t.timeframe||t.tf, (t.bias||t.signal||'')+(t.strength?' · '+t.strength:'')); }).join(''));
+    }
+    html += textBlock(r.confluence_analysis || r.analysis);
+  } else if(tool === 'age'){
+    var fa = r.fractal_age||{};
+    html += row('Phase', fa.phase) + row('Completion', fa.completion_pct&&fa.completion_pct+'%') + row('Urgency', r.urgency);
+    html += textBlock(r.analysis);
+  } else if(tool === 'liq'){
+    html += sigBadge(r.bias||r.signal);
+    if(r.zones && r.zones.length){
+      html += section('Liquidity Zones', r.zones.slice(0,5).map(function(z){ return row(z.type||z.label, z.price||z.level); }).join(''));
+    }
+    html += textBlock(r.analysis);
+  } else if(tool === 'proj'){
+    html += sigBadge(r.signal||r.bias);
+    if(r.scenarios && r.scenarios.length){
+      html += section('Scenarios', r.scenarios.map(function(s){ return row(s.label||s.name||s.type, s.target||s.price); }).join(''));
+    }
+    html += textBlock(r.analysis || r.narrative);
+  } else if(tool === 'journal'){
+    html += row('Grade', r.overall_grade) + row('Key Lesson', r.key_lesson);
+    html += textBlock(r.coach_message);
+    var cats = r.categories||{};
+    var catHtml = Object.keys(cats).map(function(k){
+      return row(k.replace(/_/g,' '), cats[k].score&&cats[k].score+'/100'+(cats[k].improvement?' — '+cats[k].improvement:''));
+    }).join('');
+    if(catHtml) html += section('Category Scores', catHtml);
+  } else if(tool === 'bar'){
+    html += sigBadge(r.signal);
+    html += row('Dominant Pattern', r.dominant_pattern) + row('Self-Similarity', r.self_similarity_score&&r.self_similarity_score+'%') + row('Fractal Dim', r.fractal_dimension) + row('Confidence', r.confidence);
+    html += textBlock(r.trading_implication);
+  } else if(tool === 'ww'){
+    var ns = r.noise_signal||{};
+    html += sigBadge(ns.edge||r.signal);
+    html += row('Hurst Exponent', r.hurst_exponent) + row('Fractal Dimension', r.fractal_dimension) + row('Market Regime', r.market_regime) + row('Roughness', r.roughness_index);
+    var wf = r.weierstrass_fit||{};
+    html += textBlock(wf.description);
+  }
+  return html || '<span style="color:var(--muted)">No structured data — raw fields may be available.</span>';
 }
 
 function renderAnalysisCard(a){
-  var label    = TOOL_LABELS[a.tool] || a.tool;
-  var text     = getAnalysisText(a.tool, a.result);
-  var signal   = getSignal(a.result);
-  var sigClass = signal==='bullish'?'an-bull':signal==='bearish'?'an-bear':'an-neu';
-  var sigHtml  = signal ? '<span class="an-signal '+sigClass+'">'+signal+'</span><br>' : '';
-  var date     = new Date(a.created_at).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  var id       = 'an-' + a.id;
+  var label = TOOL_LABELS[a.tool] || a.tool;
+  var r     = a.result || {};
+  var sig   = r.signal || r.bias || r.overall_bias || (r.noise_signal&&r.noise_signal.edge) || '';
+  var sigCl = sig==='bullish'?'an-bull':sig==='bearish'?'an-bear':'an-neu';
+  var date  = new Date(a.created_at).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  var id    = 'an-' + a.id;
   return '<div class="an-card">'
     +'<div class="an-card-hd" onclick="toggleAn(\''+id+'\')">'
-    +'<span class="an-tool">'+label+'</span>'
-    +(a.pair?'<span class="an-pair">'+a.pair+'</span>':'')
-    +(a.timeframe?'<span class="an-tf">'+a.timeframe+'</span>':'')
-    +'<span class="an-date">'+date+'</span>'
+    +'  <span class="an-tool">'+esc(label)+'</span>'
+    +(a.pair?'<span class="an-pair">'+esc(a.pair)+'</span>':'')
+    +(a.timeframe?'<span class="an-tf">'+esc(a.timeframe)+'</span>':'')
+    +(sig?'<span class="an-signal '+sigCl+'" style="margin-left:4px;font-size:8px">'+esc(sig.toUpperCase())+'</span>':'')
+    +'<span class="an-date">'+esc(date)+'</span>'
     +(a.credits?'<span class="an-cr">−'+a.credits+' cr</span>':'')
     +'<span class="an-chev" id="chev-'+id+'">▶</span>'
     +'</div>'
-    +'<div class="an-body" id="'+id+'">'
-    + sigHtml
-    +(text || '<span style="color:var(--muted)">No summary available.</span>')
-    +'</div>'
+    +'<div class="an-body" id="'+id+'">'+renderResult(a.tool, r)+'</div>'
     +'</div>';
 }
 
