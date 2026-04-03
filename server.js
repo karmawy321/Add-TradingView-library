@@ -1307,13 +1307,31 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
 
 const VALID_TOOLS = new Set(['analyze','fib','smc','vol','mtf','age','liq','proj','journal','bar','ww']);
 
-app.post('/save-analysis', rateLimit(30, 60000), async (req, res) => {
+app.post('/save-analysis', express.json({ limit: '1mb' }), rateLimit(30, 60000), async (req, res) => {
   if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
-  const { tool, pair, timeframe, result, credits, _token } = req.body;
+  const { tool, pair, timeframe, result, credits, chart_data, _token } = req.body;
   if (!_token) return res.status(401).json({ error: 'Not authenticated' });
   const { data: { user }, error } = await sbAdmin.auth.getUser(_token);
   if (error || !user) return res.status(401).json({ error: 'Unauthorized' });
   if (!VALID_TOOLS.has(tool)) return res.status(400).json({ error: 'Invalid tool' });
+
+  // Upload chart image server-side using admin key (no RLS needed)
+  let chart_url = null;
+  if (typeof chart_data === 'string' && chart_data.startsWith('data:image/')) {
+    try {
+      const base64 = chart_data.split(',')[1];
+      const buf    = Buffer.from(base64, 'base64');
+      const fname  = `${user.id}/${tool}_${Date.now()}.webp`;
+      const { data: upData, error: upErr } = await sbAdmin.storage
+        .from('charts')
+        .upload(fname, buf, { contentType: 'image/webp', upsert: false });
+      if (!upErr && upData) {
+        const { data: pub } = sbAdmin.storage.from('charts').getPublicUrl(upData.path);
+        chart_url = pub?.publicUrl || null;
+      }
+    } catch (_) {}
+  }
+
   const { error: insertErr } = await sbAdmin.from('analyses').insert({
     user_id:   user.id,
     tool:      String(tool).slice(0, 50),
@@ -1321,7 +1339,7 @@ app.post('/save-analysis', rateLimit(30, 60000), async (req, res) => {
     timeframe: String(timeframe || '').slice(0, 10),
     result:    result || {},
     credits:   parseInt(credits) || 0,
-    chart_url: typeof chart_url === 'string' ? chart_url.slice(0, 500) : null
+    chart_url: chart_url
   });
   if (insertErr) return res.status(500).json({ error: insertErr.message });
   res.json({ success: true });
@@ -1336,7 +1354,7 @@ app.get('/api/analyses', rateLimit(20, 60000), async (req, res) => {
   const offset = Math.max(0, parseInt(req.query.offset) || 0);
   const { data, error: fetchErr } = await sbAdmin
     .from('analyses')
-    .select('id, tool, pair, timeframe, result, credits, created_at')
+    .select('id, tool, pair, timeframe, result, credits, chart_url, created_at')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .range(offset, offset + 49);

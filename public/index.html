@@ -3492,25 +3492,15 @@ function saveAnalysis(tool, result){
   var tf   = typeof currentInterval !== 'undefined' ? currentInterval : '—';
 
   captureToolCanvas(tool).then(function(blob){
-    var uploadPromise;
-    if(blob && sb){
-      var _fu = localStorage.getItem('fractal_user'); var userId = (_fu && JSON.parse(_fu).id) || 'u';
-      var fname  = userId + '/' + tool + '_' + Date.now() + '.webp';
-      uploadPromise = sb.storage.from('charts').upload(fname, blob, { contentType:'image/webp', upsert:false })
-        .then(function(res){
-          if(res.error || !res.data) return null;
-          var pub = sb.storage.from('charts').getPublicUrl(res.data.path);
-          return (pub && pub.data && pub.data.publicUrl) ? pub.data.publicUrl : null;
-        }).catch(function(){ return null; });
-    } else {
-      uploadPromise = Promise.resolve(null);
-    }
+    var dataPromise = blob
+      ? new Promise(function(res){ var fr=new FileReader(); fr.onload=function(){ res(fr.result); }; fr.onerror=function(){ res(null); }; fr.readAsDataURL(blob); })
+      : Promise.resolve(null);
 
-    uploadPromise.then(function(chart_url){
+    dataPromise.then(function(chart_data){
       fetch('/save-analysis', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, chart_url: chart_url || null, _token: token })
+        body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, chart_data: chart_data || null, _token: token })
       }).catch(function(){});
     });
   });
