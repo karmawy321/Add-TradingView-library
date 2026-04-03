@@ -93,9 +93,28 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 
   <div id="form-in">
     <div class="field"><label>Email</label><input type="email" id="in-email" placeholder="you@example.com"></div>
-    <div class="field"><label>Password</label><input type="password" id="in-pass" placeholder="••••••••"></div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="in-pass" placeholder="••••••••">
+      <a href="#" onclick="showTab('reset');return false;" style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);text-decoration:none;display:block;margin-top:8px;text-align:right">Forgot password?</a>
+    </div>
     <button class="btn" id="in-btn" onclick="signIn()"><span id="in-txt">Sign In</span></button>
     <div class="msg" id="in-msg" style="display:none"></div>
+  </div>
+
+  <div id="form-reset" style="display:none">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.6">Enter the email address you used to register. We'll send you a securely signed link to reset your password.</div>
+    <div class="field"><label>Email</label><input type="email" id="re-email" placeholder="you@example.com"></div>
+    <button class="btn" id="re-btn" onclick="sendReset()"><span id="re-txt">Send Reset Link</span></button>
+    <div class="msg" id="re-msg" style="display:none"></div>
+    <a href="#" onclick="showTab('in');return false;" class="back" style="margin-top:16px">← Back to Sign In</a>
+  </div>
+
+  <div id="form-update" style="display:none">
+    <div style="font-size:12px;color:var(--gold);margin-bottom:20px;line-height:1.6;font-weight:500;">✓ Securely authenticated. Please enter your new password below.</div>
+    <div class="field"><label>New Password</label><input type="password" id="upd-pass" placeholder="At least 6 characters"></div>
+    <button class="btn" id="upd-btn" onclick="updatePassword()"><span id="upd-txt">Save New Password</span></button>
+    <div class="msg" id="upd-msg" style="display:none"></div>
   </div>
 
   <div id="form-up" style="display:none">
@@ -142,10 +161,19 @@ function boot(){
 }
 
 function showTab(t){
-  document.getElementById('tab-in').classList.toggle('on', t==='in');
-  document.getElementById('tab-up').classList.toggle('on', t==='up');
-  document.getElementById('form-in').style.display = t==='in'?'block':'none';
-  document.getElementById('form-up').style.display = t==='up'?'block':'none';
+  // Hide the tab-row completely if we are doing a recovery flow
+  var tr = document.querySelector('.tab-row');
+  if(tr) tr.style.display = (t==='reset' || t==='update') ? 'none' : 'flex';
+
+  var eIn = document.getElementById('tab-in'); if(eIn) eIn.classList.toggle('on', t==='in');
+  var eUp = document.getElementById('tab-up'); if(eUp) eUp.classList.toggle('on', t==='up');
+  
+  var fIn = document.getElementById('form-in'); if(fIn) fIn.style.display = (t==='in') ? 'block' : 'none';
+  var fUp = document.getElementById('form-up'); if(fUp) fUp.style.display = (t==='up') ? 'block' : 'none';
+  var fRe = document.getElementById('form-reset'); if(fRe) fRe.style.display = (t==='reset') ? 'block' : 'none';
+  var fUpd= document.getElementById('form-update'); if(fUpd) fUpd.style.display = (t==='update') ? 'block' : 'none';
+  
+  hideMsg('in'); hideMsg('up'); hideMsg('re'); hideMsg('upd');
 }
 
 function setLoading(prefix, on, label){
@@ -167,7 +195,44 @@ function showMsg(prefix, text, type){
 }
 
 function hideMsg(prefix){
-  document.getElementById(prefix+'-msg').style.display = 'none';
+  var el = document.getElementById(prefix+'-msg');
+  if(el) el.style.display = 'none';
+}
+
+async function sendReset() {
+  hideMsg('re');
+  var email = document.getElementById('re-email').value.trim();
+  if(!email) { showMsg('re', 'Please enter your email.', 'err'); return; }
+  
+  setLoading('re', true, 'Sending…');
+  var res = await sb.auth.resetPasswordForEmail(email, { 
+    redirectTo: window.location.origin + '/auth.html?type=recovery' 
+  });
+  setLoading('re', false, 'Send Reset Link');
+  
+  if(res.error) {
+    showMsg('re', res.error.message, 'err');
+  } else {
+    document.getElementById('re-email').value = '';
+    showMsg('re', 'Check your email for the recovery link!', 'ok');
+  }
+}
+
+async function updatePassword() {
+  hideMsg('upd');
+  var pass = document.getElementById('upd-pass').value;
+  if(pass.length < 6) { showMsg('upd', 'Password must be at least 6 characters.', 'err'); return; }
+  
+  setLoading('upd', true, 'Saving…');
+  var res = await sb.auth.updateUser({ password: pass });
+  setLoading('upd', false, 'Save New Password');
+  
+  if(res.error) {
+    showMsg('upd', res.error.message, 'err');
+  } else {
+    showMsg('upd', 'Password updated successfully! Redirecting…', 'ok');
+    setTimeout(function(){ window.location.href = '/'; }, 1500);
+  }
 }
 
 async function signIn(){
@@ -273,6 +338,13 @@ async function signUp(){
 async function checkSession(){
   /* Don't auto-redirect if user explicitly navigated here */
   if(window.location.search.indexOf('force=1') !== -1) return;
+  
+  /* Intercept a password recovery inbound link so they can set a new password */
+  if (window.location.hash.indexOf('type=recovery') !== -1 || window.location.search.indexOf('type=recovery') !== -1) {
+    showTab('update');
+    return; 
+  }
+  
   try {
     var res = await sb.auth.getSession();
     if(res.data && res.data.session){
