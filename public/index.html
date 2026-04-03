@@ -3498,12 +3498,15 @@ function saveAnalysis(tool, result){
   var pair = (document.getElementById('pairIn') && document.getElementById('pairIn').value) || '—';
   var tf   = typeof currentInterval !== 'undefined' ? currentInterval : '—';
 
-  var chart_data = captureToolCanvas(tool);
-  fetch('/save-analysis', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, chart_data: chart_data || null, _token: token })
-  }).catch(function(){});
+  /* Delay capture so canvas drawing (incl. internal setTimeouts) finishes */
+  setTimeout(function(){
+    var chart_data = captureToolCanvas(tool);
+    fetch('/save-analysis', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, chart_data: chart_data || null, _token: token })
+    }).catch(function(){});
+  }, 800);
 }
 
 /* Deduct credits locally (optimistic) + call server to deduct in DB */
