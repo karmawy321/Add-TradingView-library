@@ -3464,16 +3464,56 @@ function checkCredits(toolKey){
 }
 
 /* Save analysis result to DB (fire-and-forget) */
+/* Map tool → canvas ID for screenshot */
+var TOOL_CANVAS = {
+  analyze: 'chartCanvas', bar: 'chartCanvas', ww: 'wwDecompCanvas',
+  fib: 'fibCanvas', smc: 'smcCanvas', mtf: 'mtfCanvas',
+  age: 'ageCanvas', liq: 'liqCanvas', proj: 'projCanvas',
+  vol: 'chartCanvas', journal: 'chartCanvas'
+};
+
+function captureChart(tool){
+  return new Promise(function(resolve){
+    try {
+      var canvasId = TOOL_CANVAS[tool] || 'chartCanvas';
+      var canvas = document.getElementById(canvasId);
+      if(!canvas) return resolve(null);
+      canvas.toBlob(function(blob){
+        resolve(blob || null);
+      }, 'image/webp', 0.7);
+    } catch(e){ resolve(null); }
+  });
+}
+
 function saveAnalysis(tool, result){
   var token = localStorage.getItem('fractal_token');
   if(!token || !result) return;
   var pair = (document.getElementById('pairIn') && document.getElementById('pairIn').value) || '—';
   var tf   = typeof currentInterval !== 'undefined' ? currentInterval : '—';
-  fetch('/save-analysis', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, _token: token })
-  }).catch(function(){});
+
+  captureChart(tool).then(function(blob){
+    var uploadPromise;
+    if(blob && sb){
+      var _fu = localStorage.getItem('fractal_user'); var userId = (_fu && JSON.parse(_fu).id) || 'u';
+      var fname  = userId + '/' + tool + '_' + Date.now() + '.webp';
+      uploadPromise = sb.storage.from('charts').upload(fname, blob, { contentType:'image/webp', upsert:false })
+        .then(function(res){
+          if(res.error || !res.data) return null;
+          var pub = sb.storage.from('charts').getPublicUrl(res.data.path);
+          return (pub && pub.data && pub.data.publicUrl) ? pub.data.publicUrl : null;
+        }).catch(function(){ return null; });
+    } else {
+      uploadPromise = Promise.resolve(null);
+    }
+
+    uploadPromise.then(function(chart_url){
+      fetch('/save-analysis', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, chart_url: chart_url || null, _token: token })
+      }).catch(function(){});
+    });
+  });
 }
 
 /* Deduct credits locally (optimistic) + call server to deduct in DB */

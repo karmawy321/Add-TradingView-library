@@ -1320,7 +1320,8 @@ app.post('/save-analysis', rateLimit(30, 60000), async (req, res) => {
     pair:      String(pair  || '').slice(0, 20).toUpperCase(),
     timeframe: String(timeframe || '').slice(0, 10),
     result:    result || {},
-    credits:   parseInt(credits) || 0
+    credits:   parseInt(credits) || 0,
+    chart_url: typeof chart_url === 'string' ? chart_url.slice(0, 500) : null
   });
   if (insertErr) return res.status(500).json({ error: insertErr.message });
   res.json({ success: true });

@@ -138,6 +138,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;padding:16px 48px;display:fl
 .an-row-v{font-size:11px;color:var(--light);text-align:right}
 .an-sec-title{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.12em;color:var(--gold);text-transform:uppercase;margin:12px 0 6px;opacity:.7}
 .an-text{font-size:12px;color:var(--light);line-height:1.8;margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);white-space:pre-wrap;word-break:break-word}
+.an-chart-wrap{margin:0 0 14px;border-radius:2px;overflow:hidden;border:1px solid var(--border2)}
+.an-chart-img{display:block;width:100%;max-height:320px;object-fit:cover;opacity:.9}
 
 /* SECURITY */
 .security-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.04)}
@@ -667,7 +669,9 @@ function renderAnalysisCard(a){
     +(a.credits?'<span class="an-cr">−'+a.credits+' cr</span>':'')
     +'<span class="an-chev" id="chev-'+id+'">▶</span>'
     +'</div>'
-    +'<div class="an-body" id="'+id+'">'+renderResult(a.tool, r)+'</div>'
+    +'<div class="an-body" id="'+id+'">'
+    +(a.chart_url?'<div class="an-chart-wrap"><img class="an-chart-img" src="'+esc(a.chart_url)+'" alt="chart screenshot" loading="lazy"></div>':'')
+    +renderResult(a.tool, r)+'</div>'
     +'</div>';
 }
 
