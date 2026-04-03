@@ -3472,7 +3472,7 @@ var TOOL_CANVAS = {
   vol: 'chartCanvas', journal: 'chartCanvas'
 };
 
-function captureChart(tool){
+function captureToolCanvas(tool){
   return new Promise(function(resolve){
     try {
       var canvasId = TOOL_CANVAS[tool] || 'chartCanvas';
@@ -3491,7 +3491,7 @@ function saveAnalysis(tool, result){
   var pair = (document.getElementById('pairIn') && document.getElementById('pairIn').value) || '—';
   var tf   = typeof currentInterval !== 'undefined' ? currentInterval : '—';
 
-  captureChart(tool).then(function(blob){
+  captureToolCanvas(tool).then(function(blob){
     var uploadPromise;
     if(blob && sb){
       var _fu = localStorage.getItem('fractal_user'); var userId = (_fu && JSON.parse(_fu).id) || 'u';
