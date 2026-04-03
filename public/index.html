@@ -3473,16 +3473,16 @@ var TOOL_CANVAS = {
 };
 
 function captureToolCanvas(tool){
-  return new Promise(function(resolve){
-    try {
-      var canvasId = TOOL_CANVAS[tool] || 'chartCanvas';
-      var canvas = document.getElementById(canvasId);
-      if(!canvas) return resolve(null);
-      canvas.toBlob(function(blob){
-        resolve(blob || null);
-      }, 'image/webp', 0.7);
-    } catch(e){ resolve(null); }
-  });
+  try {
+    var canvasId = TOOL_CANVAS[tool] || 'chartCanvas';
+    var canvas = document.getElementById(canvasId);
+    if(!canvas || !canvas.width || !canvas.height) return null;
+    var dataUrl = canvas.toDataURL('image/webp', 0.65);
+    return (dataUrl && dataUrl.length > 200) ? dataUrl : null;
+  } catch(e){
+    console.warn('[chart capture]', e);
+    return null;
+  }
 }
 
 function saveAnalysis(tool, result){
@@ -3491,19 +3491,12 @@ function saveAnalysis(tool, result){
   var pair = (document.getElementById('pairIn') && document.getElementById('pairIn').value) || '—';
   var tf   = typeof currentInterval !== 'undefined' ? currentInterval : '—';
 
-  captureToolCanvas(tool).then(function(blob){
-    var dataPromise = blob
-      ? new Promise(function(res){ var fr=new FileReader(); fr.onload=function(){ res(fr.result); }; fr.onerror=function(){ res(null); }; fr.readAsDataURL(blob); })
-      : Promise.resolve(null);
-
-    dataPromise.then(function(chart_data){
-      fetch('/save-analysis', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, chart_data: chart_data || null, _token: token })
-      }).catch(function(){});
-    });
-  });
+  var chart_data = captureToolCanvas(tool);
+  fetch('/save-analysis', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ tool: tool, pair: pair, timeframe: tf, result: result, credits: TOOL_COSTS[tool]||0, chart_data: chart_data || null, _token: token })
+  }).catch(function(){});
 }
 
 /* Deduct credits locally (optimistic) + call server to deduct in DB */

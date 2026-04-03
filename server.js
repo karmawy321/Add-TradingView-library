@@ -571,7 +571,7 @@ function rateLimit(max, ms) {
 setInterval(() => { const now = Date.now(); _rlMap.forEach((v,k) => { if (now > v.reset) _rlMap.delete(k); }); }, 600000);
 
 app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 /* ═══════════════════════════════════════════════════
@@ -1307,7 +1307,7 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
 
 const VALID_TOOLS = new Set(['analyze','fib','smc','vol','mtf','age','liq','proj','journal','bar','ww']);
 
-app.post('/save-analysis', express.json({ limit: '1mb' }), rateLimit(30, 60000), async (req, res) => {
+app.post('/save-analysis', rateLimit(30, 60000), async (req, res) => {
   if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
   const { tool, pair, timeframe, result, credits, chart_data, _token } = req.body;
   if (!_token) return res.status(401).json({ error: 'Not authenticated' });
@@ -1329,7 +1329,7 @@ app.post('/save-analysis', express.json({ limit: '1mb' }), rateLimit(30, 60000),
         const { data: pub } = sbAdmin.storage.from('charts').getPublicUrl(upData.path);
         chart_url = pub?.publicUrl || null;
       }
-    } catch (_) {}
+    } catch (upEx) { console.warn('[save-analysis] storage upload error:', upEx.message); }
   }
 
   const { error: insertErr } = await sbAdmin.from('analyses').insert({
