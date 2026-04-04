@@ -5644,39 +5644,66 @@ if(chartCanvas){
 
   /* Pan — left-click crosshair OR middle-click; drag right = history, drag left = future gap */
   window._panStart=null; window._panOffset=0; window._panRightPad=0;
-  chartCanvas.addEventListener('mousedown',function(e){
-    if(e.button!==1) return;
-    e.preventDefault();
-    window._panStart    = e.clientX;
-    window._panOffset   = chartView.offset;
-    window._panRightPad = chartView.rightPad || 0;
-    chartCanvas.style.cursor='grabbing';
-  });
-  document.addEventListener('mousemove',function(e){
-    if(window._panStart===null) return;
+  /* Inertia state */
+  var _panVelX=0, _panLastX=0, _panLastT=0, _panAccum=0, _inertiaRaf=null;
+
+  function _calcBarW(){
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
     var baseGap=Math.max(4,Math.round(vis*0.08));
-    var barW=(W-8-75)/Math.max(vis+baseGap+window._panRightPad,1);
-    var dx=e.clientX-window._panStart;
-    var bars=Math.round(dx/barW);
-    var scrollPos = (window._panOffset - window._panRightPad) + bars;
-    var maxOff = Math.max(0,(chartCandles&&chartCandles.length-20)||0);
-    if (scrollPos >= 0) {
-      chartView.offset   = Math.min(scrollPos, maxOff);
-      chartView.rightPad = 0;
-    } else {
-      chartView.offset   = 0;
-      chartView.rightPad = Math.min(-scrollPos, 80);
-    }
+    return (W-8-75)/Math.max(vis+baseGap+(chartView.rightPad||0),1);
+  }
+
+  function _applyPanDelta(pixelDelta){
+    var barW=_calcBarW();
+    _panAccum += pixelDelta / barW;
+    var bars = Math.trunc(_panAccum);
+    if(bars===0) return;
+    _panAccum -= bars;
+    var maxOff=Math.max(0,(chartCandles&&chartCandles.length-20)||0);
+    var scrollPos=(chartView.offset-(chartView.rightPad||0))-bars;
+    if(scrollPos>=0){ chartView.offset=Math.min(scrollPos,maxOff); chartView.rightPad=0; }
+    else            { chartView.offset=0; chartView.rightPad=Math.min(-scrollPos,80); }
     renderChart();
     if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
+  }
+
+  function _startInertia(){
+    if(_inertiaRaf) cancelAnimationFrame(_inertiaRaf);
+    _panAccum=0;
+    (function loop(){
+      if(Math.abs(_panVelX)<0.3){ _panVelX=0; return; }
+      _applyPanDelta(_panVelX);
+      _panVelX*=0.88;
+      _inertiaRaf=requestAnimationFrame(loop);
+    })();
+  }
+
+  chartCanvas.addEventListener('mousedown',function(e){
+    if(e.button!==1) return;
+    e.preventDefault();
+    if(_inertiaRaf){ cancelAnimationFrame(_inertiaRaf); _inertiaRaf=null; }
+    _panVelX=0; _panAccum=0;
+    window._panStart    = e.clientX;
+    window._panOffset   = chartView.offset;
+    window._panRightPad = chartView.rightPad || 0;
+    _panLastX=e.clientX; _panLastT=Date.now();
+    chartCanvas.style.cursor='grabbing';
+  });
+  document.addEventListener('mousemove',function(e){
+    if(window._panStart===null) return;
+    var now=Date.now(), dt=now-_panLastT;
+    if(dt>0){ _panVelX=(_panLastX-e.clientX)/(dt/16); } /* px per frame */
+    var dx=_panLastX-e.clientX;
+    _panLastX=e.clientX; _panLastT=now;
+    if(dx!==0) _applyPanDelta(-dx);
   });
   document.addEventListener('mouseup',function(e){
     if(window._panStart!==null && (e.button===1 || e.button===0)){
       window._panStart=null;
       chartCanvas.style.cursor=(typeof activeItem!=='undefined'&&activeItem)?(activeItem.cur||'crosshair'):'crosshair';
+      if(Math.abs(_panVelX)>1) _startInertia();
     }
   });
   chartCanvas.addEventListener('mouseleave',function(){
@@ -7045,9 +7072,13 @@ function initDrawEvents(){
     
     /* Crosshair Left-Click Panning */
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') {
+      if(typeof _inertiaRaf!=='undefined'&&_inertiaRaf){ cancelAnimationFrame(_inertiaRaf); _inertiaRaf=null; }
+      if(typeof _panVelX!=='undefined') _panVelX=0;
+      if(typeof _panAccum!=='undefined') _panAccum=0;
       window._panStart    = e.clientX;
       window._panOffset   = chartView.offset;
       window._panRightPad = chartView.rightPad || 0;
+      if(typeof _panLastX!=='undefined'){ _panLastX=e.clientX; _panLastT=Date.now(); }
       cv.style.cursor = 'grabbing';
       return;
     }
