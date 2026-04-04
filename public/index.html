@@ -3708,15 +3708,8 @@ var _origRenderChart = null;
       
       /* In 'select' mode, draw a vertical blue dashed line where the user is hovering */
       if (_replayState === 'select' && _hoverReplayIdx >= 0 && chartCandles && chartCandles.length) {
-        var n   = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
-        var rightGapBars = Math.max(4, Math.round(n * 0.08));
-        var barW = CW / (n + rightGapBars);
-        
-        var startIdx = Math.max(0, chartCandles.length - n - chartView.offset);
-        var visibleIdx = _hoverReplayIdx - startIdx;
-        
-        if (visibleIdx >= 0 && visibleIdx <= n) {
-          var x = PAD.l + visibleIdx * barW;
+        var x = worldToScreenX(_hoverReplayIdx);
+        if (x >= PAD.l && x <= W - PAD.r) {
           ctx.save();
           ctx.strokeStyle = '#3498db';
           ctx.lineWidth = 1.5;
@@ -3725,7 +3718,7 @@ var _origRenderChart = null;
           ctx.moveTo(x, PAD.t);
           ctx.lineTo(x, H - PAD.b);
           ctx.stroke();
-          
+
           /* Tooltip handle at bottom */
           ctx.fillStyle = '#3498db';
           ctx.font = 'bold 10px DM Mono';
@@ -3748,21 +3741,9 @@ var _hoverReplayIdx = -1;
 
     function _getHoverAbsoluteIdx(clientX) {
       if (!chartCandles || !chartCandles.length || !_btAllCandles) return -1;
-      var dpr = window.devicePixelRatio || 1;
-      var W   = cv.width / dpr;
-      var PAD  = { l:8, r:75 };
-      var CW   = W - PAD.l - PAD.r;
       var rect = cv.getBoundingClientRect();
       var mouseX = clientX - rect.left;
-      
-      var n = Math.min(chartCandles.length, Math.max(20, Math.floor(chartCandles.length / chartView.zoom)));
-      var rightGapBars = Math.max(4, Math.round(n * 0.08));
-      var barW = CW / (n + rightGapBars);
-      
-      var visibleBarIdx = Math.floor((mouseX - PAD.l) / barW);
-      var startIdx = Math.max(0, chartCandles.length - n - chartView.offset);
-      var absoluteIdx = startIdx + visibleBarIdx;
-      return absoluteIdx;
+      return Math.max(0, Math.min(chartCandles.length - 1, Math.round(screenToWorldX(mouseX))));
     }
 
     cv.addEventListener('mousemove', function(e) {
@@ -4096,6 +4077,39 @@ var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0, rightPad: 0, yScale: 1 };
 var C = { up:'#26a69a', dn:'#ef5350', bg:'#06080d', grid:'rgba(201,168,76,0.05)', sma50:'#c9a84c', sma200:'#3498db', crosshair:'rgba(201,168,76,0.4)' };
 
+/* ═══════════════════════════════════════════════════
+   WORLD-SPACE VIEWPORT  (Phase 1 — new coordinate system)
+   offsetX  : pixels from PAD.l to bar-0 centre  (positive = scrolled into history)
+   scaleX   : pixels per bar  (zoom)
+   priceMin/Max : set each render from visible price range
+   ═══════════════════════════════════════════════════ */
+var viewState = {
+  offsetX:  0,      /* horizontal pixel offset                  */
+  scaleX:   8,      /* pixels per bar                           */
+  priceMin: 0,      /* set by renderChart each frame            */
+  priceMax: 1       /* set by renderChart each frame            */
+};
+var _lastCH = 0;    /* chart-area height in px, set by renderChart */
+var _chartPAD = { l:8, r:75, t:16, b:56, vol:40 }; /* canonical PAD used by transforms */
+
+/* worldToScreenX(k) returns the screen X of the CENTRE of bar k */
+function worldToScreenX(barIndex) {
+  return _chartPAD.l + (barIndex + 0.5) * viewState.scaleX + viewState.offsetX;
+}
+function worldToScreenY(price) {
+  if (viewState.priceMax === viewState.priceMin) return _chartPAD.t + _lastCH / 2;
+  return _chartPAD.t + _lastCH - ((price - viewState.priceMin) / (viewState.priceMax - viewState.priceMin)) * _lastCH;
+}
+/* screenToWorldX(x) returns the fractional bar index under screen position x */
+function screenToWorldX(x) {
+  if (viewState.scaleX === 0) return 0;
+  return (x - _chartPAD.l - viewState.offsetX) / viewState.scaleX - 0.5;
+}
+function screenToWorldY(y) {
+  if (_lastCH === 0) return viewState.priceMin;
+  return viewState.priceMin + ((_chartPAD.t + _lastCH - y) / _lastCH) * (viewState.priceMax - viewState.priceMin);
+}
+
 function resizeCanvas() {
   if (!chartCanvas) return;
   var dpr = window.devicePixelRatio || 1;
@@ -4363,13 +4377,17 @@ function renderChart() {
 
     return;
   }
-  var visibleBars = Math.max(20, Math.floor(candles.length / chartView.zoom));
-  var startIdx = Math.max(0, candles.length - visibleBars - chartView.offset);
-  var endIdx   = Math.min(candles.length, startIdx + visibleBars);
-  var visible  = candles.slice(startIdx, endIdx);
-  if (!visible.length) return;
   var PAD = { l:8, r:75, t:16, b:56, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
+  /* ── viewState is the source of truth for pan/zoom ── */
+  var barW = Math.max(1, viewState.scaleX);
+  var candleW = Math.max(1.5, barW * 0.72);
+  /* Visible bar range: include 1 extra bar each side for smooth edge rendering */
+  var startIdx = Math.max(0, Math.floor(-viewState.offsetX / barW) - 1);
+  var endIdx   = Math.min(candles.length, Math.ceil((CW - viewState.offsetX) / barW) + 2);
+  var visible  = candles.slice(startIdx, endIdx);
+  if (!visible.length) return;
+  var n = visible.length;
   var mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
   var mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
   var range = mx-mn||mn*0.001||0.0001;
@@ -4379,12 +4397,14 @@ function renderChart() {
     var _yhalf = (mx - mn) / 2 * chartView.yScale;
     mn = _ymid - _yhalf; mx = _ymid + _yhalf; range = mx - mn;
   }
+  /* Update viewState price range and CH so worldToScreenY is accurate */
+  viewState.priceMin = mn; viewState.priceMax = mx; _lastCH = CH;
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
-  /* ── TradingView-style right gap: base 8% + user-dragged extra space (VPVR fills this) ── */
-  var rightGapBars = Math.max(4, Math.round(visible.length * 0.08)) + (chartView.rightPad || 0);
-  var n = visible.length, barW = CW/(n + rightGapBars), candleW = Math.max(1.5, barW*0.72);
-  function px(i)  { return PAD.l+(i+0.5)*barW; }
-  function py(v)  { return PAD.t+CH-((v-mn)/range)*CH; }
+  /* px/py delegate to world-space transforms — pixel-perfect, no bar snapping */
+  function px(i)  { return worldToScreenX(startIdx + i); }
+  function py(v)  { return worldToScreenY(v); }
+  /* Keep chartView in sync for legacy code that reads chartView.offset / zoom */
+  _syncChartViewFromViewState();
 
   /* Grid — more visible lines */
   for (var gi=0;gi<=6;gi++) {
@@ -4612,7 +4632,8 @@ function renderChart() {
     var liveLineCol = (liveC.c >= liveC.o) ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)';
 
     /* Check if the actual live bar is visible horizontally to decide on drawing the dashed line */
-    var isLiveVisible = (chartView.offset === 0);
+    var _liveX = worldToScreenX(candles.length - 1);
+    var isLiveVisible = (_liveX >= PAD.l && _liveX <= W - PAD.r);
     if (isLiveVisible && pyVal >= PAD.t && pyVal <= H - PAD.b) {
       chartCtx.strokeStyle = liveLineCol;
       chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
@@ -4671,7 +4692,7 @@ function renderChart() {
   /* ── VPVR overlay — width = gap between last candle and price axis ── */
   if (vpvrOn) {
     var _vpvrRight   = W - PAD.r - 2;
-    var _lastCandleX = PAD.l + (visible.length - 0.5) * barW + candleW / 2;
+    var _lastCandleX = worldToScreenX(endIdx - 1) + candleW / 2;
     var _vpvrGapW    = _vpvrRight - _lastCandleX;
     drawVPVR(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, _vpvrGapW);
   }
@@ -5135,8 +5156,8 @@ function drawComplexFractal(ctx, visible, mn, mx, range, W, H, PAD, CW, CH, barW
   var e6 = buildSMA(400);
   var e7 = buildSMA(1500);
 
-  var visibleBars = Math.max(20, Math.floor(all.length / chartView.zoom));
-  var startIdx    = Math.max(0, all.length - visibleBars - chartView.offset);
+  var _barW2 = Math.max(1, viewState.scaleX);
+  var startIdx = Math.max(0, Math.floor(-viewState.offsetX / _barW2) - 1);
   var visLen      = visible.length;
 
   function py(p) { return PAD.t + CH - ((p - mn) / range) * CH; }
@@ -5531,72 +5552,66 @@ if(chartCanvas){
   });
   chartCanvas.addEventListener('wheel',function(e){
     e.preventDefault();
-    var dpr=window.devicePixelRatio||1;
-    var r=chartCanvas.getBoundingClientRect();
-    var cssX=e.clientX-r.left;
-    var W=chartCanvas.width/dpr;
-    var PADl=8, PADr=75;
-    var CW=W-PADl-PADr;
-    /* Default anchor focus point on the current/rightmost price bar, but use mouse pointer if Ctrl or Meta/Cmd is held */
-    var cursorRatio = (e.ctrlKey || e.metaKey || e.shiftKey) ? Math.max(0,Math.min(1,(cssX-PADl)/CW)) : 1;
-    /* Direct bar-level zoom manipulation for instant tick response (fixes integer boundary lag) */
-    var n=chartCandles.length;
-    var oldZoom=chartView.zoom;
-    var oldVis=Math.floor(n/oldZoom);
-    
-    var deltaBars=Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) * 0.12));
-    var newVis=Math.max(10, Math.min(n, oldVis + deltaBars));
-    var newZoom=n/newVis;
-    var oldSi=Math.max(0,n-oldVis-chartView.offset);
-    /* Bar index under cursor in full candles array */
-    var cursorBar=Math.round(oldSi+cursorRatio*oldVis);
-    /* After zoom, set offset so cursorBar stays at same screen position */
-    var newSi=Math.round(cursorBar-cursorRatio*newVis);
-    chartView.offset=Math.max(0,Math.min(n-newVis,n-newVis-newSi));
-    chartView.zoom=newZoom;
+    var dpr = window.devicePixelRatio || 1;
+    var r   = chartCanvas.getBoundingClientRect();
+    /* Anchor zoom on cursor when Ctrl/Meta/Shift held, otherwise anchor on right edge */
+    var cssX = (e.ctrlKey || e.metaKey || e.shiftKey)
+               ? (e.clientX - r.left)
+               : (chartCanvas.width / dpr - _chartPAD.r);
+    /* Bar index currently under the anchor point — stays fixed after zoom */
+    var pivotBar = screenToWorldX(cssX);
+    /* Zoom factor: ~10% per scroll tick, clamped to sensible scaleX range */
+    var factor   = Math.pow(1.10, -Math.sign(e.deltaY));
+    var newScaleX = Math.max(2, Math.min(300, viewState.scaleX * factor));
+    /* Keep pivotBar at cssX: worldToScreenX(pivotBar) = PAD.l + (pivotBar+0.5)*newScaleX + newOffsetX = cssX */
+    viewState.offsetX = cssX - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+    viewState.scaleX  = newScaleX;
     renderChart();
     if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
   },{passive:false});
 
   /* ── Touch events for mobile ── */
-  var _touchStartX=0, _touchStartY=0, _touchStartOffset=0, _touchStartZoom=1;
-  var _lastTouchDist=0, _pinching=false;
+  var _touchStartX=0, _touchStartY=0, _touchStartOffsetX=0, _touchStartScaleX=1;
+  var _lastTouchDist=0, _lastTouchCX=0, _pinching=false;
 
   chartCanvas.addEventListener('touchstart',function(e){
     e.preventDefault();
     if(e.touches.length===2){
-      /* Pinch zoom start */
       _pinching=true;
       var dx=e.touches[0].clientX-e.touches[1].clientX;
       var dy=e.touches[0].clientY-e.touches[1].clientY;
       _lastTouchDist=Math.sqrt(dx*dx+dy*dy);
-      _touchStartZoom=chartView.zoom;
+      _lastTouchCX=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      _touchStartScaleX=viewState.scaleX;
+      _touchStartOffsetX=viewState.offsetX;
     } else if(e.touches.length===1){
       _pinching=false;
       _touchStartX=e.touches[0].clientX;
-      _touchStartY=e.touches[0].clientY;
-      _touchStartOffset=chartView.offset;
+      _touchStartOffsetX=viewState.offsetX;
     }
   },{passive:false});
 
   chartCanvas.addEventListener('touchmove',function(e){
     e.preventDefault();
     if(e.touches.length===2&&_pinching){
-      /* Pinch zoom */
+      /* Pinch zoom — anchored to midpoint between fingers */
       var dx=e.touches[0].clientX-e.touches[1].clientX;
       var dy=e.touches[0].clientY-e.touches[1].clientY;
       var dist=Math.sqrt(dx*dx+dy*dy);
-      var scale=dist/_lastTouchDist;
-      chartView.zoom=Math.max(0.3,Math.min(12,_touchStartZoom*scale));
+      var r=chartCanvas.getBoundingClientRect();
+      var cx=(e.touches[0].clientX+e.touches[1].clientX)/2 - r.left;
+      var pivotBar = (_touchStartOffsetX === viewState.offsetX)
+        ? screenToWorldX(cx)
+        : screenToWorldX(cx);
+      var newScaleX=Math.max(2,Math.min(300,_touchStartScaleX*(dist/_lastTouchDist)));
+      viewState.offsetX = cx - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+      viewState.scaleX  = newScaleX;
       renderChart();
     } else if(e.touches.length===1&&!_pinching){
-      /* Pan */
-      var dpr=window.devicePixelRatio||1;
-      var W=chartCanvas.width/dpr;
-      var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-      var barW=(W-8-75)/Math.max(vis,1);
+      /* Pan — pixel-perfect */
       var dx2=e.touches[0].clientX-_touchStartX;
-      chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-20)||0,_touchStartOffset+Math.round(dx2/barW)));
+      _applyPanDelta(0); /* reset clamp without delta */
+      viewState.offsetX = _touchStartOffsetX + dx2;
       renderChart();
       /* Show OHLC on touch */
       var r2=chartCanvas.getBoundingClientRect();
@@ -5647,26 +5662,17 @@ if(chartCanvas){
   /* Inertia state */
   var _panVelX=0, _panLastX=0, _panLastT=0, _panAccum=0, _inertiaRaf=null;
 
-  function _calcBarW(){
-    var dpr=window.devicePixelRatio||1;
-    var W=chartCanvas.width/dpr;
-    var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-    var baseGap=Math.max(4,Math.round(vis*0.08));
-    return (W-8-75)/Math.max(vis+baseGap+(chartView.rightPad||0),1);
-  }
-
-  /* pixelDelta > 0 = drag right = show older bars (offset increases)
-     pixelDelta < 0 = drag left  = show newer bars (offset decreases) */
+  /* pixelDelta > 0 = drag right = older bars; pixelDelta < 0 = drag left = newer bars */
   function _applyPanDelta(pixelDelta){
-    var barW=_calcBarW();
-    _panAccum += pixelDelta / barW;
-    var bars = Math.trunc(_panAccum);
-    if(bars===0) return;
-    _panAccum -= bars;
-    var maxOff=Math.max(0,(chartCandles&&chartCandles.length-20)||0);
-    var scrollPos=(chartView.offset-(chartView.rightPad||0))+bars;
-    if(scrollPos>=0){ chartView.offset=Math.min(scrollPos,maxOff); chartView.rightPad=0; }
-    else            { chartView.offset=0; chartView.rightPad=Math.min(-scrollPos,80); }
+    if(!pixelDelta) return;
+    var n = (chartCandles && chartCandles.length) || 0;
+    var dpr = window.devicePixelRatio || 1;
+    var W   = chartCanvas.width / dpr;
+    var barW = Math.max(1, viewState.scaleX);
+    /* Clamp: don't let the last bar scroll too far left, or bar-0 too far right */
+    var minOffX = _chartPAD.l - (n + 4) * barW;            /* last bar near left edge */
+    var maxOffX = (W - _chartPAD.r) - 0.5 * barW;          /* bar-0 near right edge   */
+    viewState.offsetX = Math.min(maxOffX, Math.max(minOffX, viewState.offsetX + pixelDelta));
     renderChart();
     if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
   }
@@ -5762,7 +5768,10 @@ if(chartCanvas){
     }
     /* Date axis: bottom 56px strip */
     if (cy > H2 - 56) {
-      _dateAxisDrag = { startX: e.clientX, startZoom: chartView.zoom };
+      /* Pivot the zoom on the centre of the visible chart */
+      var pivotX = W2 / 2;
+      _dateAxisDrag = { startX: e.clientX, startScaleX: viewState.scaleX,
+                        startOffsetX: viewState.offsetX, pivotBar: screenToWorldX(pivotX), pivotX: pivotX };
       chartCanvas.style.cursor = 'ew-resize';
       e.stopPropagation(); return;
     }
@@ -5771,8 +5780,11 @@ if(chartCanvas){
   document.addEventListener('mousemove', function(e) {
     if (_dateAxisDrag) {
       var dx = e.clientX - _dateAxisDrag.startX;
-      /* drag left = zoom in (fewer bars), drag right = zoom out (more bars) */
-      chartView.zoom = Math.max(0.3, Math.min(12, _dateAxisDrag.startZoom * Math.pow(1.003, -dx)));
+      /* drag left = zoom in (fewer bars = larger scaleX), drag right = zoom out */
+      var newScaleX = Math.max(2, Math.min(300, _dateAxisDrag.startScaleX * Math.pow(1.003, -dx)));
+      /* Keep pivot bar at the same screen position */
+      viewState.scaleX  = newScaleX;
+      viewState.offsetX = _dateAxisDrag.pivotX - _chartPAD.l - (_dateAxisDrag.pivotBar + 0.5) * newScaleX;
       renderChart && renderChart(); return;
     }
     if (_priceAxisDrag) {
@@ -5831,6 +5843,35 @@ function takeSnapshot(){
   if(typeof buildToolGrid==='function') buildToolGrid();
 }
 
+/* ── Called once when candle data first arrives to set a sensible initial view ── */
+function _initViewState(candles) {
+  var dpr = window.devicePixelRatio || 1;
+  var W   = chartCanvas ? chartCanvas.width / dpr : 800;
+  var CW  = W - _chartPAD.l - _chartPAD.r;
+  var n   = candles.length;
+  var defaultVis = Math.max(50, Math.min(200, Math.floor(n * 0.4)));
+  var rightGap   = Math.max(4, Math.round(defaultVis * 0.08));
+  viewState.scaleX  = Math.max(2, CW / (defaultVis + rightGap));
+  /* Place last bar so its right edge is at W-PAD.r minus the right gap */
+  /* worldToScreenX(n-1) = PAD.l + (n-0.5)*scaleX + offsetX = W-PAD.r - rightGap*scaleX */
+  viewState.offsetX = (W - _chartPAD.r - rightGap * viewState.scaleX) - _chartPAD.l - (n - 0.5) * viewState.scaleX;
+}
+
+/* ── Keep chartView in sync for any code that still reads chartView.offset / zoom ── */
+function _syncChartViewFromViewState() {
+  if (!chartCandles || !chartCandles.length) return;
+  var n   = chartCandles.length;
+  var dpr = window.devicePixelRatio || 1;
+  var W   = chartCanvas ? chartCanvas.width / dpr : 800;
+  var CW  = W - _chartPAD.l - _chartPAD.r;
+  var barW  = Math.max(1, viewState.scaleX);
+  var visibleBars = Math.max(10, Math.round(CW / barW));
+  chartView.zoom   = n / Math.max(1, visibleBars);
+  var startIdx = Math.max(0, Math.floor(-viewState.offsetX / barW) - 1);
+  chartView.offset = Math.max(0, n - visibleBars - startIdx);
+  chartView.rightPad = 0;
+}
+
 function loadChart(symbol,interval){
   if(!symbol) return;
   var sym=symbol.toUpperCase().replace('/','').replace('-','');
@@ -5864,6 +5905,7 @@ function loadChart(symbol,interval){
         chartCandles=d.candles;
         if(!allCandleData[sym])allCandleData[sym]={};
         allCandleData[sym][currentInterval]=d.candles;
+        _initViewState(d.candles);
         renderChart();
         lwChartInstance=true;
         var btn=document.getElementById('azBtn');if(btn)btn.disabled=false;
@@ -6789,35 +6831,35 @@ function getCoords(e) {
   var scX=(cv.width/dpr)/r.width, scY=(cv.height/dpr)/r.height;
   var mx=(e.clientX-r.left)*scX, my=(e.clientY-r.top)*scY;
   var W=cv.width/dpr, H=cv.height/dpr;
+  var barW=Math.max(1,viewState.scaleX);
+  var CW=W-_chartPAD.l-_chartPAD.r;
+  var CH=_lastCH||(H-_chartPAD.t-_chartPAD.b-_chartPAD.vol);
   /* Pixel-only mode when no chart data (uploaded photo) */
   if(!chartCandles||chartCandles.length<2){
-    return {x:mx,y:my,price:0,bi:0,W:W,H:H,
-      CW:W-PAD.l-PAD.r,CH:H-PAD.t-PAD.b-PAD.vol,
-      mn:0,rng:1,barW:10,si:0,visible:[],pixelOnly:true};
+    return {x:mx,y:my,price:0,bi:0,W:W,H:H,CW:CW,CH:CH,
+      mn:0,rng:1,barW:barW,si:0,visible:[],pixelOnly:true};
   }
-  /* CSS pixel dims */
-  var CW=W-PAD.l-PAD.r, CH=H-PAD.t-PAD.b-PAD.vol;
-  var vis=Math.max(20,Math.floor(chartCandles.length/chartView.zoom));
-  var si=Math.max(0,chartCandles.length-vis-chartView.offset);
-  var visible=chartCandles.slice(si,Math.min(chartCandles.length,si+vis));
-  var mn=Math.min.apply(null,visible.map(function(c){return c.l;}));
-  var mx2=Math.max.apply(null,visible.map(function(c){return c.h;}));
-  var rng=mx2-mn||mn*.001||.0001;
-  mn-=rng*.05; mx2+=rng*.05; rng=mx2-mn;
-  var barW=CW/Math.max(visible.length+Math.max(4,Math.round(visible.length*0.08)),1);
-  var bi=Math.max(0,Math.min(visible.length-1,Math.round((mx-PAD.l)/barW)));
-  var price=mx2-((my-PAD.t)/CH)*rng;
+  /* Visible slice from viewState */
+  var si=Math.max(0,Math.floor(-viewState.offsetX/barW)-1);
+  var eiEnd=Math.min(chartCandles.length,Math.ceil((CW-viewState.offsetX)/barW)+2);
+  var visible=chartCandles.slice(si,eiEnd);
+  /* Bar index under cursor (absolute) */
+  var bi=Math.max(0,Math.min(chartCandles.length-1,Math.round(screenToWorldX(mx))));
+  /* Price under cursor */
+  var price=screenToWorldY(my);
   /* Magnet snap */
-  if(magnetOn&&visible[bi]){
-    var cv2=visible[bi];
-    var snaps=[cv2.o,cv2.h,cv2.l,cv2.c];
+  if(magnetOn&&chartCandles[bi]){
+    var _mc=chartCandles[bi];
+    var snaps=[_mc.o,_mc.h,_mc.l,_mc.c];
     price=snaps.reduce(function(a,b){return Math.abs(b-price)<Math.abs(a-price)?b:a;});
   }
-  return {x:mx,y:my,price:price,bi:si+bi,W:W,H:H,CW:CW,CH:CH,mn:mn,rng:rng,barW:barW,si:si,visible:visible};
+  var mn=viewState.priceMin, rng=viewState.priceMax-viewState.priceMin||1;
+  return {x:mx,y:my,price:price,bi:bi,W:W,H:H,CW:CW,CH:CH,mn:mn,rng:rng,barW:barW,si:si,visible:visible};
 }
 
-function cpY(price,co){return PAD.t+co.CH-((price-co.mn)/co.rng)*co.CH;}
-function cpX(bi,co){return PAD.l+(bi-co.si+0.5)*co.barW;}
+/* cpY/cpX now delegate to world-space transforms — co is kept for signature compat */
+function cpY(price,co){ return worldToScreenY(price); }
+function cpX(bi,co)   { return worldToScreenX(bi); }
 
 /* ── Mouse events ── */
 /* Save state for undo before every drawing action */
@@ -6944,10 +6986,10 @@ function initDrawEvents(){
           : Math.round(dd.p1.bi+(dd.ghostBarOffset||0));
         var priceOffG=dd.ghostPriceOffset!==undefined?dd.ghostPriceOffset:(prng3*1.1);
         /* Ghost pixel bounds */
-        var gbxG=PAD.l+(anchorBiG-co.si)*co.barW;
+        var gbxG=worldToScreenX(anchorBiG)-0.5*viewState.scaleX;
         var gbyG=cpY(pmx3+priceOffG,co);
         var ghG=prng3/pricePerPxG;
-        var gwTotal=caps2.length*co.barW;
+        var gwTotal=caps2.length*viewState.scaleX;
         if(co.x>=gbxG&&co.x<=gbxG+gwTotal&&co.y>=gbyG-16&&co.y<=gbyG+ghG+16){
           _ghostDrag={
             idx:gi2,
@@ -7098,8 +7140,7 @@ function initDrawEvents(){
     if(activeItem&&activeItem.barpattern){
       if(co.pixelOnly||!co.visible||co.visible.length<2)return;
       /* Snap to nearest bar index by cursor X */
-      var snapBi2=Math.max(0,Math.min(co.visible.length-1,Math.round((co.x-PAD.l)/co.barW-0.5)));
-      var snapBiAbs2=co.si+snapBi2;
+      var snapBiAbs2=Math.max(0,Math.min(chartCandles.length-1,Math.round(screenToWorldX(co.x))));
       if(_bpClick1===null){
         /* First click — anchor bar */
         _bpClick1={bi:snapBiAbs2};
@@ -7144,7 +7185,7 @@ function initDrawEvents(){
     if(_ghostDrag!==null&&hoverPoint&&!hoverPoint.pixelOnly){
       var dxPx=hoverPoint.x-_ghostDrag.startX;
       var newGbx=_ghostDrag.origPixelX+dxPx;
-      drawings[_ghostDrag.idx].ghostAnchorBi=Math.round((newGbx-PAD.l)/hoverPoint.barW)+hoverPoint.si;
+      drawings[_ghostDrag.idx].ghostAnchorBi=Math.round((newGbx-_chartPAD.l-viewState.offsetX)/viewState.scaleX);
       var dyPx=hoverPoint.y-_ghostDrag.startY;
       drawings[_ghostDrag.idx].ghostPriceOffset=_ghostDrag.origPriceOff-(dyPx*(hoverPoint.rng/hoverPoint.CH));
       if(!_rafPending){ _rafPending=true; requestAnimationFrame(function(){ renderChart(); _rafPending=false; }); }
@@ -7167,11 +7208,12 @@ function initDrawEvents(){
       }
       if(h2==='TL'||h2==='ML'||h2==='BL'){
         /* Left edge: move anchor + keep right edge fixed */
-        var origRightPx=(PAD.l+(gr.origAnchorBi-hoverPoint.si)*hoverPoint.barW)+gr.origGwTotal;
-        var newLeftPx=PAD.l+(gr.origAnchorBi-hoverPoint.si)*hoverPoint.barW+dxR;
+        var anchorScreenX=worldToScreenX(gr.origAnchorBi)-0.5*viewState.scaleX;
+        var origRightPx=anchorScreenX+gr.origGwTotal;
+        var newLeftPx=anchorScreenX+dxR;
         var newGwTotalL=Math.max(nBars*2, origRightPx-newLeftPx);
         drw.ghostScaleX=newGwTotalL/(nBars*hoverPoint.barW);
-        drw.ghostAnchorBi=Math.round((origRightPx-newGwTotalL-PAD.l)/hoverPoint.barW)+hoverPoint.si;
+        drw.ghostAnchorBi=Math.round((origRightPx-newGwTotalL-_chartPAD.l-viewState.offsetX)/viewState.scaleX);
       }
       /* Vertical resize */
       if(h2==='TL'||h2==='TC'||h2==='TR'){
@@ -8168,15 +8210,13 @@ function patchRenderChart(){
     /* Use CSS pixel dimensions (divide DPR) so coords match getCoords output */
     var dpr2=window.devicePixelRatio||1;
     var W=cv.width/dpr2, H=cv.height/dpr2;
-    var vis=Math.max(20,Math.floor(chartCandles.length/chartView.zoom));
-    var si=Math.max(0,chartCandles.length-vis-chartView.offset);
-    var visible=chartCandles.slice(si,Math.min(chartCandles.length,si+vis));
-    var CW=W-PAD.l-PAD.r, CH=H-PAD.t-PAD.b-PAD.vol;
-    var mn=Math.min.apply(null,visible.map(function(c){return c.l;}));
-    var mx=Math.max.apply(null,visible.map(function(c){return c.h;}));
+    var CW=W-_chartPAD.l-_chartPAD.r, CH=H-_chartPAD.t-_chartPAD.b-_chartPAD.vol;
+    var barW=Math.max(1,viewState.scaleX);
+    var si=Math.max(0,Math.floor(-viewState.offsetX/barW)-1);
+    var endIdx=Math.min(chartCandles.length,Math.ceil((CW-viewState.offsetX)/barW)+2);
+    var visible=chartCandles.slice(si,endIdx);
+    var mn=viewState.priceMin, mx=viewState.priceMax;
     var rng=mx-mn||mn*.001||.0001;
-    mn-=rng*.05; mx+=rng*.05; rng=mx-mn;
-    var barW=CW/Math.max(visible.length+Math.max(4,Math.round(visible.length*0.08)),1);
     drawAnnotations(ctx,{W:W,H:H,CW:CW,CH:CH,mn:mn,rng:rng,barW:barW,si:si,visible:visible});
   };
   renderChart._fractalPatched=true;
