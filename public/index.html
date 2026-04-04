@@ -4364,27 +4364,16 @@ function renderChart() {
     return;
   }
   var visibleBars = Math.max(20, Math.floor(candles.length / chartView.zoom));
-  var intOff = Math.floor(chartView.offset || 0);
-  /* Fetch extra candles on edges for smooth scrolling */
-  var startIdx = Math.max(0, candles.length - visibleBars - intOff - 2);
-  var endIdx   = Math.min(candles.length, candles.length - intOff + 2);
+  var startIdx = Math.max(0, candles.length - visibleBars - chartView.offset);
+  var endIdx   = Math.min(candles.length, startIdx + visibleBars);
   var visible  = candles.slice(startIdx, endIdx);
   if (!visible.length) return;
   var PAD = { l:8, r:75, t:16, b:56, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
-  var mn, mx;
-  if (!chartView.manualY) {
-    mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
-    mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
-    var range = mx-mn||mn*0.001||0.0001;
-    mn -= range*0.05; mx += range*0.05; range = mx-mn;
-    chartView.lastMn = mn;
-    chartView.lastMx = mx;
-  } else {
-    mn = chartView.lastMn || 0;
-    mx = chartView.lastMx || 1;
-    var range = mx-mn||0.0001;
-  }
+  var mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
+  var mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
+  var range = mx-mn||mn*0.001||0.0001;
+  mn -= range*0.05; mx += range*0.05; range = mx-mn;
   if (chartView.yScale !== 1) {
     var _ymid = (mn + mx) / 2;
     var _yhalf = (mx - mn) / 2 * chartView.yScale;
@@ -4392,15 +4381,9 @@ function renderChart() {
   }
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
   /* ── TradingView-style right gap: base 8% + user-dragged extra space (VPVR fills this) ── */
-  var defaultGap = Math.max(4, Math.round(visibleBars * 0.08));
-  var rightGapBars = defaultGap + (chartView.rightPad || 0);
-  var barW = CW/(visibleBars + defaultGap), candleW = Math.max(1.5, barW*0.72);
-  var floatOff = chartView.offset || 0;
-  function px(i) {
-    var gi = startIdx + i;
-    var dist = (candles.length - 1) - gi;
-    return (W - PAD.r) - (rightGapBars * barW) - (dist * barW) + (floatOff * barW) - (barW * 0.5);
-  }
+  var rightGapBars = Math.max(4, Math.round(visible.length * 0.08)) + (chartView.rightPad || 0);
+  var n = visible.length, barW = CW/(n + rightGapBars), candleW = Math.max(1.5, barW*0.72);
+  function px(i)  { return PAD.l+(i+0.5)*barW; }
   function py(v)  { return PAD.t+CH-((v-mn)/range)*CH; }
 
   /* Grid — more visible lines */
@@ -4413,12 +4396,6 @@ function renderChart() {
     chartCtx.fillStyle='rgba(220,232,255,1)'; chartCtx.font='bold 11px "DM Mono","Courier New",monospace'; chartCtx.textAlign='left';
     chartCtx.fillText(formatPrice(price), W-PAD.r+5, Math.round(gy)+4);
   }
-
-  /* ──── CLIP CHART AREA (Fix Y-axis drag overflow) ──── */
-  chartCtx.save();
-  chartCtx.beginPath();
-  chartCtx.rect(PAD.l, PAD.t, CW, CH);
-  chartCtx.clip();
 
   /* Volume bars */
   visible.forEach(function(c,i){
@@ -4619,7 +4596,6 @@ function renderChart() {
       chartCtx.fillStyle=col; chartCtx.fillRect(x-candleW/2,top,candleW,bh);
     });
   }
-  chartCtx.restore(); /* Restore clipping area */
 
   /* Time axis — smart adaptive labels */
   renderTimeAxis(visible, px, W, H, PAD);
@@ -5620,7 +5596,7 @@ if(chartCanvas){
       var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
       var barW=(W-8-75)/Math.max(vis,1);
       var dx2=e.touches[0].clientX-_touchStartX;
-      chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-vis)||0,_touchStartOffset+Math.round(dx2/barW)));
+      chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-20)||0,_touchStartOffset+Math.round(dx2/barW)));
       renderChart();
       /* Show OHLC on touch */
       var r2=chartCanvas.getBoundingClientRect();
@@ -5667,45 +5643,26 @@ if(chartCanvas){
   },{passive:false});
 
   /* Pan — left-click crosshair OR middle-click; drag right = history, drag left = future gap */
-  window._panStart=null; window._panStartY=null; window._panOffset=0; window._panRightPad=0;
-  window._panStartMn=null; window._panStartMx=null;
+  window._panStart=null; window._panOffset=0; window._panRightPad=0;
   chartCanvas.addEventListener('mousedown',function(e){
-    if(e.button!==1 && e.button!==0) return;
-    if(e.button===0) {
-      /* Don't pan on left click if a drawing tool is active */
-      if(typeof activeItem!=='undefined' && activeItem && activeItem.id!=='cursor' && activeItem.id!=='arrow_cur' && activeItem.id!=='dot') return;
-    }
+    if(e.button!==1) return;
     e.preventDefault();
     window._panStart    = e.clientX;
-    window._panStartY   = e.clientY;
     window._panOffset   = chartView.offset;
     window._panRightPad = chartView.rightPad || 0;
-    window._panStartMn  = chartView.lastMn || 0;
-    window._panStartMx  = chartView.lastMx || 1;
     chartCanvas.style.cursor='grabbing';
   });
   document.addEventListener('mousemove',function(e){
     if(window._panStart===null) return;
-    /* Block pan if interacting with drawings */
-    if((typeof _ghostDrag!=='undefined'&&_ghostDrag) || 
-       (typeof _ghostResize!=='undefined'&&_ghostResize) || 
-       (typeof _drawDrag!=='undefined'&&_drawDrag) || 
-       (typeof isDrawing!=='undefined'&&isDrawing)) {
-      window._panStart=null;
-      return;
-    }
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
-    var H=chartCanvas.height/dpr;
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-    var defaultGap=Math.max(4,Math.round(vis*0.08));
-    var barW=(W-8-75)/Math.max(vis+defaultGap,1);
-    
-    // X Pan
+    var baseGap=Math.max(4,Math.round(vis*0.08));
+    var barW=(W-8-75)/Math.max(vis+baseGap+window._panRightPad,1);
     var dx=e.clientX-window._panStart;
-    var bars=dx/barW; 
+    var bars=Math.round(dx/barW);
     var scrollPos = (window._panOffset - window._panRightPad) + bars;
-    var maxOff = Math.max(0,(chartCandles&&chartCandles.length-vis)||0);
+    var maxOff = Math.max(0,(chartCandles&&chartCandles.length-20)||0);
     if (scrollPos >= 0) {
       chartView.offset   = Math.min(scrollPos, maxOff);
       chartView.rightPad = 0;
@@ -5713,18 +5670,6 @@ if(chartCanvas){
       chartView.offset   = 0;
       chartView.rightPad = Math.min(-scrollPos, 80);
     }
-    
-    // Y Pan
-    var dy = e.clientY - window._panStartY;
-    if (Math.abs(dy) > 0) {
-      chartView.manualY = true;
-      var CH = H - 16 - 56 - 40;
-      var pricePerPx = ((window._panStartMx - window._panStartMn) * (chartView.yScale||1)) / Math.max(1, CH);
-      var dyPrice = dy * pricePerPx;
-      chartView.lastMn = window._panStartMn + dyPrice;
-      chartView.lastMx = window._panStartMx + dyPrice;
-    }
-
     renderChart();
     if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
   });
@@ -5821,7 +5766,7 @@ if(chartCanvas){
     var r   = chartCanvas.getBoundingClientRect();
     var cx  = e.clientX - r.left;
     var W2  = chartCanvas.width / dpr;
-    if (cx > W2 - 75) { chartView.yScale = 1; chartView.manualY = false; renderChart && renderChart(); }
+    if (cx > W2 - 75) { chartView.yScale = 1; renderChart && renderChart(); }
   });
 }
 
@@ -6825,56 +6770,26 @@ function getCoords(e) {
   /* CSS pixel dims */
   var CW=W-PAD.l-PAD.r, CH=H-PAD.t-PAD.b-PAD.vol;
   var vis=Math.max(20,Math.floor(chartCandles.length/chartView.zoom));
-  var defaultGap = Math.max(4, Math.round(vis * 0.08));
-  var rightGapBars = defaultGap + (chartView.rightPad || 0);
-  var barW=CW/(vis+defaultGap);
-  var floatOff=chartView.offset || 0;
-  
-  var distRight = (W - PAD.r) - mx;
-  var distBars = (distRight / barW) - rightGapBars + floatOff - 0.5;
-  var bi = Math.round((chartCandles.length - 1) - distBars);
-  bi = Math.max(0, Math.min(chartCandles.length - 1, bi));
-  
-  var mn, mx2, rng;
-  var intOff = Math.floor(floatOff);
-  var sIdx = Math.max(0, chartCandles.length - vis - intOff - 2);
-  var eIdx = Math.min(chartCandles.length, chartCandles.length - intOff + 2);
-  var visible = chartCandles.slice(sIdx, eIdx);
-
-  if (!chartView.manualY) {
-    mn = Math.min.apply(null, visible.map(function(c){return c.l;}));
-    mx2 = Math.max.apply(null, visible.map(function(c){return c.h;}));
-    rng = mx2-mn||mn*0.001||0.0001;
-    mn -= rng*0.05; mx2 += rng*0.05; rng = mx2-mn;
-  } else {
-    mn = chartView.lastMn || 0;
-    mx2 = chartView.lastMx || 1;
-    rng = mx2-mn||0.0001;
-  }
-  if (chartView.yScale && chartView.yScale !== 1) {
-    var _ymid = (mn + mx2) / 2;
-    var _yhalf = (mx2 - mn) / 2 * chartView.yScale;
-    mn = _ymid - _yhalf; mx2 = _ymid + _yhalf; rng = mx2 - mn;
-  }
+  var si=Math.max(0,chartCandles.length-vis-chartView.offset);
+  var visible=chartCandles.slice(si,Math.min(chartCandles.length,si+vis));
+  var mn=Math.min.apply(null,visible.map(function(c){return c.l;}));
+  var mx2=Math.max.apply(null,visible.map(function(c){return c.h;}));
+  var rng=mx2-mn||mn*.001||.0001;
+  mn-=rng*.05; mx2+=rng*.05; rng=mx2-mn;
+  var barW=CW/Math.max(visible.length+Math.max(4,Math.round(visible.length*0.08)),1);
+  var bi=Math.max(0,Math.min(visible.length-1,Math.round((mx-PAD.l)/barW)));
   var price=mx2-((my-PAD.t)/CH)*rng;
   /* Magnet snap */
-  if(magnetOn && chartCandles[bi]){
-    var cv2=chartCandles[bi];
+  if(magnetOn&&visible[bi]){
+    var cv2=visible[bi];
     var snaps=[cv2.o,cv2.h,cv2.l,cv2.c];
     price=snaps.reduce(function(a,b){return Math.abs(b-price)<Math.abs(a-price)?b:a;});
   }
-  return {
-    x:mx, y:my, price:price, bi:bi, 
-    W:W, H:H, CW:CW, CH:CH, mn:mn, mx:mx2, rng:rng, barW:barW, 
-    rightGapBars:rightGapBars, floatOff:floatOff, N:chartCandles.length, visible:visible
-  };
+  return {x:mx,y:my,price:price,bi:si+bi,W:W,H:H,CW:CW,CH:CH,mn:mn,rng:rng,barW:barW,si:si,visible:visible};
 }
 
 function cpY(price,co){return PAD.t+co.CH-((price-co.mn)/co.rng)*co.CH;}
-function cpX(bi,co){
-  var dist = (co.N - 1) - bi;
-  return (co.W - 75) - (co.rightGapBars * co.barW) - (dist * co.barW) + (co.floatOff * co.barW) - (co.barW * 0.5);
-}
+function cpX(bi,co){return PAD.l+(bi-co.si+0.5)*co.barW;}
 
 /* ── Mouse events ── */
 /* Save state for undo before every drawing action */
@@ -7131,9 +7046,6 @@ function initDrawEvents(){
     /* Crosshair Left-Click Panning */
     if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot') {
       window._panStart    = e.clientX;
-      window._panStartY   = e.clientY;
-      window._panStartMn  = chartView.lastMn || 0;
-      window._panStartMx  = chartView.lastMx || 1;
       window._panOffset   = chartView.offset;
       window._panRightPad = chartView.rightPad || 0;
       cv.style.cursor = 'grabbing';
