@@ -4364,8 +4364,10 @@ function renderChart() {
     return;
   }
   var visibleBars = Math.max(20, Math.floor(candles.length / chartView.zoom));
-  var startIdx = Math.max(0, candles.length - visibleBars - chartView.offset);
-  var endIdx   = Math.min(candles.length, startIdx + visibleBars);
+  var intOff = Math.floor(chartView.offset || 0);
+  /* Fetch extra candles on edges for smooth scrolling */
+  var startIdx = Math.max(0, candles.length - visibleBars - intOff - 2);
+  var endIdx   = Math.min(candles.length, candles.length - intOff + 2);
   var visible  = candles.slice(startIdx, endIdx);
   if (!visible.length) return;
   var PAD = { l:8, r:75, t:16, b:56, vol:40 };
@@ -4381,9 +4383,14 @@ function renderChart() {
   }
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
   /* ── TradingView-style right gap: base 8% + user-dragged extra space (VPVR fills this) ── */
-  var rightGapBars = Math.max(4, Math.round(visible.length * 0.08)) + (chartView.rightPad || 0);
-  var n = visible.length, barW = CW/(n + rightGapBars), candleW = Math.max(1.5, barW*0.72);
-  function px(i)  { return PAD.l+(i+0.5)*barW; }
+  var rightGapBars = Math.max(4, Math.round(visibleBars * 0.08)) + (chartView.rightPad || 0);
+  var barW = CW/(visibleBars + rightGapBars), candleW = Math.max(1.5, barW*0.72);
+  var floatOff = chartView.offset || 0;
+  function px(i) {
+    var gi = startIdx + i;
+    var dist = (candles.length - 1) - gi;
+    return (W - PAD.r) - (rightGapBars * barW) - (dist * barW) + (floatOff * barW) - (barW * 0.5);
+  }
   function py(v)  { return PAD.t+CH-((v-mn)/range)*CH; }
 
   /* Grid — more visible lines */
@@ -5645,7 +5652,11 @@ if(chartCanvas){
   /* Pan — left-click crosshair OR middle-click; drag right = history, drag left = future gap */
   window._panStart=null; window._panOffset=0; window._panRightPad=0;
   chartCanvas.addEventListener('mousedown',function(e){
-    if(e.button!==1) return;
+    if(e.button!==1 && e.button!==0) return;
+    if(e.button===0) {
+      /* Don't pan on left click if a drawing tool is active */
+      if(typeof activeItem!=='undefined' && activeItem && activeItem.id!=='cursor' && activeItem.id!=='arrow_cur' && activeItem.id!=='dot') return;
+    }
     e.preventDefault();
     window._panStart    = e.clientX;
     window._panOffset   = chartView.offset;
@@ -5654,13 +5665,21 @@ if(chartCanvas){
   });
   document.addEventListener('mousemove',function(e){
     if(window._panStart===null) return;
+    /* Block pan if interacting with drawings */
+    if((typeof _ghostDrag!=='undefined'&&_ghostDrag) || 
+       (typeof _ghostResize!=='undefined'&&_ghostResize) || 
+       (typeof _drawDrag!=='undefined'&&_drawDrag) || 
+       (typeof isDrawing!=='undefined'&&isDrawing)) {
+      window._panStart=null;
+      return;
+    }
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
     var baseGap=Math.max(4,Math.round(vis*0.08));
     var barW=(W-8-75)/Math.max(vis+baseGap+window._panRightPad,1);
     var dx=e.clientX-window._panStart;
-    var bars=Math.round(dx/barW);
+    var bars=dx/barW; /* Smooth floating point pan */
     var scrollPos = (window._panOffset - window._panRightPad) + bars;
     var maxOff = Math.max(0,(chartCandles&&chartCandles.length-20)||0);
     if (scrollPos >= 0) {
