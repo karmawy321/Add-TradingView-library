@@ -4414,6 +4414,12 @@ function renderChart() {
     chartCtx.fillText(formatPrice(price), W-PAD.r+5, Math.round(gy)+4);
   }
 
+  /* ──── CLIP CHART AREA (Fix Y-axis drag overflow) ──── */
+  chartCtx.save();
+  chartCtx.beginPath();
+  chartCtx.rect(PAD.l, PAD.t, CW, CH);
+  chartCtx.clip();
+
   /* Volume bars */
   visible.forEach(function(c,i){
     chartCtx.fillStyle=c.c>=c.o?'rgba(38,166,154,0.18)':'rgba(239,83,80,0.18)';
@@ -4613,6 +4619,7 @@ function renderChart() {
       chartCtx.fillStyle=col; chartCtx.fillRect(x-candleW/2,top,candleW,bh);
     });
   }
+  chartCtx.restore(); /* Restore clipping area */
 
   /* Time axis — smart adaptive labels */
   renderTimeAxis(visible, px, W, H, PAD);
@@ -5613,7 +5620,7 @@ if(chartCanvas){
       var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
       var barW=(W-8-75)/Math.max(vis,1);
       var dx2=e.touches[0].clientX-_touchStartX;
-      chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-20)||0,_touchStartOffset+Math.round(dx2/barW)));
+      chartView.offset=Math.max(0,Math.min((chartCandles&&chartCandles.length-vis)||0,_touchStartOffset+Math.round(dx2/barW)));
       renderChart();
       /* Show OHLC on touch */
       var r2=chartCanvas.getBoundingClientRect();
@@ -5698,7 +5705,7 @@ if(chartCanvas){
     var dx=e.clientX-window._panStart;
     var bars=dx/barW; 
     var scrollPos = (window._panOffset - window._panRightPad) + bars;
-    var maxOff = Math.max(0,(chartCandles&&chartCandles.length-20)||0);
+    var maxOff = Math.max(0,(chartCandles&&chartCandles.length-vis)||0);
     if (scrollPos >= 0) {
       chartView.offset   = Math.min(scrollPos, maxOff);
       chartView.rightPad = 0;
