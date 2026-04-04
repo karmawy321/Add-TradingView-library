@@ -4372,10 +4372,19 @@ function renderChart() {
   if (!visible.length) return;
   var PAD = { l:8, r:75, t:16, b:56, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
-  var mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
-  var mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
-  var range = mx-mn||mn*0.001||0.0001;
-  mn -= range*0.05; mx += range*0.05; range = mx-mn;
+  var mn, mx;
+  if (!chartView.manualY) {
+    mn = Math.min.apply(null,visible.map(function(c){return c.l;}));
+    mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
+    var range = mx-mn||mn*0.001||0.0001;
+    mn -= range*0.05; mx += range*0.05; range = mx-mn;
+    chartView.lastMn = mn;
+    chartView.lastMx = mx;
+  } else {
+    mn = chartView.lastMn || 0;
+    mx = chartView.lastMx || 1;
+    var range = mx-mn||0.0001;
+  }
   if (chartView.yScale !== 1) {
     var _ymid = (mn + mx) / 2;
     var _yhalf = (mx - mn) / 2 * chartView.yScale;
@@ -4383,8 +4392,9 @@ function renderChart() {
   }
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
   /* ── TradingView-style right gap: base 8% + user-dragged extra space (VPVR fills this) ── */
-  var rightGapBars = Math.max(4, Math.round(visibleBars * 0.08)) + (chartView.rightPad || 0);
-  var barW = CW/(visibleBars + rightGapBars), candleW = Math.max(1.5, barW*0.72);
+  var defaultGap = Math.max(4, Math.round(visibleBars * 0.08));
+  var rightGapBars = defaultGap + (chartView.rightPad || 0);
+  var barW = CW/(visibleBars + defaultGap), candleW = Math.max(1.5, barW*0.72);
   var floatOff = chartView.offset || 0;
   function px(i) {
     var gi = startIdx + i;
@@ -5650,7 +5660,8 @@ if(chartCanvas){
   },{passive:false});
 
   /* Pan — left-click crosshair OR middle-click; drag right = history, drag left = future gap */
-  window._panStart=null; window._panOffset=0; window._panRightPad=0;
+  window._panStart=null; window._panStartY=null; window._panOffset=0; window._panRightPad=0;
+  window._panStartMn=null; window._panStartMx=null;
   chartCanvas.addEventListener('mousedown',function(e){
     if(e.button!==1 && e.button!==0) return;
     if(e.button===0) {
@@ -5659,8 +5670,11 @@ if(chartCanvas){
     }
     e.preventDefault();
     window._panStart    = e.clientX;
+    window._panStartY   = e.clientY;
     window._panOffset   = chartView.offset;
     window._panRightPad = chartView.rightPad || 0;
+    window._panStartMn  = chartView.lastMn || 0;
+    window._panStartMx  = chartView.lastMx || 1;
     chartCanvas.style.cursor='grabbing';
   });
   document.addEventListener('mousemove',function(e){
@@ -5675,11 +5689,14 @@ if(chartCanvas){
     }
     var dpr=window.devicePixelRatio||1;
     var W=chartCanvas.width/dpr;
+    var H=chartCanvas.height/dpr;
     var vis=Math.max(20,Math.floor((chartCandles&&chartCandles.length||0)/chartView.zoom));
-    var baseGap=Math.max(4,Math.round(vis*0.08));
-    var barW=(W-8-75)/Math.max(vis+baseGap+window._panRightPad,1);
+    var defaultGap=Math.max(4,Math.round(vis*0.08));
+    var barW=(W-8-75)/Math.max(vis+defaultGap,1);
+    
+    // X Pan
     var dx=e.clientX-window._panStart;
-    var bars=dx/barW; /* Smooth floating point pan */
+    var bars=dx/barW; 
     var scrollPos = (window._panOffset - window._panRightPad) + bars;
     var maxOff = Math.max(0,(chartCandles&&chartCandles.length-20)||0);
     if (scrollPos >= 0) {
@@ -5689,6 +5706,18 @@ if(chartCanvas){
       chartView.offset   = 0;
       chartView.rightPad = Math.min(-scrollPos, 80);
     }
+    
+    // Y Pan
+    var dy = e.clientY - window._panStartY;
+    if (Math.abs(dy) > 0) {
+      chartView.manualY = true;
+      var CH = H - 16 - 56 - 40;
+      var pricePerPx = ((window._panStartMx - window._panStartMn) * (chartView.yScale||1)) / Math.max(1, CH);
+      var dyPrice = dy * pricePerPx;
+      chartView.lastMn = window._panStartMn + dyPrice;
+      chartView.lastMx = window._panStartMx + dyPrice;
+    }
+
     renderChart();
     if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
   });
@@ -5785,7 +5814,7 @@ if(chartCanvas){
     var r   = chartCanvas.getBoundingClientRect();
     var cx  = e.clientX - r.left;
     var W2  = chartCanvas.width / dpr;
-    if (cx > W2 - 75) { chartView.yScale = 1; renderChart && renderChart(); }
+    if (cx > W2 - 75) { chartView.yScale = 1; chartView.manualY = false; renderChart && renderChart(); }
   });
 }
 
