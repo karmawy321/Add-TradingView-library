@@ -4715,6 +4715,16 @@ function renderChart() {
   if (kalmanOn)        drawKalman(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
   if (gbmOn) drawGBM(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
   if (ouOn)  drawOU(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
+
+  /* History loading indicator — small spinner text at top-left of chart area */
+  if(typeof _historyLoading!=='undefined' && _historyLoading){
+    chartCtx.save();
+    chartCtx.font='bold 10px DM Mono';
+    chartCtx.fillStyle='rgba(201,168,76,0.7)';
+    chartCtx.textAlign='left';
+    chartCtx.fillText('⟳ loading…', PAD.l + 6, PAD.t + 14);
+    chartCtx.restore();
+  }
 }
 
 /* ── Volume Profile Visible Range (VPVR) ── */
@@ -6120,31 +6130,32 @@ function _scheduleHistoryCheck(){
   clearTimeout(_historyCheckTimer);
   _historyCheckTimer = setTimeout(function(){
     if(!chartCandles.length||!currentSymbol||_historyLoading||_historyDepleted) return;
-    /* Only fire when user has actually scrolled into history (offset>0) */
-    if(chartView.offset < 5) return;
-    var vis = Math.max(20, Math.floor(chartCandles.length / chartView.zoom));
-    var si  = Math.max(0, chartCandles.length - vis - chartView.offset);
-    if(si < 100) _fetchMoreHistory();
-  }, 200);
+    /* Compute start index using viewState (world-space coordinates) */
+    var barW = Math.max(1, viewState.scaleX);
+    var si   = Math.max(0, Math.floor(-viewState.offsetX / barW) - 1);
+    /* Pre-fetch when within 300 bars of the oldest loaded candle — gives enough runway */
+    if(si < 300) _fetchMoreHistory();
+  }, 50);
 }
 
 function _fetchMoreHistory(){
   if(_historyLoading||_historyDepleted||!chartCandles.length||!currentSymbol) return;
   _historyLoading=true;
+  renderChart&&renderChart(); /* show loading indicator immediately */
   var endTime = chartCandles[0].t - 1;
   fetch(BACKEND_URL+'/history/'+currentSymbol+'?tf='+currentInterval+'&endTime='+endTime)
     .then(function(r){ return r.json(); })
     .then(function(d){
       _historyLoading=false;
-      if(!d.candles||d.candles.length<2){ _historyDepleted=true; return; }
+      if(!d.candles||d.candles.length<2){ _historyDepleted=true; renderChart&&renderChart(); return; }
       var batch = d.candles.filter(function(c){ return c.t < chartCandles[0].t; });
-      if(!batch.length){ _historyDepleted=true; return; }
-      /* Prepend and bump offset by exact count — view stays locked, no jump */
+      if(!batch.length){ _historyDepleted=true; renderChart&&renderChart(); return; }
+      /* Prepend batch — shift viewState.offsetX so existing bars stay in place (no jump) */
       Array.prototype.unshift.apply(chartCandles, batch);
-      chartView.offset += batch.length;
+      viewState.offsetX -= batch.length * Math.max(1, viewState.scaleX);
       renderChart&&renderChart();
     })
-    .catch(function(){ _historyLoading=false; });
+    .catch(function(){ _historyLoading=false; renderChart&&renderChart(); });
 }
 
 function toggleSMA(period){
