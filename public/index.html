@@ -4393,14 +4393,16 @@ function renderChart() {
   var mx = Math.max.apply(null,visible.map(function(c){return c.h;}));
   var range = mx-mn||mn*0.001||0.0001;
   mn -= range*0.05; mx += range*0.05; range = mx-mn;
+  /* Apply Y-pan offset BEFORE yScale so compression doesn't shift the view */
+  if(viewState.priceOffset){
+    mn += viewState.priceOffset * range;
+    mx += viewState.priceOffset * range;
+  }
   if (chartView.yScale !== 1) {
     var _ymid = (mn + mx) / 2;
     var _yhalf = (mx - mn) / 2 * chartView.yScale;
     mn = _ymid - _yhalf; mx = _ymid + _yhalf; range = mx - mn;
   }
-  /* Apply Y-pan offset (fraction of natural range, positive = view shifts up) */
-  mn += viewState.priceOffset * range;
-  mx += viewState.priceOffset * range;
   /* Update viewState price range and CH so worldToScreenY is accurate */
   viewState.priceMin = mn; viewState.priceMax = mx; _lastCH = CH;
   var maxVol = Math.max.apply(null,visible.map(function(c){return c.v||0;}))||1;
@@ -4420,6 +4422,12 @@ function renderChart() {
     chartCtx.fillStyle='rgba(220,232,255,1)'; chartCtx.font='bold 11px "DM Mono","Courier New",monospace'; chartCtx.textAlign='left';
     chartCtx.fillText(formatPrice(price), W-PAD.r+5, Math.round(gy)+4);
   }
+
+  /* ── Clip all chart drawing to the chart+volume area — nothing bleeds into axes ── */
+  chartCtx.save();
+  chartCtx.beginPath();
+  chartCtx.rect(PAD.l, PAD.t, CW, H - PAD.t - PAD.b);
+  chartCtx.clip();
 
   /* Volume bars */
   visible.forEach(function(c,i){
@@ -4716,7 +4724,10 @@ function renderChart() {
   if (gbmOn) drawGBM(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
   if (ouOn)  drawOU(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
 
-  /* History loading indicator — small spinner text at top-left of chart area */
+  /* ── Restore clip — drawing below this line may use full canvas ── */
+  chartCtx.restore();
+
+  /* History loading indicator — outside clip so it always shows at top-left */
   if(typeof _historyLoading!=='undefined' && _historyLoading){
     chartCtx.save();
     chartCtx.font='bold 10px DM Mono';
@@ -5817,6 +5828,7 @@ if(chartCanvas){
       var dy = e.clientY - _priceAxisDrag.startY;
       /* drag up (dy<0) = zoom in (tighter range), drag down = zoom out (wider range) */
       chartView.yScale = Math.max(0.1, Math.min(10, _priceAxisDrag.startYScale * Math.pow(1.003, dy)));
+      viewState.priceOffset = 0; /* pure compression — don't mix with Y pan */
       renderChart && renderChart(); return;
     }
   });
