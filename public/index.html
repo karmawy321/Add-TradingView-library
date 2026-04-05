@@ -654,64 +654,68 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
   /* Footer */
   footer{padding:20px 16px;font-size:11px}
 
-  /* ── Mobile chart mode (body.mob-chart) ── */
-  #mobileChartBar{display:none}
-  body.mob-chart #mobileChartBar{
-    display:flex;align-items:center;gap:6px;
-    padding:8px 10px;min-height:44px;flex-shrink:0;
-    background:#07090e;border-bottom:1px solid rgba(201,168,76,.13);
-  }
-  body.mob-chart nav,
-  body.mob-chart footer,
-  body.mob-chart #home,
-  body.mob-chart .hero,
-  body.mob-chart section:not(#analyzer){display:none!important}
-  body.mob-chart{overflow:hidden}
-  body.mob-chart #chartToolsPanel{
-    position:fixed;inset:0;z-index:8000;
-    background:#06080d;display:flex;flex-direction:column;
-  }
-  body.mob-chart #chartArea{
-    flex:1;height:auto!important;min-height:0;
-  }
-  body.mob-chart canvas#chartCanvas{
-    height:100%!important;
-  }
-  body.mob-chart #drawToolbar{width:44px}
-  body.mob-chart #drawToolbar .tb-main{width:38px;height:38px}
-  body.mob-chart #drawToolbar .tb-main svg{width:15px;height:15px}
-
-  /* ── Mobile bottom sheet ── */
-  #mobileSheetOverlay{
-    position:fixed;inset:0;background:rgba(0,0,0,.5);
-    z-index:99990;display:none;
-  }
-  #mobileToolSheet{
-    position:fixed;bottom:0;left:0;right:0;
-    background:#0b0e17;
-    border-top:1px solid rgba(201,168,76,.25);
-    border-radius:14px 14px 0 0;
-    z-index:99991;
-    padding-bottom:max(16px,env(safe-area-inset-bottom));
-    transform:translateY(100%);
-    transition:transform .22s cubic-bezier(.4,0,.2,1);
-    max-height:72vh;overflow-y:auto;
-  }
-  #mobileToolSheet.open{transform:translateY(0)}
-  #mobileToolSheet .msh-handle{
-    width:36px;height:4px;background:rgba(255,255,255,.15);
-    border-radius:2px;margin:10px auto 8px;
-  }
-  #mobileToolSheet .msh-item{
-    display:flex;align-items:center;gap:14px;
-    padding:14px 20px;cursor:pointer;
-    font-family:DM Mono,monospace;font-size:13px;color:#dce8ff;
-    border-bottom:1px solid rgba(255,255,255,.05);
-    -webkit-tap-highlight-color:transparent;
-  }
-  #mobileToolSheet .msh-item.active{color:#c9a84c;background:rgba(201,168,76,.08)}
-  #mobileToolSheet .msh-item svg{width:18px;height:18px;flex-shrink:0}
 }
+
+/* ══ MOBILE CHART MODE — applies whenever mob-chart class is active (class set by JS) ══ */
+#mobileChartBar{display:none}
+body.mob-chart #mobileChartBar{
+  display:flex;align-items:center;gap:6px;
+  padding:8px 10px;min-height:44px;flex-shrink:0;
+  background:#07090e;border-bottom:1px solid rgba(201,168,76,.13);
+}
+body.mob-chart nav,
+body.mob-chart footer,
+body.mob-chart #home,
+body.mob-chart .hero,
+body.mob-chart section:not(#analyzer){display:none!important}
+body.mob-chart{overflow:hidden}
+body.mob-chart #chartToolsPanel{
+  position:fixed;inset:0;z-index:8000;
+  background:#06080d;display:flex;flex-direction:column;
+}
+body.mob-chart #chartArea{
+  flex:1;height:auto!important;min-height:0;
+}
+body.mob-chart canvas#chartCanvas{height:100%!important}
+body.mob-chart #drawToolbar{width:44px}
+body.mob-chart #drawToolbar .tb-main{width:38px;height:38px}
+body.mob-chart #drawToolbar .tb-main svg{width:15px;height:15px}
+
+/* Bottom sheet — always available (shown only when .open class added by JS) */
+#mobileSheetOverlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);
+  z-index:99990;display:none;
+}
+#mobileToolSheet{
+  position:fixed;bottom:0;left:0;right:0;
+  background:#0b0e17;
+  border-top:1px solid rgba(201,168,76,.25);
+  border-radius:14px 14px 0 0;
+  z-index:99991;
+  padding-bottom:max(16px,env(safe-area-inset-bottom));
+  transform:translateY(100%);
+  transition:transform .22s cubic-bezier(.4,0,.2,1);
+  max-height:72vh;overflow-y:auto;
+}
+#mobileToolSheet.open{transform:translateY(0)}
+#mobileToolSheet .msh-handle{
+  width:36px;height:4px;background:rgba(255,255,255,.15);
+  border-radius:2px;margin:10px auto 8px;
+}
+#mobileToolSheet .msh-item{
+  display:flex;align-items:center;gap:14px;
+  padding:14px 20px;cursor:pointer;
+  font-family:DM Mono,monospace;font-size:13px;color:#dce8ff;
+  border-bottom:1px solid rgba(255,255,255,.05);
+  -webkit-tap-highlight-color:transparent;
+}
+#mobileToolSheet .msh-item.active{color:#c9a84c;background:rgba(201,168,76,.08)}
+#mobileToolSheet .msh-item svg{width:18px;height:18px;flex-shrink:0}
+
+/* ══ FULLSCREEN — toolbar moves to right ══ */
+#chartToolsPanel:fullscreen #drawToolbar,
+#chartToolsPanel:-webkit-full-screen #drawToolbar,
+body.fs-expanded #drawToolbar { order:2;border-right:none;border-left:1px solid rgba(201,168,76,.13) }
 
 /* ══ DRAWING TOOLBAR ══ */
 #drawToolbar{width:52px;background:#07090e;border-right:1px solid rgba(201,168,76,.15);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;flex-shrink:0;user-select:none}
@@ -1022,9 +1026,9 @@ if (isEmbedded) {
           <!-- Chart toolbar — always visible -->
           <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
             <div style="position:relative;display:inline-block">
-              <input type="text" id="pairIn" placeholder="Search symbol…" autocomplete="off"
-                oninput="onPairInput(this.value)" onkeydown="onPairKeyDown(event)"
-                style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:130px;outline:none;letter-spacing:.04em">
+              <input type="text" id="pairIn" placeholder="BTC/USDT" autocomplete="off"
+                onkeydown="onPairKeyDown(event)"
+                style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:110px;outline:none;letter-spacing:.04em">
             </div>
             <select id="tfIn" onchange="onTfChange()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
               <option value="4h" selected>H4</option>
@@ -5987,7 +5991,7 @@ function loadChart(symbol,interval){
   currentSymbol=sym; currentInterval=interval||'4h';
   vpvrAnchorX = null; chartView.rightPad = 0; /* reset VPVR gap on new symbol */
   var empty=document.getElementById('chartEmpty');if(empty)empty.style.display='none';
-  if(window.innerWidth<=600&&typeof _enterMobileChart==='function') _enterMobileChart(sym);
+  if(typeof _enterMobileChart==='function') _enterMobileChart(sym);
   if(chartSSE){chartSSE.close();chartSSE=null;}
   chartCandles=[]; _historyLoading=false; _historyDepleted=false;
   resizeCanvas();
@@ -8472,6 +8476,7 @@ function addFullscreen(){
     if(!panel)return;
     if(!_expanded){
       _expanded=true;
+      document.body.classList.add('fs-expanded');
       _expandStyle=document.createElement('style');
       _expandStyle.id='_fsStyle';
       _expandStyle.textContent=
@@ -8482,10 +8487,10 @@ function addFullscreen(){
       btn.innerHTML='✕ EXIT';
       btn.style.color='#ef5350';
       setTimeout(safeResize,100);
-      /* Scroll to top of panel */
       panel.scrollTop=0;
     } else {
       _expanded=false;
+      document.body.classList.remove('fs-expanded');
       var s=document.getElementById('_fsStyle');
       if(s)s.remove();
       btn.innerHTML='⛶ EXPAND';
@@ -8522,6 +8527,9 @@ function addFullscreen(){
       var el = document.getElementById(id);
       if(el && el.parentElement !== root) root.appendChild(el);
     });
+    /* Toolbar-right class */
+    if(isFs) document.body.classList.add('fs-expanded');
+    else document.body.classList.remove('fs-expanded');
     if(!isFs){ btn.innerHTML='⛶ EXPAND'; btn.style.color='rgba(201,168,76,.6)'; }
     setTimeout(safeResize,100);
   });
@@ -8643,7 +8651,7 @@ window.addEventListener('load',function(){
   /* ══════════════════════════════════════
      MOBILE CHART MODE
      ══════════════════════════════════════ */
-  var _isMob = function(){ return window.innerWidth <= 600; };
+  var _isMob = function(){ return window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024); };
 
   /* ── Inject mobile chart top bar ── */
   (function(){
@@ -8776,7 +8784,7 @@ window.addEventListener('load',function(){
 
   /* ── Auto-load BTCUSDT on startup ── */
   var _pairInput = document.getElementById('pairIn');
-  if(_pairInput) _pairInput.value = 'BTC/USDT';
+  if(_pairInput) _pairInput.value = 'BTCUSDT';
   setTimeout(function(){
     if(typeof loadChart==='function') loadChart('BTCUSDT','4h');
   }, 100);
