@@ -8401,6 +8401,69 @@ function addFullscreen(){
     }
   }
 
+  /* ── Full-screen tool picker (mobile expand mode) ── */
+  function _showMobToolPicker(group, groupBtn) {
+    var existing=document.getElementById('_mobToolPicker'); if(existing) existing.remove();
+    var panel=document.getElementById('chartToolsPanel');
+    var picker=document.createElement('div');
+    picker.id='_mobToolPicker';
+    picker.style.cssText='position:absolute;inset:0;z-index:19000;background:#06080d;display:flex;flex-direction:column;overflow:hidden;';
+    /* Header */
+    var hdr=document.createElement('div');
+    hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(201,168,76,.2);flex-shrink:0;';
+    var lbl=document.createElement('span');
+    lbl.textContent=(group.label||'Select Tool').toUpperCase();
+    lbl.style.cssText='font-family:DM Mono,monospace;font-size:11px;color:#c9a84c;letter-spacing:.12em;';
+    var cls=document.createElement('button');
+    cls.textContent='✕';
+    cls.style.cssText='background:none;border:none;color:#8a95a8;font-size:20px;cursor:pointer;padding:2px 8px;line-height:1;';
+    cls.onclick=function(){ picker.remove(); };
+    hdr.appendChild(lbl); hdr.appendChild(cls);
+    picker.appendChild(hdr);
+    /* Tool list */
+    var list=document.createElement('div');
+    list.style.cssText='flex:1;overflow-y:auto;padding:8px 0;';
+    group.items.forEach(function(item){
+      var row=document.createElement('button');
+      var isActive2=(typeof activeItem!=='undefined'&&activeItem&&activeItem.id===item.id)||(item.getState&&item.getState());
+      row.style.cssText='width:100%;padding:16px 20px;background:'+(isActive2?'rgba(201,168,76,.1)':'transparent')+';border:none;border-bottom:1px solid rgba(255,255,255,.06);color:'+(isActive2?'#f0d878':'rgba(240,244,250,.85)')+';cursor:pointer;display:flex;align-items:center;gap:16px;font-family:DM Mono,monospace;font-size:13px;text-align:left;-webkit-tap-highlight-color:transparent;';
+      row.innerHTML=item.icon+'<span>'+item.label+'</span>';
+      row.addEventListener('touchend',function(e){
+        e.preventDefault();
+        picker.remove();
+        group._last=item;
+        if(groupBtn) groupBtn.innerHTML=item.icon+'<span class="tb-arr"></span>';
+        pickItem(item);
+      });
+      row.addEventListener('click',function(e){
+        e.stopPropagation();
+        picker.remove();
+        group._last=item;
+        if(groupBtn) groupBtn.innerHTML=item.icon+'<span class="tb-arr"></span>';
+        pickItem(item);
+      });
+      list.appendChild(row);
+    });
+    picker.appendChild(list);
+    (panel||document.body).appendChild(picker);
+  }
+
+  /* ── Capture-phase interceptor: show picker instead of flyout when expanded ── */
+  var _pickerCaptureHandler=function(e){
+    if(!_expanded) return;
+    var btn2=e.target.closest&&e.target.closest('.tb-main');
+    if(!btn2) return;
+    var wrap=btn2.closest('.tb-group');
+    if(!wrap||!wrap.querySelector('.tb-flyout')) return; /* single-item groups: let normal click proceed */
+    e.stopPropagation(); e.preventDefault();
+    var allWraps=Array.from(document.getElementById('drawToolbar').querySelectorAll('.tb-group'));
+    var wrapIdx=allWraps.indexOf(wrap);
+    var nonSepGroups=GROUPS.filter(function(g){return g!=='sep';});
+    var grp=nonSepGroups[wrapIdx];
+    if(!grp||!grp.items||!grp.items.length) return;
+    _showMobToolPicker(grp,btn2);
+  };
+
   /* ── CSS expand mode for mobile (iOS/Android don't support fullscreen API) ── */
   var _expanded=false;
   var _expandStyle=null;
@@ -8411,10 +8474,6 @@ function addFullscreen(){
       _expanded=true;
       _expandStyle=document.createElement('style');
       _expandStyle.id='_fsStyle';
-      /* Hide specific sections by ID — NOT `section` generically, because
-         #chartToolsPanel lives inside <section id="analyzer"> and display:none
-         on a parent hides fixed-position children too. */
-      /* Measure toolbar height BEFORE injecting fixed style so offsetHeight is accurate */
       var _toolbarDiv=panel.querySelector(':scope > div:first-child');
       var _toolbarH=_toolbarDiv?_toolbarDiv.offsetHeight:96;
       var _chartH=window.innerHeight-_toolbarH;
@@ -8422,11 +8481,13 @@ function addFullscreen(){
         'body{overflow:hidden!important}'+
         '#chartToolsPanel{position:fixed!important;inset:0!important;z-index:9000!important;overflow:hidden!important;background:#06080d!important;}'+
         '#chartArea{height:'+_chartH+'px!important;min-height:0!important;}'+
-        '#drawToolbar{position:relative!important;z-index:9010!important;}'+
         '#aiCtrlRow,#uniDash,#rEmpty2{display:none!important}'+
         'nav,footer,#home,#how,#about,#tools,#pricing,.cta-sec,.az-wrap>p,.az-wrap>h2,.az-wrap>.sec-p{display:none!important}';
       document.head.appendChild(_expandStyle);
-      /* Inject EXIT button inside the fixed panel so it stays visible */
+      /* Attach capture interceptor for tool group picks */
+      var tb2=document.getElementById('drawToolbar');
+      if(tb2){ tb2.addEventListener('click',_pickerCaptureHandler,true); tb2.addEventListener('touchend',_pickerCaptureHandler,true); }
+      /* Inject EXIT button inside the fixed panel */
       var eb=document.createElement('button');
       eb.id='_mobExitBtn';
       eb.textContent='✕ EXIT';
@@ -8440,6 +8501,9 @@ function addFullscreen(){
       _expanded=false;
       var s=document.getElementById('_fsStyle'); if(s)s.remove();
       var eb=document.getElementById('_mobExitBtn'); if(eb)eb.remove();
+      var pk=document.getElementById('_mobToolPicker'); if(pk)pk.remove();
+      var tb2=document.getElementById('drawToolbar');
+      if(tb2){ tb2.removeEventListener('click',_pickerCaptureHandler,true); tb2.removeEventListener('touchend',_pickerCaptureHandler,true); }
       btn.innerHTML='⛶ EXPAND'; btn.style.color='rgba(201,168,76,.6)';
       setTimeout(safeResize,100);
     }
