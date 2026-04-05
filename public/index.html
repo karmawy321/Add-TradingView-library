@@ -5872,16 +5872,17 @@ function takeSnapshot(){
 /* ── Called once when candle data first arrives to set a sensible initial view ── */
 function _initViewState(candles) {
   var dpr = window.devicePixelRatio || 1;
-  var W   = chartCanvas ? chartCanvas.width / dpr : 800;
+  var W   = (chartCanvas && chartCanvas.width > 0) ? chartCanvas.width / dpr : 800;
   var CW  = W - _chartPAD.l - _chartPAD.r;
   var n   = candles.length;
-  var defaultVis = Math.max(50, Math.min(200, Math.floor(n * 0.4)));
-  var rightGap   = Math.max(4, Math.round(defaultVis * 0.08));
-  viewState.scaleX  = Math.max(2, CW / (defaultVis + rightGap));
-  /* Place last bar so its right edge is at W-PAD.r minus the right gap */
-  /* worldToScreenX(n-1) = PAD.l + (n-0.5)*scaleX + offsetX = W-PAD.r - rightGap*scaleX */
-  viewState.offsetX     = (W - _chartPAD.r - rightGap * viewState.scaleX) - _chartPAD.l - (n - 0.5) * viewState.scaleX;
-  viewState.priceOffset = 0;   /* reset Y-pan when new data loads */
+  /* Show ~120 bars by default (enough context without being too zoomed out) */
+  var defaultVis = Math.min(120, Math.max(30, n));
+  /* Newest bar sits at 85% across the chart area, leaving ~15% future gap */
+  var targetX    = _chartPAD.l + CW * 0.85;
+  viewState.scaleX  = Math.max(2, Math.min(20, CW / (defaultVis + 1)));
+  /* worldToScreenX(n-1) = PAD.l + (n-0.5)*scaleX + offsetX = targetX */
+  viewState.offsetX     = targetX - _chartPAD.l - (n - 0.5) * viewState.scaleX;
+  viewState.priceOffset = 0;
 }
 
 /* ── Keep chartView in sync for any code that still reads chartView.offset / zoom ── */
@@ -8477,6 +8478,13 @@ window.addEventListener('load',function(){
     });
     if(typeof renderChart==='function') renderChart();
   };
+
+  /* ── Auto-load BTCUSDT on startup ── */
+  var _pairInput = document.getElementById('pairIn');
+  if(_pairInput) _pairInput.value = 'BTC/USDT';
+  setTimeout(function(){
+    if(typeof loadChart==='function') loadChart('BTCUSDT','4h');
+  }, 100);
 });
 })();
 </script>
