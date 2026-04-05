@@ -967,7 +967,6 @@ if (isEmbedded) {
               <input type="text" id="pairIn" placeholder="Search symbol…" autocomplete="off"
                 oninput="onPairInput(this.value)" onkeydown="onPairKeyDown(event)"
                 style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:130px;outline:none;letter-spacing:.04em">
-              <div id="pairDropdown" style="display:none;position:fixed;min-width:160px;background:#0d1018;border:1px solid rgba(201,168,76,.3);z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.6)"></div>
             </div>
             <select id="tfIn" onchange="onTfChange()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
               <option value="4h" selected>H4</option>
@@ -6323,12 +6322,18 @@ function onPairInput(val){
   var inp2 = document.getElementById('pairIn');
   if(inp2){ var r=inp2.getBoundingClientRect(); dd.style.top=(r.bottom+3)+'px'; dd.style.left=r.left+'px'; }
 
-  dd.innerHTML = matches.map(function(sym, idx){
+  dd.innerHTML = matches.map(function(sym){
+    var base = sym.replace(/USDT|USDC|USD|BTC|ETH|BNB$/,'');
+    var quote = sym.slice(base.length);
     return '<div class="pair-sug" data-sym="'+sym+'" onclick="selectPair(\''+sym+'\')"'
-      +' style="padding:7px 14px;cursor:pointer;font-family:DM Mono,monospace;font-size:11px;'
-      +'color:#f0f4fa;letter-spacing:.04em;border-bottom:1px solid rgba(255,255,255,.04)"'
-      +' onmouseover="this.style.background=\'rgba(201,168,76,.12)\'"'
-      +' onmouseout="this.style.background=\'\'">'+sym+'</div>';
+      +' style="padding:8px 14px;cursor:pointer;font-family:\'DM Mono\',monospace;font-size:11px;'
+      +'color:#dce8ff;letter-spacing:.06em;border-bottom:1px solid rgba(255,255,255,.05);'
+      +'display:flex;align-items:center;gap:6px;"'
+      +' onmouseover="this.style.background=\'rgba(201,168,76,.1)\';this.style.color=\'#c9a84c\'"'
+      +' onmouseout="this.style.background=\'\';this.style.color=\'#dce8ff\'">'
+      +'<span style="color:#c9a84c;font-weight:700">'+base+'</span>'
+      +'<span style="color:rgba(201,168,76,.45);font-size:9px">'+quote+'</span>'
+      +'</div>';
   }).join('');
   dd.style.display = 'block';
 }
@@ -6353,6 +6358,18 @@ function selectPair(sym){
   if(dd)  dd.style.display = 'none';
   loadChart(sym, document.getElementById('tfIn') ? document.getElementById('tfIn').value : '4h');
 }
+
+/* Create dropdown once, appended to body so it's always on top */
+(function(){
+  var dd = document.createElement('div');
+  dd.id = 'pairDropdown';
+  dd.style.cssText = 'display:none;position:fixed;min-width:170px;'
+    +'background:#06080d;border:1px solid rgba(201,168,76,.35);'
+    +'border-radius:2px;z-index:2147483647;'
+    +'box-shadow:0 8px 24px rgba(0,0,0,.8);'
+    +'overflow:hidden;';
+  document.body.appendChild(dd);
+})();
 
 /* Close dropdown when clicking outside */
 document.addEventListener('click', function(e){
