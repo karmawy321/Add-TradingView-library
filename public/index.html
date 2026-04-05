@@ -5679,8 +5679,9 @@ if(chartCanvas){
     /* X clamp:
        maxOffX: bar 0 (oldest) at LEFT edge — can't pan further right than first bar
        minOffX: bar n-1 (newest) stays ~5 bars from right edge (future gap)        */
+    var CW2 = W - _chartPAD.l - _chartPAD.r;
     var maxOffX = -0.5 * barW;
-    var minOffX = W - _chartPAD.r - _chartPAD.l - (n + 4.5) * barW;
+    var minOffX = CW2 * 0.7 - (n - 0.5) * barW;  /* newest bar stops at 70% of chart width */
     if(dx) viewState.offsetX = Math.min(maxOffX, Math.max(minOffX, viewState.offsetX + dx));
     /* Y pan: drag down (dy>0) = content moves down = see lower prices */
     if(dy && _lastCH > 0){
