@@ -4635,46 +4635,23 @@ function renderChart() {
   /* Time axis drawn after clip restore — labels sit in the PAD.b strip below chart */
   /* (moved — see renderTimeAxis call after chartCtx.restore() below) */
 
-  /* Current price line + HTML badge (Always fixed to price axis regardless of scroll) */
+  /* Current price line — dashed line only, stays inside clip bounds */
   if (candles.length > 0) {
     var liveC = candles[candles.length-1];
-    /* Clamp the vertical position so it always stays visible on the scale */
     var pyVal = py(liveC.c);
     var lastY = Math.max(PAD.t + 10, Math.min(H - PAD.b - 10, pyVal));
-    
-    chartCtx.save();
     var liveCol = (liveC.c >= liveC.o) ? '#26a69a' : '#ef5350';
-    var liveLineCol = (liveC.c >= liveC.o) ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)';
-
-    /* Check if the actual live bar is visible horizontally to decide on drawing the dashed line */
+    var liveLineCol = (liveC.c >= liveC.o) ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
     var _liveX = worldToScreenX(candles.length - 1);
     var isLiveVisible = (_liveX >= PAD.l && _liveX <= W - PAD.r);
     if (isLiveVisible && pyVal >= PAD.t && pyVal <= H - PAD.b) {
+      chartCtx.save();
       chartCtx.strokeStyle = liveLineCol;
       chartCtx.lineWidth=1; chartCtx.setLineDash([4,4]);
       chartCtx.beginPath(); chartCtx.moveTo(PAD.l,lastY); chartCtx.lineTo(W-PAD.r,lastY); chartCtx.stroke();
       chartCtx.setLineDash([]);
+      chartCtx.restore();
     }
-    
-    /* Price badge pinned to the price axis on the right side */
-    chartCtx.font='bold 11px DM Mono';
-    var priceStr2=formatPrice(liveC.c);
-    var bdgW=chartCtx.measureText(priceStr2).width+16;
-    var bdgX=W-4-bdgW;  /* Just next to the right margin */
-    
-    chartCtx.fillStyle=liveCol;
-    chartCtx.fillRect(bdgX,lastY-10,bdgW,20);
-    
-    /* Draw left-pointing tag arrow to match TV indicator styling */
-    chartCtx.beginPath();
-    chartCtx.moveTo(bdgX, lastY-10);
-    chartCtx.lineTo(bdgX-6, lastY);
-    chartCtx.lineTo(bdgX, lastY+10);
-    chartCtx.fill();
-    
-    chartCtx.fillStyle='#fff'; chartCtx.textAlign='center';
-    chartCtx.fillText(priceStr2,bdgX+bdgW/2,lastY+4);
-    chartCtx.restore();
   }
 
   /* Watermarks - 5 positions */
@@ -4729,6 +4706,29 @@ function renderChart() {
 
   /* ── Restore clip — drawing below this line may use full canvas ── */
   chartCtx.restore();
+
+  /* Price badge — pinned to price axis, needs to draw outside clip */
+  if (candles.length > 0) {
+    var _liveC2 = candles[candles.length-1];
+    var _pyVal2 = py(_liveC2.c);
+    var _lastY2 = Math.max(PAD.t + 10, Math.min(H - PAD.b - 10, _pyVal2));
+    var _liveCol2 = (_liveC2.c >= _liveC2.o) ? '#26a69a' : '#ef5350';
+    chartCtx.save();
+    chartCtx.font = 'bold 11px DM Mono';
+    var _priceStr2 = formatPrice(_liveC2.c);
+    var _bdgW2 = chartCtx.measureText(_priceStr2).width + 16;
+    var _bdgX2 = W - 4 - _bdgW2;
+    chartCtx.fillStyle = _liveCol2;
+    chartCtx.fillRect(_bdgX2, _lastY2-10, _bdgW2, 20);
+    chartCtx.beginPath();
+    chartCtx.moveTo(_bdgX2, _lastY2-10);
+    chartCtx.lineTo(_bdgX2-6, _lastY2);
+    chartCtx.lineTo(_bdgX2, _lastY2+10);
+    chartCtx.fill();
+    chartCtx.fillStyle = '#fff'; chartCtx.textAlign = 'center';
+    chartCtx.fillText(_priceStr2, _bdgX2 + _bdgW2/2, _lastY2+4);
+    chartCtx.restore();
+  }
 
   /* Time axis — outside clip so labels render in the PAD.b strip */
   renderTimeAxis(visible, px, W, H, PAD);
