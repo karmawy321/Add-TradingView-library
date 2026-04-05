@@ -6043,6 +6043,7 @@ function loadChart(symbol,interval){
         allCandleData[sym][currentInterval]=data.candles[currentInterval];
         if(typeof _btActive!=='undefined'&&_btActive){ _btAllCandles=data.candles[currentInterval]; return; }
         chartCandles=data.candles[currentInterval];
+        if(typeof _initViewState==='function') _initViewState(chartCandles);
         renderChart();
         var last0=chartCandles[chartCandles.length-1];
         var prev0=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last0.o;
@@ -6171,6 +6172,7 @@ function fetchBinanceFallback(sym, tf) {
       chartCandles = candles;
       if(!allCandleData[sym]) allCandleData[sym]={};
       allCandleData[sym][tf] = candles;
+      if(typeof _initViewState==='function') _initViewState(candles);
       renderChart();
       autoBarPattern();
       lwChartInstance = true;
@@ -8651,7 +8653,7 @@ window.addEventListener('load',function(){
   /* ══════════════════════════════════════
      MOBILE CHART MODE
      ══════════════════════════════════════ */
-  var _isMob = function(){ return window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024); };
+  var _isMob = function(){ return window.innerWidth <= 600; };
 
   /* ── Inject mobile chart top bar ── */
   (function(){
