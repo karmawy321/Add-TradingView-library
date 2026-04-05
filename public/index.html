@@ -963,8 +963,12 @@ if (isEmbedded) {
         <div style="position:relative">
           <!-- Chart toolbar — always visible -->
           <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
-            <input type="text" id="pairIn" placeholder="BTC/USDT…" oninput="onPairInput(this.value)"
-              style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:110px;outline:none;letter-spacing:.04em">
+            <div style="position:relative;display:inline-block">
+              <input type="text" id="pairIn" placeholder="Search symbol…" autocomplete="off"
+                oninput="onPairInput(this.value)" onkeydown="onPairKeyDown(event)"
+                style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:130px;outline:none;letter-spacing:.04em">
+              <div id="pairDropdown" style="display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:160px;background:#0d1018;border:1px solid rgba(201,168,76,.3);z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.6)"></div>
+            </div>
             <select id="tfIn" onchange="onTfChange()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
               <option value="4h" selected>H4</option>
               <option value="1m">M1</option><option value="5m">M5</option>
@@ -6276,33 +6280,83 @@ function resolveSymbol(raw) {
   return s;
 }
 
+/* ── Coin suggestion list ── */
+var COIN_LIST = [
+  'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','AVAXUSDT','DOGEUSDT',
+  'DOTUSDT','MATICUSDT','LINKUSDT','LTCUSDT','ATOMUSDT','NEARUSDT','UNIUSDT','AAVEUSDT',
+  'ARBUSDT','OPUSDT','INJUSDT','SUIUSDT','APTUSDT','SEIUSDT','TIAUSDT','TONUSDT',
+  'FETUSDT','RENDERUSDT','LDOUSDT','WLDUSDT','PENDLEUSDT','DYDXUSDT','GMXUSDT',
+  'SHIBUSDT','PEPEUSDT','FLOKIUSDT','WIFUSDT','BONKUSDT',
+  'FILUSDT','XLMUSDT','TRXUSDT','ETCUSDT','ICPUSDT','HBARUSDT','VETUSDT','ALGOUSDT',
+  'SANDUSDT','MANAUSDT','AXSUSDT','GALAUSDT','CHZUSDT','GRTUSDT',
+  'CRVUSDT','COMPUSDT','MKRUSDT','SNXUSDT','SUSHIUSDT','YFIUSDT',
+  'QNTUSDT','FTMUSDT','ZILUSDT','ONEUSDT','IOSTUSDT',
+  'BTCUSDC','ETHUSDC','SOLUSDC','XRPUSDC','BNBUSDC',
+  'ETHUSD','BTCUSD','XAUUSD','XAGUSD','EURUSD','GBPUSD','JPYUSD'
+];
+
 function onPairInput(val){
-  /* MASTER SYNC: Forward search inputs straight to active iframe if in multi-layout mode */
-  if (typeof activeIframeId !== 'undefined' && activeIframeId !== null && !isEmbedded) {
+  var dd = document.getElementById('pairDropdown');
+  if(!dd) return;
+  var raw = val.trim().toUpperCase().replace('/','').replace('-','');
+  if(raw.length < 1){ dd.style.display='none'; return; }
+
+  /* In multi-layout mode just forward — no dropdown */
+  if(typeof activeIframeId!=='undefined' && activeIframeId!==null && !isEmbedded){
     clearTimeout(pairInputTimer);
-    var raw = val.trim();
-    if(raw.length < 2) return;
     pairInputTimer = setTimeout(function(){
-      var sym = resolveSymbol(raw);
       var iframe = document.getElementById(activeIframeId);
-      if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({type: 'setPair', symbol: sym}, '*');
-      }
-    }, 600);
+      if(iframe && iframe.contentWindow)
+        iframe.contentWindow.postMessage({type:'setPair', symbol:resolveSymbol(raw)}, '*');
+    }, 400);
     return;
   }
 
-  clearTimeout(pairInputTimer);
-  var raw = val.trim();
-  if(raw.length < 2) return;
-  pairInputTimer = setTimeout(function(){
-    var sym = resolveSymbol(raw);
-    /* Update input to show resolved symbol */
-    var inp = document.getElementById('pairIn');
-    if(inp && sym !== raw.toUpperCase().replace('/','').replace('-','')) inp.value = sym;
-    loadChart(sym, document.getElementById('tfIn') ? document.getElementById('tfIn').value : '4h');
-  }, 600);
+  /* Filter: starts-with first, then contains */
+  var starts   = COIN_LIST.filter(function(c){ return c.startsWith(raw); });
+  var contains = COIN_LIST.filter(function(c){ return !c.startsWith(raw) && c.indexOf(raw)!==-1; });
+  var matches  = starts.concat(contains).slice(0, 10);
+
+  if(!matches.length){ dd.style.display='none'; return; }
+
+  dd.innerHTML = matches.map(function(sym, idx){
+    return '<div class="pair-sug" data-sym="'+sym+'" onclick="selectPair(\''+sym+'\')"'
+      +' style="padding:7px 14px;cursor:pointer;font-family:DM Mono,monospace;font-size:11px;'
+      +'color:#f0f4fa;letter-spacing:.04em;border-bottom:1px solid rgba(255,255,255,.04)"'
+      +' onmouseover="this.style.background=\'rgba(201,168,76,.12)\'"'
+      +' onmouseout="this.style.background=\'\'">'+sym+'</div>';
+  }).join('');
+  dd.style.display = 'block';
 }
+
+function onPairKeyDown(e){
+  var dd = document.getElementById('pairDropdown');
+  if(e.key === 'Escape'){ if(dd) dd.style.display='none'; return; }
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    var first = dd && dd.querySelector('.pair-sug');
+    if(first){ first.click(); return; }
+    /* No suggestions — resolve and load whatever was typed */
+    var raw = e.target.value.trim();
+    if(raw.length >= 2) selectPair(resolveSymbol(raw));
+  }
+}
+
+function selectPair(sym){
+  var inp = document.getElementById('pairIn');
+  var dd  = document.getElementById('pairDropdown');
+  if(inp) inp.value = sym;
+  if(dd)  dd.style.display = 'none';
+  loadChart(sym, document.getElementById('tfIn') ? document.getElementById('tfIn').value : '4h');
+}
+
+/* Close dropdown when clicking outside */
+document.addEventListener('click', function(e){
+  var dd = document.getElementById('pairDropdown');
+  if(!dd) return;
+  var inp = document.getElementById('pairIn');
+  if(!dd.contains(e.target) && e.target !== inp) dd.style.display = 'none';
+});
 
 function quickLoad(symbol){
   var p=document.getElementById('pairIn'); if(p) p.value=symbol;
