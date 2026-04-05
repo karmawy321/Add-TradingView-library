@@ -4632,8 +4632,8 @@ function renderChart() {
     });
   }
 
-  /* Time axis — smart adaptive labels */
-  renderTimeAxis(visible, px, W, H, PAD);
+  /* Time axis drawn after clip restore — labels sit in the PAD.b strip below chart */
+  /* (moved — see renderTimeAxis call after chartCtx.restore() below) */
 
   /* Current price line + HTML badge (Always fixed to price axis regardless of scroll) */
   if (candles.length > 0) {
@@ -4729,6 +4729,9 @@ function renderChart() {
 
   /* ── Restore clip — drawing below this line may use full canvas ── */
   chartCtx.restore();
+
+  /* Time axis — outside clip so labels render in the PAD.b strip */
+  renderTimeAxis(visible, px, W, H, PAD);
 
   /* History loading indicator — outside clip so it always shows at top-left */
   if(typeof _historyLoading!=='undefined' && _historyLoading){
