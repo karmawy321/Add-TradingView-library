@@ -8414,10 +8414,15 @@ function addFullscreen(){
       /* Hide specific sections by ID — NOT `section` generically, because
          #chartToolsPanel lives inside <section id="analyzer"> and display:none
          on a parent hides fixed-position children too. */
+      /* Measure toolbar height BEFORE injecting fixed style so offsetHeight is accurate */
+      var _toolbarDiv=panel.querySelector(':scope > div:first-child');
+      var _toolbarH=_toolbarDiv?_toolbarDiv.offsetHeight:96;
+      var _chartH=window.innerHeight-_toolbarH;
       _expandStyle.textContent=
         'body{overflow:hidden!important}'+
-        '#chartToolsPanel{position:fixed!important;inset:0!important;z-index:9000!important;overflow:hidden!important;background:#06080d!important;display:flex!important;flex-direction:column!important;}'+
-        '#chartArea{flex:1!important;height:0!important;min-height:0!important;}'+
+        '#chartToolsPanel{position:fixed!important;inset:0!important;z-index:9000!important;overflow:hidden!important;background:#06080d!important;}'+
+        '#chartArea{height:'+_chartH+'px!important;min-height:0!important;}'+
+        '#aiCtrlRow,#uniDash,#rEmpty2{display:none!important}'+
         'nav,footer,#home,#how,#about,#tools,#pricing,.cta-sec,.az-wrap>p,.az-wrap>h2,.az-wrap>.sec-p{display:none!important}';
       document.head.appendChild(_expandStyle);
       /* Inject EXIT button inside the fixed panel so it stays visible */
