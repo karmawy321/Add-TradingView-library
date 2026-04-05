@@ -967,7 +967,7 @@ if (isEmbedded) {
               <input type="text" id="pairIn" placeholder="Search symbol…" autocomplete="off"
                 oninput="onPairInput(this.value)" onkeydown="onPairKeyDown(event)"
                 style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:130px;outline:none;letter-spacing:.04em">
-              <div id="pairDropdown" style="display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:160px;background:#0d1018;border:1px solid rgba(201,168,76,.3);z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.6)"></div>
+              <div id="pairDropdown" style="display:none;position:fixed;min-width:160px;background:#0d1018;border:1px solid rgba(201,168,76,.3);z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.6)"></div>
             </div>
             <select id="tfIn" onchange="onTfChange()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
               <option value="4h" selected>H4</option>
@@ -6318,6 +6318,10 @@ function onPairInput(val){
   var matches  = starts.concat(contains).slice(0, 10);
 
   if(!matches.length){ dd.style.display='none'; return; }
+
+  /* Position fixed dropdown below the input */
+  var inp2 = document.getElementById('pairIn');
+  if(inp2){ var r=inp2.getBoundingClientRect(); dd.style.top=(r.bottom+3)+'px'; dd.style.left=r.left+'px'; }
 
   dd.innerHTML = matches.map(function(sym, idx){
     return '<div class="pair-sug" data-sym="'+sym+'" onclick="selectPair(\''+sym+'\')"'
