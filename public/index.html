@@ -5676,13 +5676,15 @@ if(chartCanvas){
     var dpr = window.devicePixelRatio || 1;
     var W   = chartCanvas.width / dpr;
     var barW = Math.max(1, viewState.scaleX);
-    /* X clamp: bar 0 at right edge; newest bar pinned at left edge */
-    var maxOffX = W - _chartPAD.r - _chartPAD.l - 0.5 * barW;
-    var minOffX = -(n - 0.5) * barW;
+    /* X clamp:
+       maxOffX: bar 0 (oldest) at LEFT edge — can't pan further right than first bar
+       minOffX: bar n-1 (newest) stays ~5 bars from right edge (future gap)        */
+    var maxOffX = -0.5 * barW;
+    var minOffX = W - _chartPAD.r - _chartPAD.l - (n + 4.5) * barW;
     if(dx) viewState.offsetX = Math.min(maxOffX, Math.max(minOffX, viewState.offsetX + dx));
-    /* Y pan: dy pixels → fraction of range; drag up (dy<0) = see higher prices */
+    /* Y pan: drag down (dy>0) = content moves down = see lower prices */
     if(dy && _lastCH > 0){
-      var newOff = viewState.priceOffset - dy / _lastCH;
+      var newOff = viewState.priceOffset + dy / _lastCH;
       viewState.priceOffset = Math.min(1, Math.max(-1, newOff));
     }
     renderChart();
