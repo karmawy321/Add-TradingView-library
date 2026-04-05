@@ -6362,7 +6362,7 @@ function selectPair(sym){
   loadChart(sym, document.getElementById('tfIn') ? document.getElementById('tfIn').value : '4h');
 }
 
-/* Create dropdown once, appended to body so it's always on top */
+/* Create dropdown once, appended to correct root (body or fullscreen element) */
 (function(){
   var dd = document.createElement('div');
   dd.id = 'pairDropdown';
@@ -6371,7 +6371,7 @@ function selectPair(sym){
     +'border-radius:2px;z-index:2147483647;'
     +'box-shadow:0 8px 24px rgba(0,0,0,.8);'
     +'overflow:hidden;';
-  document.body.appendChild(dd);
+  (document.fullscreenElement || document.body).appendChild(dd);
 })();
 
 /* Close dropdown when clicking outside */
@@ -6427,7 +6427,7 @@ function showCapturePrompt(){
     +'<div style="font-size:13px;color:#8a95a8;text-align:center;max-width:360px;line-height:1.6">Type a pair to load a live chart, or upload a screenshot.</div>'
     +'<div style="display:flex;gap:12px"><label style="font-family:DM Mono,monospace;font-size:11px;padding:10px 20px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);color:#c9a84c;cursor:pointer">📁 UPLOAD<input type="file" accept="image/*" style="display:none" onchange="handleCaptureUpload(this)"></label>'
     +'<button onclick="closeCapturePrompt()" style="font-family:DM Mono,monospace;font-size:11px;padding:10px 20px;background:transparent;border:1px solid rgba(138,149,168,.3);color:#8a95a8;cursor:pointer">CANCEL</button></div>';
-  document.body.appendChild(overlay);
+  (document.fullscreenElement || document.body).appendChild(overlay);
 }
 function closeCapturePrompt(){var o=document.getElementById('capturePrompt');if(o)o.style.display='none';window._pendingTool=null;}
 function runPendingTool(){if(window._pendingTool){var t=window._pendingTool;window._pendingTool=null;if(dataUrl)executeTool(t,dataUrl);}}
@@ -8451,7 +8451,15 @@ function addFullscreen(){
   btn.onclick=function(){ isMobile()?expandMobile():expandDesktop(); };
 
   document.addEventListener('fullscreenchange',function(){
-    if(!document.fullscreenElement){ btn.innerHTML='⛶ EXPAND'; btn.style.color='rgba(201,168,76,.6)'; }
+    var isFs = !!document.fullscreenElement;
+    var panel = document.getElementById('chartToolsPanel');
+    var root  = isFs ? panel : document.body;
+    /* Move all floating popups into/out of the fullscreen element */
+    ['ctxMenu','pairDropdown','capturePrompt'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el && el.parentElement !== root) root.appendChild(el);
+    });
+    if(!isFs){ btn.innerHTML='⛶ EXPAND'; btn.style.color='rgba(201,168,76,.6)'; }
     setTimeout(safeResize,100);
   });
 
