@@ -8411,22 +8411,30 @@ function addFullscreen(){
       _expanded=true;
       _expandStyle=document.createElement('style');
       _expandStyle.id='_fsStyle';
+      /* Hide specific sections by ID — NOT `section` generically, because
+         #chartToolsPanel lives inside <section id="analyzer"> and display:none
+         on a parent hides fixed-position children too. */
       _expandStyle.textContent=
-        '#chartToolsPanel{position:fixed!important;inset:0!important;z-index:9000!important;overflow-y:auto!important;background:#06080d!important;}'+
-        '#chartArea{height:calc(100vh - 120px)!important;}'+
-        'nav,footer,section,#analyzer ~ *{display:none!important}';
+        'body{overflow:hidden!important}'+
+        '#chartToolsPanel{position:fixed!important;inset:0!important;z-index:9000!important;overflow:hidden!important;background:#06080d!important;display:flex!important;flex-direction:column!important;}'+
+        '#chartArea{flex:1!important;height:0!important;min-height:0!important;}'+
+        'nav,footer,#home,#how,#about,#tools,#pricing,.cta-sec,.az-wrap>p,.az-wrap>h2,.az-wrap>.sec-p{display:none!important}';
       document.head.appendChild(_expandStyle);
-      btn.innerHTML='✕ EXIT';
-      btn.style.color='#ef5350';
+      /* Inject EXIT button inside the fixed panel so it stays visible */
+      var eb=document.createElement('button');
+      eb.id='_mobExitBtn';
+      eb.textContent='✕ EXIT';
+      eb.style.cssText='position:absolute;top:10px;right:10px;z-index:9001;background:rgba(239,83,80,.12);border:1px solid rgba(239,83,80,.35);color:#ef5350;cursor:pointer;padding:5px 12px;font-size:11px;font-family:DM Mono,monospace;border-radius:2px;letter-spacing:.04em';
+      eb.onclick=expandMobile;
+      panel.appendChild(eb);
+      btn.innerHTML='✕ EXIT'; btn.style.color='#ef5350';
       setTimeout(safeResize,100);
-      /* Scroll to top of panel */
       panel.scrollTop=0;
     } else {
       _expanded=false;
-      var s=document.getElementById('_fsStyle');
-      if(s)s.remove();
-      btn.innerHTML='⛶ EXPAND';
-      btn.style.color='rgba(201,168,76,.6)';
+      var s=document.getElementById('_fsStyle'); if(s)s.remove();
+      var eb=document.getElementById('_mobExitBtn'); if(eb)eb.remove();
+      btn.innerHTML='⛶ EXPAND'; btn.style.color='rgba(201,168,76,.6)';
       setTimeout(safeResize,100);
     }
   }
