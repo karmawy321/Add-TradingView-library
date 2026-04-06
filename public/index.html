@@ -7004,51 +7004,206 @@ function initDrawEvents(){
   var cv=document.getElementById('chartCanvas');
   if(!cv)return;
 
-  /* Touch → drawing tools (convert touch to mouse-like events) */
-  cv.addEventListener('touchstart',function(e){
-    if(e.touches.length!==1)return; /* single touch only for tools */
-    var t=e.touches[0];
-    var fake={clientX:t.clientX,clientY:t.clientY,button:0,preventDefault:function(){}};
-    var co=getCoords(fake); if(!co)return;
-    /* Only activate tool if a drawing tool is selected */
-    if(!activeItem||activeItem.id==='cursor'||activeItem.id==='arrow_cur'||activeItem.id==='dot')return;
-    e.stopPropagation(); /* prevent pan from firing */
-    if(activeItem.vline){if(!co.pixelOnly){saveUndo();drawings.push({type:'vline',bi:co.bi});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
-    if(activeItem.hline){if(!co.pixelOnly){saveUndo();drawings.push({type:'hline',price:co.price,ray:activeItem.ray});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
-    if(activeItem.arrowmark){if(!co.pixelOnly){saveUndo();drawings.push({type:'arrowmark',price:co.price,bi:co.bi,dir:activeItem.dir});if(!lockedDraw)pickItem(GROUPS[0].items[0]);renderChart();}return;}
-    if(activeItem.brush||activeItem.erbrush){isBrushing=true;brushPath=[{x:co.x,y:co.y}];return;}
-    isDrawing=true; drawStart=co;
-  },{passive:false});
-  cv.addEventListener('touchmove',function(e){
-    if(!isDrawing&&!isBrushing)return;
-    if(e.touches.length!==1)return;
-    e.stopPropagation();
-    var t=e.touches[0];
-    var fake={clientX:t.clientX,clientY:t.clientY};
-    hoverPoint=getCoords(fake);
-    if(isBrushing&&hoverPoint) brushPath.push({x:hoverPoint.x,y:hoverPoint.y});
-    renderChart();
-  },{passive:false});
-  cv.addEventListener('touchend',function(e){
-    if(isBrushing){
-      isBrushing=false;
-      if(brushPath.length>1){
-        var smoothed=brushPath.slice();
-        var first=smoothed[0],last2=smoothed[smoothed.length-1];
-        var dist=Math.sqrt(Math.pow(last2.x-first.x,2)+Math.pow(last2.y-first.y,2));
-        if(dist<80) smoothed.push({x:first.x,y:first.y});
-        saveUndo();drawings.push({type:'brush',path:smoothed,closed:dist<80,color:brushColor});
-      }
-      brushPath=[]; renderChart(); return;
+  /* ══════════════════════════════════════════════════════
+     MOBILE 3-TOUCH DRAWING STATE MACHINE
+     State: 'idle' | 'p1' (waiting P1 tap) | 'p2' (hover + confirm)
+     Only active when a drawing tool is selected (not cursor/arrow_cur/dot).
+     Desktop mouse events are completely unaffected.
+     ══════════════════════════════════════════════════════ */
+  var _mobDraw = {
+    state: 'idle',       /* 'idle' | 'p1' | 'p2' */
+    p1co:  null,         /* getCoords snapshot for point 1 */
+    xhCo:  null,         /* current crosshair getCoords (frozen when finger lifted) */
+    touchOriginX: 0,     /* where this finger-down started (client coords) */
+    touchOriginY: 0,
+    xhOriginX: 0,        /* crosshair position when finger went down */
+    xhOriginY: 0,
+    dragging: false
+  };
+
+  /* Helper: is a "drawing" tool currently active (not cursor/pointer) */
+  function _mobToolActive(){
+    if(!activeItem) return false;
+    var id=activeItem.id;
+    return id!=='cursor'&&id!=='arrow_cur'&&id!=='dot';
+  }
+
+  /* Make a synthetic getCoords result at canvas pixel (cx, cy) */
+  function _coAt(cx, cy){
+    var r=cv.getBoundingClientRect();
+    var dpr=window.devicePixelRatio||1;
+    var scX=(cv.width/dpr)/r.width, scY=(cv.height/dpr)/r.height;
+    return getCoords({clientX:r.left+cx/scX, clientY:r.top+cy/scY});
+  }
+
+  /* Draw the mobile crosshair + HUD on top of the chart (called from renderChart patch) */
+  window._drawMobCrosshair = function(ctx, W, H){
+    if(_mobDraw.state==='idle'||!_mobDraw.xhCo) return;
+    var co=_mobDraw.xhCo;
+    var cx=co.x, cy=co.y;
+    ctx.save();
+    ctx.setLineDash([4,4]);
+    ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(201,168,76,.7)';
+    /* Vertical line */
+    ctx.beginPath(); ctx.moveTo(cx,_chartPAD.t); ctx.lineTo(cx,H-_chartPAD.b); ctx.stroke();
+    /* Horizontal line */
+    ctx.beginPath(); ctx.moveTo(_chartPAD.l,cy); ctx.lineTo(W-_chartPAD.r,cy); ctx.stroke();
+    ctx.setLineDash([]);
+    /* Centre dot */
+    ctx.fillStyle='#c9a84c';
+    ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2); ctx.fill();
+    /* Price label on Y axis */
+    var priceStr=typeof formatPrice==='function'?formatPrice(co.price):co.price.toFixed(2);
+    ctx.fillStyle='#c9a84c'; ctx.font='bold 10px DM Mono,monospace'; ctx.textAlign='left';
+    var py=Math.max(_chartPAD.t+8, Math.min(H-_chartPAD.b-8, cy-6));
+    ctx.fillRect(W-_chartPAD.r+1, py-2, _chartPAD.r-3, 14);
+    ctx.fillStyle='#06080d'; ctx.fillText(priceStr, W-_chartPAD.r+4, py+9);
+    /* P2 phase: draw live preview line + HUD */
+    if(_mobDraw.state==='p2'&&_mobDraw.p1co){
+      var p1=_mobDraw.p1co;
+      var p1x=worldToScreenX(p1.bi), p1y=worldToScreenY(p1.price);
+      /* Preview line */
+      ctx.strokeStyle='rgba(201,168,76,.5)'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+      ctx.beginPath(); ctx.moveTo(p1x,p1y); ctx.lineTo(cx,cy); ctx.stroke();
+      ctx.setLineDash([]);
+      /* P1 dot */
+      ctx.fillStyle='#e8c97a'; ctx.beginPath(); ctx.arc(p1x,p1y,5,0,Math.PI*2); ctx.fill();
+      /* HUD — price delta + candle count */
+      var dPrice=co.price-p1.price;
+      var dBars=co.bi-p1.bi;
+      var pct=(p1.price!==0?(dPrice/p1.price*100):0).toFixed(2);
+      var sign=dPrice>=0?'+':'';
+      var hudTxt=sign+(typeof formatPrice==='function'?formatPrice(Math.abs(dPrice)):Math.abs(dPrice).toFixed(2))
+        +' ('+sign+pct+'%)  '+Math.abs(dBars)+' bars';
+      ctx.font='10px DM Mono,monospace'; ctx.textAlign='center';
+      var hudW=ctx.measureText(hudTxt).width+16, hudH=18;
+      var hudX=Math.max(hudW/2+4, Math.min(W-hudW/2-4, (p1x+cx)/2));
+      var hudY=Math.max(_chartPAD.t+hudH, (p1y+cy)/2-8);
+      ctx.fillStyle='rgba(6,8,13,.85)';
+      ctx.fillRect(hudX-hudW/2, hudY-hudH+3, hudW, hudH);
+      ctx.strokeStyle='rgba(201,168,76,.3)'; ctx.lineWidth=1;
+      ctx.strokeRect(hudX-hudW/2, hudY-hudH+3, hudW, hudH);
+      ctx.fillStyle=dPrice>=0?'#26a69a':'#ef5350';
+      ctx.fillText(hudTxt, hudX, hudY);
     }
-    if(!isDrawing||!drawStart)return;
-    var t2=e.changedTouches[0];
-    var fake2={clientX:t2.clientX,clientY:t2.clientY};
-    var co2=getCoords(fake2); isDrawing=false;
-    if(!co2||(Math.abs(co2.x-drawStart.x)<5&&Math.abs(co2.y-drawStart.y)<5)){drawStart=null;return;}
-    saveUndo();drawings.push(makeDrawing(drawStart,co2));
-    drawStart=null; if(!lockedDraw)pickItem(GROUPS[0].items[0]); renderChart();
-  },{passive:false});
+    ctx.restore();
+  };
+
+  /* Commit the drawing at current crosshair position */
+  function _mobCommit(){
+    var p1=_mobDraw.p1co, p2=_mobDraw.xhCo;
+    if(!p1||!p2) return;
+    /* Single-point tools */
+    if(activeItem.vline){saveUndo();drawings.push({type:'vline',bi:p2.bi});}
+    else if(activeItem.hline){saveUndo();drawings.push({type:'hline',price:p2.price,ray:activeItem.ray});}
+    else if(activeItem.arrowmark){saveUndo();drawings.push({type:'arrowmark',price:p2.price,bi:p2.bi,dir:activeItem.dir});}
+    else{ saveUndo(); drawings.push(makeDrawing(p1,p2)); }
+    if(!lockedDraw) pickItem(GROUPS[0].items[0]);
+    _mobDraw.state='idle'; _mobDraw.p1co=null; _mobDraw.xhCo=null;
+    hoverPoint=null; drawStart=null; isDrawing=false;
+    renderChart();
+  }
+
+  /* Cancel mobile draw (called when tool button re-tapped or cursor selected) */
+  window._mobCancelDraw = function(){
+    _mobDraw.state='idle'; _mobDraw.p1co=null; _mobDraw.xhCo=null;
+    hoverPoint=null; drawStart=null; isDrawing=false;
+    renderChart();
+  };
+
+  /* ── touchstart ── */
+  cv.addEventListener('touchstart',function(e){
+    if(e.touches.length!==1) return;
+    var t=e.touches[0];
+
+    /* ── No tool: let pan/zoom handle it ── */
+    if(!_mobToolActive()){
+      /* pass through to pan handler */
+      return;
+    }
+
+    /* ── Tool is active: hijack touch ── */
+    e.stopImmediatePropagation();
+    e.preventDefault();
+
+    var fake={clientX:t.clientX,clientY:t.clientY};
+    var co=getCoords(fake); if(!co) return;
+
+    if(_mobDraw.state==='idle'){
+      /* Finger down → show crosshair at touch point, wait for lift to place P1 */
+      _mobDraw.state='p1';
+      _mobDraw.xhCo=co;
+      hoverPoint=co;
+      renderChart();
+    } else if(_mobDraw.state==='p2'){
+      /* New finger-down in P2: record origin for delta movement, crosshair stays put */
+      _mobDraw.touchOriginX=t.clientX; _mobDraw.touchOriginY=t.clientY;
+      if(_mobDraw.xhCo){
+        _mobDraw.xhOriginX=_mobDraw.xhCo.x;
+        _mobDraw.xhOriginY=_mobDraw.xhCo.y;
+      }
+      _mobDraw.dragging=false;
+    }
+  },{passive:false,capture:true});
+
+  /* ── touchmove ── */
+  cv.addEventListener('touchmove',function(e){
+    if(e.touches.length!==1) return;
+    if(_mobDraw.state!=='p2') return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+
+    var t=e.touches[0];
+    var dpr=window.devicePixelRatio||1;
+    var r=cv.getBoundingClientRect();
+    var scX=(cv.width/dpr)/r.width, scY=(cv.height/dpr)/r.height;
+    /* Delta from where this finger started */
+    var dx=(t.clientX-_mobDraw.touchOriginX)*scX;
+    var dy=(t.clientY-_mobDraw.touchOriginY)*scY;
+    if(Math.abs(dx)>2||Math.abs(dy)>2) _mobDraw.dragging=true;
+    /* New crosshair canvas position */
+    var newCX=_mobDraw.xhOriginX+dx;
+    var newCY=_mobDraw.xhOriginY+dy;
+    /* Clamp to chart area */
+    newCX=Math.max(_chartPAD.l, Math.min((cv.width/dpr)-_chartPAD.r, newCX));
+    newCY=Math.max(_chartPAD.t, Math.min((cv.height/dpr)-_chartPAD.b, newCY));
+    /* Build a co from canvas coords */
+    _mobDraw.xhCo=getCoords({clientX:r.left+newCX/scX, clientY:r.top+newCY/scY});
+    hoverPoint=_mobDraw.xhCo;
+    renderChart();
+  },{passive:false,capture:true});
+
+  /* ── touchend ── */
+  cv.addEventListener('touchend',function(e){
+    if(!_mobToolActive()) return;
+    if(_mobDraw.state==='idle') return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+
+    if(_mobDraw.state==='p1'){
+      /* Tap in p1 state → place P1 */
+      var t2=e.changedTouches[0];
+      var fake2={clientX:t2.clientX,clientY:t2.clientY};
+      var p1co=getCoords(fake2); if(!p1co) return;
+      if(activeItem.vline||activeItem.hline||activeItem.arrowmark){
+        _mobDraw.p1co=p1co; _mobDraw.xhCo=p1co; _mobCommit(); return;
+      }
+      _mobDraw.p1co=p1co; _mobDraw.xhCo=p1co; _mobDraw.state='p2';
+      _mobDraw.touchOriginX=t2.clientX; _mobDraw.touchOriginY=t2.clientY;
+      _mobDraw.xhOriginX=p1co.x; _mobDraw.xhOriginY=p1co.y;
+      _mobDraw.dragging=false;
+      hoverPoint=p1co; drawStart=p1co; isDrawing=true;
+      renderChart();
+    } else if(_mobDraw.state==='p2'){
+      /* Lift finger: if it barely moved → confirm P2 at current crosshair */
+      if(!_mobDraw.dragging){
+        _mobCommit();
+      }
+      /* If it was a drag, freeze crosshair at last position — wait for next tap to confirm */
+      _mobDraw.dragging=false;
+    }
+  },{passive:false,capture:true});
 
   cv.addEventListener('mousedown',function(e){
     if(e.button!==0)return; /* only left click triggers drawing tools */
@@ -8337,6 +8492,8 @@ function patchRenderChart(){
     var mn=viewState.priceMin, mx=viewState.priceMax;
     var rng=mx-mn||mn*.001||.0001;
     drawAnnotations(ctx,{W:W,H:H,CW:CW,CH:CH,mn:mn,rng:rng,barW:barW,si:si,visible:visible});
+    /* Mobile crosshair overlay — drawn last so it's always on top */
+    if(typeof window._drawMobCrosshair==='function') window._drawMobCrosshair(ctx,W,H);
   };
   renderChart._fractalPatched=true;
 }
