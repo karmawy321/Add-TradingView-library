@@ -3400,9 +3400,11 @@ async function refreshSession(){
   if(!sb || !sbReady) return;
   var { data } = await sb.auth.getSession();
   if(!data.session){
-    var storedToken = localStorage.getItem('fractal_token');
-    var storedUser  = JSON.parse(localStorage.getItem('fractal_user') || 'null');
-    if(!storedToken || !storedUser){ showLoggedOut(); currentUser=null; }
+    localStorage.removeItem('fractal_token');
+    localStorage.removeItem('fractal_user');
+    localStorage.removeItem('fractal_credits');
+    currentUser = null;
+    showLoggedOut();
     return;
   }
   currentUser = data.session.user;
