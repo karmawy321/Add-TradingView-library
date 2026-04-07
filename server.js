@@ -996,7 +996,56 @@ Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
   callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 1500, res);
 });
 
-// /sniper - Sniper trade signal (entry, SL, TP with pips)
+/* ── Sniper pip/RR math helpers ── */
+function getPipSize(price, pair) {
+  const p = (pair || '').toUpperCase();
+  if (p.includes('JPY')) return 0.01;
+  if (p === 'XAUUSD' || p === 'GOLD') return 0.1;
+  if (/^(US30|NAS100|SPX500|UK100|GER40)/.test(p)) return 1.0;
+  if (/^(EUR|GBP|AUD|NZD|USD|CAD|CHF)/.test(p) && p.length === 6) return 0.0001;
+  // Crypto — dynamic by price magnitude
+  if (price >= 1000)  return 1.0;
+  if (price >= 100)   return 0.1;
+  if (price >= 10)    return 0.01;
+  if (price >= 1)     return 0.001;
+  if (price >= 0.01)  return 0.0001;
+  return 0.000001;
+}
+
+function calcSniperMath(sig) {
+  const entry = parseFloat(sig.entry) || 0;
+  const sl    = parseFloat(sig.sl)    || 0;
+  const tp1   = parseFloat(sig.tp1)   || 0;
+  const tp2   = parseFloat(sig.tp2)   || 0;
+  if (!entry) return sig;
+  const pipSize  = getPipSize(entry, sig.pair);
+  const slPips   = Math.round(Math.abs(entry - sl)  / pipSize);
+  const tp1Pips  = Math.round(Math.abs(tp1 - entry) / pipSize);
+  const tp2Pips  = Math.round(Math.abs(tp2 - entry) / pipSize);
+  const rr1      = slPips > 0 ? (tp1Pips / slPips).toFixed(2) : '—';
+  const rr2      = slPips > 0 ? (tp2Pips / slPips).toFixed(2) : '—';
+  const slPct    = entry > 0 ? ((Math.abs(entry - sl)  / entry) * 100).toFixed(2) : '—';
+  const tp1Pct   = entry > 0 ? ((Math.abs(tp1 - entry) / entry) * 100).toFixed(2) : '—';
+  const tp2Pct   = entry > 0 ? ((Math.abs(tp2 - entry) / entry) * 100).toFixed(2) : '—';
+  return Object.assign({}, sig, {
+    sl_pips: slPips, tp1_pips: tp1Pips, tp2_pips: tp2Pips,
+    rr1: '1:' + rr1, rr2: '1:' + rr2,
+    sl_pct: slPct, tp1_pct: tp1Pct, tp2_pct: tp2Pct
+  });
+}
+
+function validateSniper(sig) {
+  const long = (sig.direction || '').toLowerCase() === 'long';
+  if (long  && sig.sl  >= sig.entry) return false;
+  if (!long && sig.sl  <= sig.entry) return false;
+  if (long  && sig.tp1 <= sig.entry) return false;
+  if (!long && sig.tp1 >= sig.entry) return false;
+  if (long  && sig.tp2 <= sig.tp1)   return false;
+  if (!long && sig.tp2 >= sig.tp1)   return false;
+  return true;
+}
+
+// /sniper - Sniper trade signal (AI prices only, server calculates pips/RR/%)
 app.post('/sniper', rateLimit(20, 60000), async (req, res) => {
   const k = process.env.ANTHROPIC_API_KEY;
   if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
@@ -1005,48 +1054,59 @@ app.post('/sniper', rateLimit(20, 60000), async (req, res) => {
   let _snipUserId = null;
   try { const _snipR = await verifyAndDeduct(_token, 5); _snipUserId = _snipR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
   const candleText = candles.map(candleLine).join('\n');
-  const p = `You are an elite trade signal analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} timeframe (${candles.length} candles, price range ${(priceMin||0).toFixed(6)} - ${(priceMax||0).toFixed(6)}). Reply in ${rl(l)}.
+  const prompt = `You are an elite trade signal analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} timeframe (${candles.length} candles, price range ${(priceMin||0).toFixed(6)} - ${(priceMax||0).toFixed(6)}). Reply in ${rl(l)}.
 
 OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
 ${candleText}
 
 Generate ONE precise trade signal using SMC structure, key support/resistance, and Fibonacci confluence.
-Pip calculation rules:
-- Forex (EURUSD, GBPUSD, etc.): 1 pip = 0.0001. For JPY pairs (USDJPY, GBPJPY): 1 pip = 0.01.
-- Crypto (BTCUSDT, ETHUSDT, etc.): 1 pip = 1 whole price unit (round to nearest integer).
-- Gold (XAUUSD): 1 pip = 0.1.
-- Indices (US30, NAS100): 1 pip = 1 point.
 
 Respond with ONLY a valid JSON object, no markdown:
-{"pair":"str","timeframe":"str","direction":"long|short","entry":0.0,"sl":0.0,"tp1":0.0,"tp2":0.0,"sl_pips":0,"tp1_pips":0,"tp2_pips":0,"rr1":"1:1.1","rr2":"1:2.9","confidence":75,"reasoning":"1-2 sentence SMC/structure reasoning for this setup"}
+{"pair":"str","timeframe":"str","direction":"long|short","entry":0.0,"sl":0.0,"tp1":0.0,"tp2":0.0,"confidence":75,"reasoning":"1-2 sentence SMC/structure reasoning for this setup"}
 
-Rules: entry must be near the last candle close. sl must be beyond a real structure level (swing high/low). tp1 must achieve a minimum 1:1 RR (tp1_pips >= sl_pips). tp2 must be at a further logical target with at least 1.5:1 RR. All prices must be realistic values from the data range. If no valid 1:1 setup exists, still return the best available setup but set confidence below 55.`;
-  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 900, res, (txt) => {
-    if (!_snipUserId || !sbAdmin) return;
-    try {
-      const jm = txt.match(/\{[\s\S]*\}/);
-      if (!jm) return;
-      const sig = JSON.parse(jm[0]);
-      sbAdmin.from('sniper_signals').insert({
-        user_id: _snipUserId,
-        pair: sig.pair || pair,
-        timeframe: sig.timeframe || timeframe,
-        direction: sig.direction,
-        entry: sig.entry,
-        sl: sig.sl,
-        tp1: sig.tp1,
-        tp2: sig.tp2,
-        sl_pips: sig.sl_pips,
-        tp1_pips: sig.tp1_pips,
-        tp2_pips: sig.tp2_pips,
-        rr1: sig.rr1,
-        rr2: sig.rr2,
-        confidence: sig.confidence,
-        reasoning: sig.reasoning,
-        outcome: 'pending'
-      }).then(({ error }) => { if (error) console.error('[Sniper DB]', error.message); });
-    } catch(e) { console.error('[Sniper parse]', e.message); }
+Rules:
+- entry must be near the last candle close price.
+- sl must be placed beyond a real swing high/low structure level.
+- tp1 must offer at least 1:1 reward vs sl distance.
+- tp2 must offer at least 1:1.5 reward vs sl distance.
+- For long: sl < entry < tp1 < tp2. For short: sl > entry > tp1 > tp2.
+- All prices must be realistic values within the data range.`;
+
+  const reqBody = JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 600, messages: [{ role: 'user', content: prompt }] });
+  const apiReq = https.request({
+    hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+    headers: { 'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','Content-Length':Buffer.byteLength(reqBody) }
+  }, apiRes => {
+    let data = '';
+    apiRes.on('data', c => { data += c; });
+    apiRes.on('end', () => {
+      try {
+        const obj = JSON.parse(data);
+        if (obj.error) return res.status(500).json({ error: obj.error.message });
+        const text = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
+        const jm = text.match(/\{[\s\S]*\}/);
+        if (!jm) return res.status(500).json({ error: 'No signal generated' });
+        const raw = JSON.parse(jm[0]);
+        if (!validateSniper(raw)) return res.status(500).json({ error: 'Invalid signal structure' });
+        const sig = calcSniperMath(raw);
+        res.json(sig);
+        /* Save to DB async after responding */
+        if (_snipUserId && sbAdmin) {
+          sbAdmin.from('sniper_signals').insert({
+            user_id: _snipUserId,
+            pair: sig.pair || pair, timeframe: sig.timeframe || timeframe,
+            direction: sig.direction, entry: sig.entry, sl: sig.sl, tp1: sig.tp1, tp2: sig.tp2,
+            sl_pips: sig.sl_pips, tp1_pips: sig.tp1_pips, tp2_pips: sig.tp2_pips,
+            rr1: sig.rr1, rr2: sig.rr2, sl_pct: sig.sl_pct, tp1_pct: sig.tp1_pct, tp2_pct: sig.tp2_pct,
+            confidence: sig.confidence, reasoning: sig.reasoning, outcome: 'pending'
+          }).then(({ error: dbErr }) => { if (dbErr) console.error('[Sniper DB]', dbErr.message); });
+        }
+      } catch(e) { res.status(500).json({ error: 'Failed to parse signal' }); }
+    });
   });
+  apiReq.on('error', e => res.status(500).json({ error: e.message }));
+  apiReq.write(reqBody);
+  apiReq.end();
 });
 
 /* ═══════════════════════════════════════════════════

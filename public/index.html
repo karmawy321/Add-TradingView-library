@@ -3410,9 +3410,9 @@ function renderSniper(r) {
     '</div>' +
     '<div style="display:flex;flex-direction:column">' +
       _snRow('ENTRY', r.entry, '#c9a84c') +
-      _snRow('SL', r.sl + '  \u2212' + r.sl_pips + 'p', '#e74c3c') +
-      _snRow('TP1', r.tp1 + '  +' + r.tp1_pips + 'p', '#27ae60') +
-      _snRow('TP2', r.tp2 + '  +' + r.tp2_pips + 'p', '#2ecc71') +
+      _snRow('SL', r.sl + '  \u2212' + r.sl_pips + 'p / \u2212' + r.sl_pct + '%', '#e74c3c') +
+      _snRow('TP1', r.tp1 + '  +' + r.tp1_pips + 'p / +' + r.tp1_pct + '%', '#27ae60') +
+      _snRow('TP2', r.tp2 + '  +' + r.tp2_pips + 'p / +' + r.tp2_pct + '%', '#2ecc71') +
       _snRow('RR', (r.rr1 || '') + ' / ' + (r.rr2 || ''), 'var(--gold)') +
       _snRow('CONF', conf + '%', confColor) +
     '</div>' +
@@ -3428,9 +3428,9 @@ function _copySniperSignal() {
   var dir = (s.direction || '').toLowerCase() === 'long' ? '\uD83D\uDFE2 LONG' : '\uD83D\uDD34 SHORT';
   var txt = dir + ' ' + (s.pair || '') + ' ' + (s.timeframe || '') + '\n' +
     'Entry:  ' + s.entry + '\n' +
-    'SL:     ' + s.sl + '  (' + s.sl_pips + ' pips)\n' +
-    'TP1:    ' + s.tp1 + '  (+' + s.tp1_pips + ' pips)\n' +
-    'TP2:    ' + s.tp2 + '  (+' + s.tp2_pips + ' pips)\n' +
+    'SL:     ' + s.sl + '  (-' + s.sl_pips + ' pips / -' + s.sl_pct + '%)\n' +
+    'TP1:    ' + s.tp1 + '  (+' + s.tp1_pips + ' pips / +' + s.tp1_pct + '%)\n' +
+    'TP2:    ' + s.tp2 + '  (+' + s.tp2_pips + ' pips / +' + s.tp2_pct + '%)\n' +
     'RR:     ' + (s.rr1 || '') + ' / ' + (s.rr2 || '') + '\n' +
     'Conf:   ' + (s.confidence || '') + '%\n\n' +
     (s.reasoning || '') + '\n\n' +
