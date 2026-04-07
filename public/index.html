@@ -6922,6 +6922,8 @@ function pickItem(item) {
   var picker=document.getElementById('brushColorPicker');
   if(picker) picker.style.display=(item.brush)?'flex':'none';
   buildToolbar();
+  /* Mobile drawing state machine hook */
+  if(typeof window._mobOnPickItem==='function') window._mobOnPickItem(item);
 }
 
 function handleSingle(g) {
@@ -7101,10 +7103,19 @@ function initDrawEvents(){
     else if(activeItem.hline){saveUndo();drawings.push({type:'hline',price:p2.price,ray:activeItem.ray});}
     else if(activeItem.arrowmark){saveUndo();drawings.push({type:'arrowmark',price:p2.price,bi:p2.bi,dir:activeItem.dir});}
     else{ saveUndo(); drawings.push(makeDrawing(p1,p2)); }
-    if(!lockedDraw) pickItem(GROUPS[0].items[0]);
-    _mobDraw.state='idle'; _mobDraw.p1co=null; _mobDraw.xhCo=null;
-    hoverPoint=null; drawStart=null; isDrawing=false;
-    renderChart();
+    if(!lockedDraw){
+      pickItem(GROUPS[0].items[0]); /* _mobOnPickItem called inside, cancels draw */
+    } else {
+      /* Stay on same tool — re-enter p1 (free crosshair for next drawing) */
+      _mobDraw.state='idle'; _mobDraw.p1co=null;
+      hoverPoint=null; drawStart=null; isDrawing=false;
+      window._mobOnPickItem&&window._mobOnPickItem(activeItem);
+    }
+    if(_mobDraw.state!=='p1') {
+      _mobDraw.state='idle'; _mobDraw.p1co=null; _mobDraw.xhCo=null;
+      hoverPoint=null; drawStart=null; isDrawing=false;
+      renderChart();
+    }
   }
 
   /* Cancel mobile draw (called when tool button re-tapped or cursor selected) */
@@ -7114,32 +7125,49 @@ function initDrawEvents(){
     renderChart();
   };
 
+  /* Called when a drawing tool is selected — immediately enter p1 (free crosshair) */
+  window._mobOnPickItem = function(item){
+    if(!item||item.id==='cursor'||item.id==='arrow_cur'||item.id==='dot'){
+      window._mobCancelDraw&&window._mobCancelDraw(); return;
+    }
+    if(!('ontouchstart' in window)) return; /* desktop: skip */
+    _mobDraw.state='p1'; _mobDraw.p1co=null; _mobDraw.dragging=false;
+    /* Init crosshair at chart center if not already positioned */
+    var cv2=document.getElementById('chartCanvas');
+    if(cv2){
+      var dpr2=window.devicePixelRatio||1;
+      var W2=cv2.width/dpr2, H2=cv2.height/dpr2;
+      var cx=_chartPAD.l+(W2-_chartPAD.l-_chartPAD.r)/2;
+      var cy=_chartPAD.t+(H2-_chartPAD.t-_chartPAD.b-_chartPAD.vol)/2;
+      var r2=cv2.getBoundingClientRect();
+      var scX2=(cv2.width/dpr2)/r2.width, scY2=(cv2.height/dpr2)/r2.height;
+      _mobDraw.xhCo=getCoords({clientX:r2.left+cx/scX2, clientY:r2.top+cy/scY2});
+      _mobDraw.xhOriginX=cx; _mobDraw.xhOriginY=cy;
+    }
+    _mobDraw.touchOriginX=0; _mobDraw.touchOriginY=0;
+    if(typeof renderChart==='function') renderChart();
+  };
+
   /* ── touchstart ── */
   cv.addEventListener('touchstart',function(e){
     if(e.touches.length!==1) return;
     var t=e.touches[0];
 
-    /* ── No tool: let pan/zoom handle it ── */
-    if(!_mobToolActive()){
+    /* ── No tool or idle: let pan/zoom handle it ── */
+    if(!_mobToolActive()||_mobDraw.state==='idle'){
       /* pass through to pan handler */
       return;
     }
 
-    /* ── Tool is active: hijack touch ── */
+    /* ── Tool is active and drawing in progress: hijack touch ── */
     e.stopImmediatePropagation();
     e.preventDefault();
 
     var fake={clientX:t.clientX,clientY:t.clientY};
     var co=getCoords(fake); if(!co) return;
 
-    if(_mobDraw.state==='idle'){
-      /* Finger down → show crosshair at touch point, wait for lift to place P1 */
-      _mobDraw.state='p1';
-      _mobDraw.xhCo=co;
-      hoverPoint=co;
-      renderChart();
-    } else if(_mobDraw.state==='p2'){
-      /* New finger-down in P2: record origin for delta movement, crosshair stays put */
+    if(_mobDraw.state==='p1'||_mobDraw.state==='p2'){
+      /* New finger-down: record delta origin — crosshair stays where it was, doesn't jump */
       _mobDraw.touchOriginX=t.clientX; _mobDraw.touchOriginY=t.clientY;
       if(_mobDraw.xhCo){
         _mobDraw.xhOriginX=_mobDraw.xhCo.x;
@@ -7152,7 +7180,7 @@ function initDrawEvents(){
   /* ── touchmove ── */
   cv.addEventListener('touchmove',function(e){
     if(e.touches.length!==1) return;
-    if(_mobDraw.state!=='p2') return;
+    if(_mobDraw.state!=='p2'&&_mobDraw.state!=='p1') return;
     e.stopImmediatePropagation();
     e.preventDefault();
 
@@ -7178,21 +7206,23 @@ function initDrawEvents(){
 
   /* ── touchend ── */
   cv.addEventListener('touchend',function(e){
-    if(!_mobToolActive()) return;
-    if(_mobDraw.state==='idle') return;
+    if(!_mobToolActive()||_mobDraw.state==='idle') return;
     e.stopImmediatePropagation();
     e.preventDefault();
 
     if(_mobDraw.state==='p1'){
-      /* Tap in p1 state → place P1 */
-      var t2=e.changedTouches[0];
-      var fake2={clientX:t2.clientX,clientY:t2.clientY};
-      var p1co=getCoords(fake2); if(!p1co) return;
-      if(activeItem.vline||activeItem.hline||activeItem.arrowmark){
-        _mobDraw.p1co=p1co; _mobDraw.xhCo=p1co; _mobCommit(); return;
+      if(_mobDraw.dragging){
+        /* Finger was dragging — freeze crosshair at last position, stay in p1 */
+        _mobDraw.dragging=false;
+        return;
       }
-      _mobDraw.p1co=p1co; _mobDraw.xhCo=p1co; _mobDraw.state='p2';
-      _mobDraw.touchOriginX=t2.clientX; _mobDraw.touchOriginY=t2.clientY;
+      /* Single tap (no drag) → place P1 at current crosshair position */
+      var p1co=_mobDraw.xhCo; if(!p1co) return;
+      if(activeItem.vline||activeItem.hline||activeItem.arrowmark){
+        _mobDraw.p1co=p1co; _mobCommit(); return;
+      }
+      _mobDraw.p1co=p1co; _mobDraw.state='p2';
+      _mobDraw.touchOriginX=0; _mobDraw.touchOriginY=0;
       _mobDraw.xhOriginX=p1co.x; _mobDraw.xhOriginY=p1co.y;
       _mobDraw.dragging=false;
       hoverPoint=p1co; drawStart=p1co; isDrawing=true;
