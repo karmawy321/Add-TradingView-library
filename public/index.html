@@ -1000,9 +1000,9 @@ if (isEmbedded) {
           <!-- Chart toolbar — always visible -->
           <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
             <div style="position:relative;display:inline-block">
-              <input type="text" id="pairIn" placeholder="Search symbol…" autocomplete="off"
-                oninput="onPairInput(this.value)" onkeydown="onPairKeyDown(event)"
-                style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:130px;outline:none;letter-spacing:.04em">
+              <input type="text" id="pairIn" placeholder="Search symbol… (/)" autocomplete="off" readonly
+                onclick="openSearchModal()"
+                style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:130px;outline:none;letter-spacing:.04em;cursor:pointer">
             </div>
             <select id="tfIn" onchange="onTfChange()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
               <option value="4h" selected>H4</option>
@@ -6472,90 +6472,128 @@ var COIN_LIST = [
   'ETHUSD','BTCUSD','XAUUSD','XAGUSD','EURUSD','GBPUSD','JPYUSD'
 ];
 
-function onPairInput(val){
-  var dd = document.getElementById('pairDropdown');
-  if(!dd) return;
-  var raw = val.trim().toUpperCase().replace('/','').replace('-','');
-  if(raw.length < 1){ dd.style.display='none'; return; }
-
-  /* In multi-layout mode just forward — no dropdown */
-  if(typeof activeIframeId!=='undefined' && activeIframeId!==null && !isEmbedded){
-    clearTimeout(pairInputTimer);
-    pairInputTimer = setTimeout(function(){
-      var iframe = document.getElementById(activeIframeId);
-      if(iframe && iframe.contentWindow)
-        iframe.contentWindow.postMessage({type:'setPair', symbol:resolveSymbol(raw)}, '*');
-    }, 400);
-    return;
-  }
-
-  /* Filter: starts-with first, then contains */
-  var starts   = COIN_LIST.filter(function(c){ return c.startsWith(raw); });
-  var contains = COIN_LIST.filter(function(c){ return !c.startsWith(raw) && c.indexOf(raw)!==-1; });
-  var matches  = starts.concat(contains).slice(0, 10);
-
-  if(!matches.length){ dd.style.display='none'; return; }
-
-  /* Position fixed dropdown below the input */
-  var inp2 = document.getElementById('pairIn');
-  if(inp2){ var r=inp2.getBoundingClientRect(); dd.style.top=(r.bottom+3)+'px'; dd.style.left=r.left+'px'; }
-
-  dd.innerHTML = matches.map(function(sym){
-    var base = sym.replace(/USDT|USDC|USD|BTC|ETH|BNB$/,'');
-    var quote = sym.slice(base.length);
-    return '<div class="pair-sug" data-sym="'+sym+'" onclick="selectPair(\''+sym+'\')"'
-      +' style="padding:8px 14px;cursor:pointer;font-family:\'DM Mono\',monospace;font-size:11px;'
-      +'color:#dce8ff;letter-spacing:.06em;border-bottom:1px solid rgba(255,255,255,.05);'
-      +'display:flex;align-items:center;gap:6px;"'
-      +' onmouseover="this.style.background=\'rgba(201,168,76,.1)\';this.style.color=\'#c9a84c\'"'
-      +' onmouseout="this.style.background=\'\';this.style.color=\'#dce8ff\'">'
-      +'<span style="color:#c9a84c;font-weight:700">'+base+'</span>'
-      +'<span style="color:rgba(201,168,76,.45);font-size:9px">'+quote+'</span>'
-      +'</div>';
-  }).join('');
-  dd.style.display = 'block';
-}
-
-function onPairKeyDown(e){
-  var dd = document.getElementById('pairDropdown');
-  if(e.key === 'Escape'){ if(dd) dd.style.display='none'; return; }
-  if(e.key === 'Enter'){
-    e.preventDefault();
-    var first = dd && dd.querySelector('.pair-sug');
-    if(first){ first.click(); return; }
-    /* No suggestions — resolve and load whatever was typed */
-    var raw = e.target.value.trim();
-    if(raw.length >= 2) selectPair(resolveSymbol(raw));
-  }
-}
-
 function selectPair(sym){
   var inp = document.getElementById('pairIn');
-  var dd  = document.getElementById('pairDropdown');
   if(inp) inp.value = sym;
-  if(dd)  dd.style.display = 'none';
+  
+  /* In multi-layout mode just forward */
+  if(typeof activeIframeId!=='undefined' && activeIframeId!==null && !isEmbedded){
+    var iframe = document.getElementById(activeIframeId);
+    if(iframe && iframe.contentWindow)
+      iframe.contentWindow.postMessage({type:'setPair', symbol:sym}, '*');
+    return;
+  }
+  
   loadChart(sym, document.getElementById('tfIn') ? document.getElementById('tfIn').value : '4h');
 }
 
-/* Create dropdown once, appended to correct root (body or fullscreen element) */
-(function(){
-  var dd = document.createElement('div');
-  dd.id = 'pairDropdown';
-  dd.style.cssText = 'display:none;position:fixed;min-width:170px;'
-    +'background:#06080d;border:1px solid rgba(201,168,76,.35);'
-    +'border-radius:2px;z-index:2147483647;'
-    +'box-shadow:0 8px 24px rgba(0,0,0,.8);'
-    +'overflow:hidden;';
-  (document.fullscreenElement || document.body).appendChild(dd);
-})();
+var _searchDebounce = null;
+var _currentSearchType = '';
 
-/* Close dropdown when clicking outside */
-document.addEventListener('click', function(e){
-  var dd = document.getElementById('pairDropdown');
-  if(!dd) return;
-  var inp = document.getElementById('pairIn');
-  if(!dd.contains(e.target) && e.target !== inp) dd.style.display = 'none';
+function openSearchModal(){
+  var mod = document.getElementById('searchModal');
+  if(mod) {
+    mod.style.display = 'flex';
+    var inp = document.getElementById('searchInputReal');
+    if(inp){
+       inp.value = '';
+       _currentSearchType = '';
+       document.querySelectorAll('.s-tab').forEach(function(tt){ tt.classList.remove('s-tab-active'); });
+       var allTab = document.querySelector('.s-tab[data-type=""]');
+       if(allTab) allTab.classList.add('s-tab-active');
+       executeSearch();
+       setTimeout(function(){ inp.focus(); }, 100);
+    }
+  }
+}
+
+function closeSearchModal(){
+  var mod = document.getElementById('searchModal');
+  if(mod) mod.style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    openSearchModal();
+  }
+  if (e.key === 'Escape') closeSearchModal();
 });
+
+document.addEventListener('DOMContentLoaded', function(){
+  // Bind tabs
+  var tabs = document.querySelectorAll('.s-tab');
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){
+      tabs.forEach(function(tt){ tt.classList.remove('s-tab-active'); });
+      t.classList.add('s-tab-active');
+      _currentSearchType = t.getAttribute('data-type');
+      executeSearch();
+    });
+  });
+
+  // Bind input
+  var inp = document.getElementById('searchInputReal');
+  if(inp){
+    inp.addEventListener('input', function(){
+      clearTimeout(_searchDebounce);
+      _searchDebounce = setTimeout(executeSearch, 350);
+    });
+  }
+  
+  // Close modal when clicking outside
+  document.addEventListener('mousedown', function(e){
+    var mod = document.getElementById('searchModal');
+    if(mod && mod.style.display === 'flex' && e.target === mod) {
+      closeSearchModal();
+    }
+  });
+});
+
+function executeSearch() {
+  var inp = document.getElementById('searchInputReal');
+  var query = inp ? inp.value.trim() : '';
+  var resDiv = document.getElementById('searchResults');
+  if(!resDiv) return;
+
+  var loadingHtml = '<div style="padding:24px;text-align:center;color:rgba(255,255,255,0.5)">Searching...</div>';
+  resDiv.innerHTML = loadingHtml;
+
+  var url = BACKEND_URL+'/search';
+  if(query.length > 0) url += '?q=' + encodeURIComponent(query);
+  else url += '?q=BTC'; // default loaded if empty
+
+  fetch(url)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var results = d.data || [];
+      if(_currentSearchType){
+        results = results.filter(function(r){
+          return r.instrument_type === _currentSearchType;
+        });
+      }
+      if(results.length === 0){
+        resDiv.innerHTML = '<div style="padding:24px;text-align:center;color:rgba(255,255,255,0.3)">No symbols found.</div>';
+        return;
+      }
+      resDiv.innerHTML = results.map(function(r){
+        var sym = r.symbol;
+        if(r.currency && sym.indexOf(r.currency) === -1 && r.instrument_type === 'Physical Currency') sym += r.currency; // safety
+        return '<div class="s-res-item" onclick="selectPair(\''+sym+'\');closeSearchModal()">'
+          +'<div class="s-res-info">'
+            +'<div class="s-res-symbol">'+sym+'</div>'
+            +'<div class="s-res-name">'+(r.instrument_name||'')+'</div>'
+          +'</div>'
+          +'<div class="s-res-meta">'
+            +'<span>'+(r.instrument_type||'').replace('Common Stock','Stock').replace('Physical Currency','Forex').replace('Digital Currency','Crypto')+'</span>'
+            +'<span class="s-res-exch">'+(r.exchange||'')+'</span>'
+          +'</div>'
+        +'</div>';
+      }).join('');
+    }).catch(function(){
+      resDiv.innerHTML = '<div style="padding:24px;text-align:center;color:#ef5350">Error fetching results.</div>';
+    });
+}
 
 function quickLoad(symbol){
   var p=document.getElementById('pairIn'); if(p) p.value=symbol;
@@ -9493,5 +9531,41 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
 </script>
 
 
+<!-- ADVANCED SYMBOL SEARCH MODAL -->
+<style>
+.s-tab { padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;transition:all 0.2s;white-space:nowrap; }
+.s-tab:hover { color:#fff;background:rgba(255,255,255,0.05); }
+.s-tab-active { color:#c9a84c !important;background:rgba(201,168,76,0.15) !important;box-shadow:inset 0 0 0 1px rgba(201,168,76,0.4); }
+.s-res-item { display:flex;align-items:center;padding:12px 24px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.03);transition:all 0.2s; }
+.s-res-item:hover { background:rgba(201,168,76,0.08);box-shadow:inset 2px 0 0 #c9a84c; }
+.s-res-info { flex:1;display:flex;flex-direction:column;gap:4px; }
+.s-res-symbol { font-weight:700;color:#f0f4fa;font-size:14px;letter-spacing:0.5px; }
+.s-res-name { font-size:12px;color:rgba(255,255,255,0.4); }
+.s-res-meta { display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(255,255,255,0.3); }
+.s-res-exch { padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.5); }
+</style>
+<div id="searchModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:2147483647;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+  <div style="background:#090b11;border:1px solid rgba(201,168,76,.3);width:90%;max-width:640px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.8);display:flex;flex-direction:column;max-height:85vh;overflow:hidden;">
+    <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:12px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="searchInputReal" placeholder="Search by symbol or name..." autocomplete="off" style="flex:1;background:transparent;border:none;color:#f0f4fa;font-size:16px;outline:none;font-family:'Inter',sans-serif;">
+      <button onclick="closeSearchModal()" style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+    </div>
+    <div style="padding:12px 24px;display:flex;gap:8px;border-bottom:1px solid rgba(255,255,255,0.06);overflow-x:auto;">
+      <div class="s-tab s-tab-active" data-type="">All</div>
+      <div class="s-tab" data-type="Common Stock">Stocks</div>
+      <div class="s-tab" data-type="Physical Currency">Forex</div>
+      <div class="s-tab" data-type="Digital Currency">Crypto</div>
+      <div class="s-tab" data-type="ETF">ETFs</div>
+      <div class="s-tab" data-type="Mutual Fund">Mutual Funds</div>
+    </div>
+    <div id="searchResults" style="flex:1;overflow-y:auto;padding:8px 0;min-height:300px;">
+      <!-- results injected here -->
+    </div>
+    <div style="padding:10px 24px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:rgba(255,255,255,0.3);text-align:center;">
+      Press <kbd style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;color:#c9a84c"> / </kbd> to open search
+    </div>
+  </div>
+</div>
 </body>
 </html>

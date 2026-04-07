@@ -881,7 +881,41 @@ app.get('/price/:symbol', rateLimit(30, 60000), (req, res) => {
   res.json({ price: lastCandle ? lastCandle.c : 0 });
 });
 
+// Symbol Search endpoint proxying TwelveData
+app.get('/search', rateLimit(60, 60000), (req, res) => {
+  const query = (req.query.q || '').trim();
+  if (!query) return res.json({ data: [] });
+  if (!TD_KEY) return res.json({ error: 'No TD_KEY configured', data: [] });
+
+  const params = new URLSearchParams({
+    symbol: query,
+    outputsize: '40',
+    source: 'docs', // sometimes required or useful
+    apikey: TD_KEY
+  });
+  
+  const reqUrl = `/symbol_search?${params.toString()}`;
+  const sReq = https.request({ hostname: 'api.twelvedata.com', path: reqUrl, method: 'GET' }, sRes => {
+    let data = '';
+    sRes.on('data', c => { data += c; });
+    sRes.on('end', () => {
+      try {
+        const json = JSON.parse(data);
+        if (json.status !== 'ok') {
+          return res.json({ data: [] });
+        }
+        res.json({ data: json.data || [] });
+      } catch (e) {
+        res.json({ data: [] });
+      }
+    });
+  });
+  sReq.on('error', () => res.json({ data: [] }));
+  sReq.end();
+});
+
 /* ═══════════════════════════════════════════════════
+
    ANTHROPIC API HELPER
    ═══════════════════════════════════════════════════ */
 
