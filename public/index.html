@@ -1209,7 +1209,7 @@ if (isEmbedded) {
             <div class="nd-canvas-wrap" style="min-height:300px">
               <canvas id="outCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>
               <canvas id="predCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:none"></canvas>
-              <canvas id="bpCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:none" height="90"></canvas>
+              <canvas id="bpCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:none"></canvas>
             </div>
           </div>
           <!-- Side signal panel -->
@@ -2591,10 +2591,9 @@ function drawPrediction(predicted){
 function drawBarPatternMap(r){
   var canvas=document.getElementById('bpCanvas'),ctx=canvas.getContext('2d'),img=new Image();
   img.onload=function(){
-    canvas.width=img.width;canvas.height=90;
+    canvas.width=img.width;canvas.height=img.height;
     var W=canvas.width,H=canvas.height;
-    ctx.fillStyle='#06080d';ctx.fillRect(0,0,W,H);
-    ctx.drawImage(img,0,0,W,img.height*(W/img.width));
+    ctx.drawImage(img,0,0,W,H);
     var clusters=r.bar_clusters||[];
     clusters.forEach(function(cl){
       var col=cl.color||'#c9a84c';
