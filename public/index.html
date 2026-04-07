@@ -354,6 +354,9 @@ section{padding:96px 48px}
 .ai-tc-cr{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:rgba(201,168,76,.9);background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.25);padding:1px 8px;border-radius:2px;letter-spacing:.03em;white-space:nowrap;line-height:1.3}
 .ai-tc-lock{font-size:11px;opacity:.35;line-height:1}
 .ai-tc-state{font-family:'DM Mono',monospace;font-size:9px;position:absolute;top:9px;right:10px;opacity:.75}
+#sniperCard{display:none;position:absolute;top:16px;right:80px;z-index:200;background:linear-gradient(160deg,#080d1c,#050810);border:1px solid rgba(201,168,76,.35);border-radius:5px;padding:12px 14px;width:192px;font-family:'DM Mono',monospace;box-shadow:0 8px 36px rgba(0,0,0,.75),inset 0 1px 0 rgba(255,255,255,.05);pointer-events:none}
+#sniperCard button{pointer-events:all}
+.sn-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:10px}
 .cost-badge{font-family:'DM Mono',monospace;font-size:8px;color:rgba(6,8,13,.65);background:rgba(6,8,13,.25);border:1px solid rgba(6,8,13,.18);padding:2px 7px;border-radius:1px;letter-spacing:.04em;white-space:nowrap}
 /* AI tool card sub text hidden below 640px handled in 600px block above */
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -1080,6 +1083,8 @@ if (isEmbedded) {
 
 
               <canvas id="chartCanvas" style="display:block;width:100%;height:560px;cursor:crosshair"></canvas>
+              <!-- Sniper signal floating card -->
+              <div id="sniperCard"></div>
               
               <!-- Chart watermark logo (TradingView-style with reverse animation) -->
               <a href="https://fractalaiagent.com" target="_blank" id="chartWatermark" style="position:absolute;bottom:12px;right:12px;z-index:50;display:flex;align-items:center;gap:6px;text-decoration:none;opacity:0.75;transition:opacity 0.2s">
@@ -3378,8 +3383,115 @@ var TOOLS = [
   { id:'mtf',     label:'MTF Confluence', sub:'Weekly · Daily · H4',       icon:'⊕', endpoint:'/mtf',         cost:8,  tier:'mentor' },
   { id:'age',     label:'Fractal Age',    sub:'Cycle timing · Urgency',    icon:'⧗', endpoint:'/fractal-age', cost:25, tier:'mentor' },
   { id:'liq',     label:'Liquidity Map',  sub:'Stop clusters · Sweeps',    icon:'◎', endpoint:'/liquidity',   cost:8,  tier:'mentor' },
-  { id:'journal', label:'Trade Journal',  sub:'AI graded · Coaching',      icon:'✦', endpoint:'/journal',     cost:20, tier:'mentor' }
+  { id:'journal', label:'Trade Journal',  sub:'AI graded · Coaching',      icon:'✦', endpoint:'/journal',     cost:20, tier:'mentor' },
+  { id:'sniper',  label:'Sniper',         sub:'Entry · SL · TP · Pips',    icon:'⌖', endpoint:'/sniper',      cost:5,  tier:'pro'    }
 ];
+
+/* ══ SNIPER SIGNAL ══ */
+window._sniperSignal = null;
+
+function _snRow(label, val, color) {
+  return '<div class="sn-row"><span style="color:#4e5d78">' + label + '</span><span style="color:' + color + ';font-weight:700">' + val + '</span></div>';
+}
+
+function renderSniper(r) {
+  window._sniperSignal = r;
+  var card = document.getElementById('sniperCard');
+  if (!card) return;
+  var isLong = (r.direction || '').toLowerCase() === 'long';
+  var dirColor = isLong ? '#27ae60' : '#e74c3c';
+  var dirLabel = isLong ? '▲ LONG' : '▼ SHORT';
+  var conf = parseInt(r.confidence) || 0;
+  var confColor = conf >= 70 ? '#27ae60' : conf >= 55 ? '#e67e22' : '#e74c3c';
+  card.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">' +
+      '<span style="font-size:13px;font-weight:700;color:' + dirColor + ';letter-spacing:.06em">' + dirLabel + '</span>' +
+      '<span style="font-size:9px;color:#4e5d78">' + (r.pair || '') + ' · ' + (r.timeframe || '') + '</span>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column">' +
+      _snRow('ENTRY', r.entry, '#c9a84c') +
+      _snRow('SL', r.sl + '  \u2212' + r.sl_pips + 'p', '#e74c3c') +
+      _snRow('TP1', r.tp1 + '  +' + r.tp1_pips + 'p', '#27ae60') +
+      _snRow('TP2', r.tp2 + '  +' + r.tp2_pips + 'p', '#2ecc71') +
+      _snRow('RR', (r.rr1 || '') + ' / ' + (r.rr2 || ''), 'var(--gold)') +
+      _snRow('CONF', conf + '%', confColor) +
+    '</div>' +
+    '<div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);font-size:8px;color:#4e5d78;line-height:1.55">' + (r.reasoning || '') + '</div>' +
+    '<button onclick="_copySniperSignal()" style="margin-top:9px;width:100%;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);color:#c9a84c;font-family:\'DM Mono\',monospace;font-size:9px;padding:5px 0;cursor:pointer;border-radius:2px;letter-spacing:.04em">Copy for Telegram \u2736</button>';
+  card.style.display = 'block';
+  renderChart();
+}
+
+function _copySniperSignal() {
+  var s = window._sniperSignal;
+  if (!s) return;
+  var dir = (s.direction || '').toLowerCase() === 'long' ? '\uD83D\uDFE2 LONG' : '\uD83D\uDD34 SHORT';
+  var txt = dir + ' ' + (s.pair || '') + ' ' + (s.timeframe || '') + '\n' +
+    'Entry:  ' + s.entry + '\n' +
+    'SL:     ' + s.sl + '  (' + s.sl_pips + ' pips)\n' +
+    'TP1:    ' + s.tp1 + '  (+' + s.tp1_pips + ' pips)\n' +
+    'TP2:    ' + s.tp2 + '  (+' + s.tp2_pips + ' pips)\n' +
+    'RR:     ' + (s.rr1 || '') + ' / ' + (s.rr2 || '') + '\n' +
+    'Conf:   ' + (s.confidence || '') + '%\n\n' +
+    (s.reasoning || '') + '\n\n' +
+    '\uD83D\uDCCA fractalaiagent.com';
+  navigator.clipboard.writeText(txt).then(function() {
+    var btn = document.querySelector('#sniperCard button');
+    if (btn) { btn.textContent = 'Copied! \u2713'; setTimeout(function() { btn.textContent = 'Copy for Telegram \u2736'; }, 2000); }
+  });
+}
+
+window._drawSniperOverlay = function(ctx, W, H) {
+  var sig = window._sniperSignal;
+  if (!sig || !sig.entry) return;
+  var PAD = { l:8, r:75, t:16, b:56, vol:40 };
+  var CH = H - PAD.t - PAD.b - PAD.vol;
+  function py(price) {
+    if (viewState.priceMax === viewState.priceMin) return PAD.t + CH / 2;
+    return PAD.t + CH - ((price - viewState.priceMin) / (viewState.priceMax - viewState.priceMin)) * CH;
+  }
+  var xL = PAD.l, xR = W - PAD.r;
+  var yEntry = py(sig.entry), ySL = py(sig.sl), yTP1 = py(sig.tp1), yTP2 = py(sig.tp2);
+  ctx.save();
+  /* Shaded zones */
+  ctx.fillStyle = 'rgba(231,76,60,0.08)';
+  ctx.fillRect(xL, Math.min(yEntry, ySL), xR - xL, Math.abs(ySL - yEntry));
+  ctx.fillStyle = 'rgba(39,174,96,0.09)';
+  ctx.fillRect(xL, Math.min(yEntry, yTP1), xR - xL, Math.abs(yTP1 - yEntry));
+  ctx.fillStyle = 'rgba(46,204,113,0.05)';
+  ctx.fillRect(xL, Math.min(yTP1, yTP2), xR - xL, Math.abs(yTP2 - yTP1));
+  /* SL line */
+  ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(xL, ySL); ctx.lineTo(xR, ySL); ctx.stroke();
+  /* TP2 line */
+  ctx.strokeStyle = '#2ecc71'; ctx.lineWidth = 1; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(xL, yTP2); ctx.lineTo(xR, yTP2); ctx.stroke();
+  /* TP1 line */
+  ctx.strokeStyle = '#27ae60'; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(xL, yTP1); ctx.lineTo(xR, yTP1); ctx.stroke();
+  /* Entry line */
+  ctx.strokeStyle = '#c9a84c'; ctx.lineWidth = 2; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(xL, yEntry); ctx.lineTo(xR, yEntry); ctx.stroke();
+  /* Labels — right-side badges */
+  ctx.font = 'bold 9px DM Mono'; ctx.textAlign = 'left';
+  var badges = [
+    { y: yEntry, bg: '#c9a84c',             fg: '#050810', txt: 'ENTRY ' + sig.entry },
+    { y: ySL,    bg: 'rgba(231,76,60,.85)', fg: '#fff',    txt: 'SL \u2212' + sig.sl_pips + 'p' },
+    { y: yTP1,   bg: 'rgba(39,174,96,.85)', fg: '#fff',    txt: 'TP1 +' + sig.tp1_pips + 'p' },
+    { y: yTP2,   bg: 'rgba(46,204,113,.7)', fg: '#fff',    txt: 'TP2 +' + sig.tp2_pips + 'p' }
+  ];
+  badges.forEach(function(b) {
+    ctx.fillStyle = b.bg;
+    ctx.fillRect(xR + 2, b.y - 8, 70, 14);
+    ctx.fillStyle = b.fg;
+    ctx.fillText(b.txt, xR + 5, b.y + 3);
+  });
+  /* Direction arrow at entry */
+  ctx.font = 'bold 13px DM Mono'; ctx.textAlign = 'left';
+  ctx.fillStyle = (sig.direction || '').toLowerCase() === 'long' ? '#27ae60' : '#e74c3c';
+  ctx.fillText((sig.direction || '').toLowerCase() === 'long' ? '\u25B2' : '\u25BC', xL + 6, yEntry - 5);
+  ctx.restore();
+};
 
 function buildToolGrid() {
   var grid = document.getElementById('aiToolGrid') || document.getElementById('toolGrid');
@@ -6524,6 +6636,7 @@ function executeTool(tool,imgData,candlePayload){
     else if(tool.id==='age'&&typeof renderFractalAge==='function')renderFractalAge(result);
     else if(tool.id==='liq'&&typeof renderLiquidity==='function')renderLiquidity(result);
     else if(tool.id==='journal'&&typeof renderJournal==='function')renderJournal(result);
+    else if(tool.id==='sniper'&&typeof renderSniper==='function')renderSniper(result);
     var ud=document.getElementById('uniDash');if(ud)ud.style.display='flex';
     var re=document.getElementById('rEmpty2');if(re)re.style.display='none';
     if(btn)btn.removeAttribute('disabled');
@@ -8554,6 +8667,8 @@ function patchRenderChart(){
     var mn=viewState.priceMin, mx=viewState.priceMax;
     var rng=mx-mn||mn*.001||.0001;
     drawAnnotations(ctx,{W:W,H:H,CW:CW,CH:CH,mn:mn,rng:rng,barW:barW,si:si,visible:visible});
+    /* Sniper signal overlay */
+    if(typeof window._drawSniperOverlay==='function') window._drawSniperOverlay(ctx,W,H);
     /* Mobile crosshair overlay — drawn last so it's always on top */
     if(typeof window._drawMobCrosshair==='function') window._drawMobCrosshair(ctx,W,H);
   };

@@ -996,6 +996,59 @@ Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
   callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 1500, res);
 });
 
+// /sniper - Sniper trade signal (entry, SL, TP with pips)
+app.post('/sniper', rateLimit(20, 60000), async (req, res) => {
+  const k = process.env.ANTHROPIC_API_KEY;
+  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
+  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
+  let _snipUserId = null;
+  try { const _snipR = await verifyAndDeduct(_token, 5); _snipUserId = _snipR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
+  const candleText = candles.map(candleLine).join('\n');
+  const p = `You are an elite trade signal analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} timeframe (${candles.length} candles, price range ${(priceMin||0).toFixed(6)} - ${(priceMax||0).toFixed(6)}). Reply in ${rl(l)}.
+
+OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
+${candleText}
+
+Generate ONE precise trade signal using SMC structure, key support/resistance, and Fibonacci confluence.
+Pip calculation rules:
+- Forex (EURUSD, GBPUSD, etc.): 1 pip = 0.0001. For JPY pairs (USDJPY, GBPJPY): 1 pip = 0.01.
+- Crypto (BTCUSDT, ETHUSDT, etc.): 1 pip = 1 whole price unit (round to nearest integer).
+- Gold (XAUUSD): 1 pip = 0.1.
+- Indices (US30, NAS100): 1 pip = 1 point.
+
+Respond with ONLY a valid JSON object, no markdown:
+{"pair":"str","timeframe":"str","direction":"long|short","entry":0.0,"sl":0.0,"tp1":0.0,"tp2":0.0,"sl_pips":0,"tp1_pips":0,"tp2_pips":0,"rr1":"1:1.1","rr2":"1:2.9","confidence":75,"reasoning":"1-2 sentence SMC/structure reasoning for this setup"}
+
+Rules: entry must be near the last candle close. sl must be beyond a real structure level (swing high/low). tp1 and tp2 must be at logical resistance/support. All prices must be realistic values from the data range.`;
+  callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 900, res, (txt) => {
+    if (!_snipUserId || !sbAdmin) return;
+    try {
+      const jm = txt.match(/\{[\s\S]*\}/);
+      if (!jm) return;
+      const sig = JSON.parse(jm[0]);
+      sbAdmin.from('sniper_signals').insert({
+        user_id: _snipUserId,
+        pair: sig.pair || pair,
+        timeframe: sig.timeframe || timeframe,
+        direction: sig.direction,
+        entry: sig.entry,
+        sl: sig.sl,
+        tp1: sig.tp1,
+        tp2: sig.tp2,
+        sl_pips: sig.sl_pips,
+        tp1_pips: sig.tp1_pips,
+        tp2_pips: sig.tp2_pips,
+        rr1: sig.rr1,
+        rr2: sig.rr2,
+        confidence: sig.confidence,
+        reasoning: sig.reasoning,
+        outcome: 'pending'
+      }).then(({ error }) => { if (error) console.error('[Sniper DB]', error.message); });
+    } catch(e) { console.error('[Sniper parse]', e.message); }
+  });
+});
+
 /* ═══════════════════════════════════════════════════
    🆕 PREDICTION TRACKING API ROUTES
    ═══════════════════════════════════════════════════ */
