@@ -6089,7 +6089,7 @@ function _syncChartViewFromViewState() {
 
 function loadChart(symbol,interval){
   if(!symbol) return;
-  var sym=symbol.toUpperCase().replace('/','').replace('-','');
+  var sym=symbol.toUpperCase().replace('/', '-'); // Keep URL safe but preserve format
   if(currentSymbol&&currentSymbol!==sym){
     var ud=document.getElementById('uniDash');if(ud)ud.style.display='none';
     var re=document.getElementById('rEmpty2');if(re)re.style.display='flex';
@@ -6127,12 +6127,10 @@ function loadChart(symbol,interval){
         autoBarPattern();
         if(typeof buildToolGrid==='function') buildToolGrid();
       } else {
-        if(isForexSymbol(sym)) fetchTwelveDataFallback(sym,currentInterval);
-        else fetchBinanceFallback(sym,currentInterval);
+        fetchTwelveDataFallback(sym,currentInterval);
       }
     }).catch(function(){
-      if(isForexSymbol(sym)) fetchTwelveDataFallback(sym,currentInterval);
-      else fetchBinanceFallback(sym,currentInterval);
+      fetchTwelveDataFallback(sym,currentInterval);
     });
 
   chartSSE=new EventSource(BACKEND_URL+'/subscribe/'+sym);
@@ -6199,7 +6197,7 @@ function loadChart(symbol,interval){
       if(d.price&&sym===currentSymbol)
         showLivePrice({symbol:sym,price:d.price,change_24h:d.change_pct,trend_24h:parseFloat(d.change_pct||0)>=0?'up':'dn'});
     })
-    .catch(function(){ if(isForexSymbol(sym)) fetchTwelveDataPrice(sym); });
+    .catch(function(){ fetchTwelveDataPrice(sym); });
 }
 
 function isForexSymbol(sym){
@@ -6310,12 +6308,10 @@ function onTfChange(){
         renderChart();
         autoBarPattern();
       } else {
-        if(isForexSymbol(currentSymbol)) fetchTwelveDataFallback(currentSymbol,currentInterval);
-        else fetchBinanceFallback(currentSymbol,currentInterval);
+        fetchTwelveDataFallback(currentSymbol,currentInterval);
       }
     }).catch(function(){
-      if(isForexSymbol(currentSymbol)) fetchTwelveDataFallback(currentSymbol,currentInterval);
-      else fetchBinanceFallback(currentSymbol,currentInterval);
+      fetchTwelveDataFallback(currentSymbol,currentInterval);
     });
 }
 
@@ -6580,9 +6576,9 @@ function executeSearch() {
         var sym = r.symbol;
         if(r.currency && sym.indexOf(r.currency) === -1 && r.instrument_type === 'Physical Currency') sym += r.currency; // safety
         return '<div class="s-res-item" onclick="selectPair(\''+sym+'\');closeSearchModal()">'
-          +'<div class="s-res-info">'
+          +'<div class="s-res-info" style="min-width:0">'
             +'<div class="s-res-symbol">'+sym+'</div>'
-            +'<div class="s-res-name">'+(r.instrument_name||'')+'</div>'
+            +'<div class="s-res-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(r.instrument_name||'')+'</div>'
           +'</div>'
           +'<div class="s-res-meta">'
             +'<span>'+(r.instrument_type||'').replace('Common Stock','Stock').replace('Physical Currency','Forex').replace('Digital Currency','Crypto')+'</span>'

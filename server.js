@@ -779,7 +779,7 @@ app.get('/privacy', (req, res) => sendPage('privacy.html', res));
    API ENDPOINTS
    ═══════════════════════════════════════════════════ */
 
-function validSymbol(s) { return typeof s === 'string' && /^[A-Z0-9]{2,20}$/.test(s); }
+function validSymbol(s) { return typeof s === 'string' && /^[A-Z0-9\/\-]{2,20}$/.test(s); }
 
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: Date.now() }));
 
@@ -797,7 +797,7 @@ app.get('/profile', (req, res) => sendPage('profile.html', res));
 app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
   const { symbol } = req.params;
   const tf = req.query.tf || '1h';
-  const sym = symbol.toUpperCase();
+  const sym = symbol.toUpperCase().replace('-', '/');
   if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
   connectTD(sym);
   ensureSymbol(sym);
@@ -807,7 +807,7 @@ app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
 
 // Historical candles endpoint — lazy scroll pagination via TwelveData
 app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
-  const sym      = req.params.symbol.toUpperCase();
+  const sym      = req.params.symbol.toUpperCase().replace('-', '/');
   const tf       = req.query.tf || '4h';
   const endTime  = parseInt(req.query.endTime, 10);
   if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
@@ -851,7 +851,7 @@ app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
   if (cur >= 5) return res.status(429).json({ error:'Too many SSE connections' });
   if (!validSymbol(req.params.symbol.toUpperCase())) return res.status(400).json({ error: 'Invalid symbol' });
   _sseConnCount.set(ip, cur + 1);
-  const sym = req.params.symbol.toUpperCase();
+  const sym = req.params.symbol.toUpperCase().replace('-', '/');
   connectTD(sym);
   ensureSymbol(sym);
   res.setHeader('Content-Type', 'text/event-stream');
@@ -871,7 +871,7 @@ app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
 
 // Current price endpoint
 app.get('/price/:symbol', rateLimit(30, 60000), (req, res) => {
-  const sym = req.params.symbol.toUpperCase();
+  const sym = req.params.symbol.toUpperCase().replace('-', '/');
   if (!validSymbol(sym)) return res.status(400).json({ price: 0 });
   connectTD(sym);
   ensureSymbol(sym);
