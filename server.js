@@ -789,7 +789,7 @@ app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
   connectTD(sym);
   ensureSymbol(sym);
   const arr = candles[sym][tf] || [];
-  res.json(arr);
+  res.json({ candles: arr });
 });
 
 // Historical candles endpoint — lazy scroll pagination via TwelveData
