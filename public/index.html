@@ -2882,7 +2882,8 @@ var TOOL_TIERS = {
   age:     'mentor',
   liq:     'mentor',
   journal: 'mentor',
-  proj: 'pro'
+  proj:    'pro',
+  sniper:  'starter'
 };
 
 /* User tier: 'free' | 'pro' | 'mentor' — set via auth later */
@@ -2890,8 +2891,9 @@ var userTier = 'mentor'; /* DEV MODE: full access */
 
 function tierAllows(tool){
   var t = TOOL_TIERS[tool];
-  if(t === 'pro') return userTier === 'pro' || userTier === 'mentor';
-  if(t === 'mentor') return userTier === 'mentor';
+  if(t === 'starter') return userTier === 'starter' || userTier === 'pro' || userTier === 'mentor';
+  if(t === 'pro')     return userTier === 'pro' || userTier === 'mentor';
+  if(t === 'mentor')  return userTier === 'mentor';
   return true;
 }
 
@@ -3384,7 +3386,7 @@ var TOOLS = [
   { id:'age',     label:'Fractal Age',    sub:'Cycle timing · Urgency',    icon:'⧗', endpoint:'/fractal-age', cost:25, tier:'mentor' },
   { id:'liq',     label:'Liquidity Map',  sub:'Stop clusters · Sweeps',    icon:'◎', endpoint:'/liquidity',   cost:8,  tier:'mentor' },
   { id:'journal', label:'Trade Journal',  sub:'AI graded · Coaching',      icon:'✦', endpoint:'/journal',     cost:20, tier:'mentor' },
-  { id:'sniper',  label:'Sniper',         sub:'Entry · SL · TP · Pips',    icon:'⊗', endpoint:'/sniper',      cost:5,  tier:'pro'    }
+  { id:'sniper',  label:'Sniper',         sub:'Entry · SL · TP · Pips',    icon:'⊗', endpoint:'/sniper',      cost:5,  tier:'starter' }
 ];
 
 /* ══ SNIPER SIGNAL ══ */
@@ -3561,6 +3563,13 @@ async function refreshSession(){
       localStorage.setItem('fractal_credits', creditBalance);
       var displayName = profile.username || currentUser.email.split('@')[0];
       localStorage.setItem('fractal_username', displayName);
+      /* Set tier for tool gating */
+      var plan = profile.plan || 'free';
+      userTier = (plan === 'mentor' || plan === 'elite' || plan === 'institutional') ? 'mentor'
+               : (plan === 'pro') ? 'pro'
+               : (plan === 'starter') ? 'starter'
+               : 'free';
+      buildToolGrid();
       showLoggedIn(currentUser.email, creditBalance);
     }
   } catch(e){}
