@@ -1742,7 +1742,18 @@ app.listen(PORT, () => {
   console.log('Anthropic key:', !!process.env.ANTHROPIC_API_KEY);
   console.log('Stripe:',        !!stripe);
   console.log('Supabase:',      !!sbAdmin);
-  
+
+  /* Prefetch history for high-traffic pairs so first user gets instant data */
+  const PREFETCH = ['XAUUSD','BTCUSDT','ETHUSDT','EURUSD','GBPUSD','SOLUSDT'];
+  console.log('📦 Prefetching candle history for:', PREFETCH.join(', '));
+  PREFETCH.forEach((sym, i) => {
+    /* Stagger requests 1s apart to avoid rate-limit burst on startup */
+    setTimeout(() => {
+      ensureSymbol(sym);
+      if (!tdLoaded[sym]) { tdLoaded[sym] = true; fetchTDHistory(sym); }
+    }, i * 1000);
+  });
+
   cron.schedule('0 2 * * *', () => {
     console.log('\n⏰ [Scheduled] Running daily prediction check...');
     checkPredictions();
