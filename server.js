@@ -1020,7 +1020,7 @@ Pip calculation rules:
 Respond with ONLY a valid JSON object, no markdown:
 {"pair":"str","timeframe":"str","direction":"long|short","entry":0.0,"sl":0.0,"tp1":0.0,"tp2":0.0,"sl_pips":0,"tp1_pips":0,"tp2_pips":0,"rr1":"1:1.1","rr2":"1:2.9","confidence":75,"reasoning":"1-2 sentence SMC/structure reasoning for this setup"}
 
-Rules: entry must be near the last candle close. sl must be beyond a real structure level (swing high/low). tp1 and tp2 must be at logical resistance/support. All prices must be realistic values from the data range.`;
+Rules: entry must be near the last candle close. sl must be beyond a real structure level (swing high/low). tp1 must achieve a minimum 1:1 RR (tp1_pips >= sl_pips). tp2 must be at a further logical target with at least 1.5:1 RR. All prices must be realistic values from the data range. If no valid 1:1 setup exists, still return the best available setup but set confidence below 55.`;
   callAnthropic(k, 'claude-sonnet-4-5', p, null, null, 900, res, (txt) => {
     if (!_snipUserId || !sbAdmin) return;
     try {
