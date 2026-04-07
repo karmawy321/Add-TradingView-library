@@ -1854,7 +1854,7 @@ app.listen(PORT, () => {
     setTimeout(() => {
       ensureSymbol(sym);
       tdLoaded[sym] = true;
-      fetchTDDaily(sym); /* daily only — intraday fetched on first user open */
+      fetchTDHistory(sym); /* fetch all frames concurrently on startup */
     }, i * 2000); /* 2s apart = safe under TwelveData rate limits */
   });
 
