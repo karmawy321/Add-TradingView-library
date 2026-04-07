@@ -519,41 +519,10 @@ function aggregateCandles(src, periodMs) {
   return out;
 }
 
-/* Derive all higher timeframes from 1m candles as fallback */
-function deriveFromM1(symbol) {
-  const m1 = candles[symbol]['1m'];
-  if (!m1 || m1.length < 5) return;
-  ['5m','15m','30m','1h','4h','1d','1w'].forEach(tf => {
-    const arr = candles[symbol][tf];
-    if (arr && arr.length > 0) return; /* already loaded from REST — don't overwrite */
-    const derived = aggregateCandles(m1, TF_MS[tf]);
-    if (derived.length > 0) {
-      arr.length = 0;
-      derived.forEach(c => arr.push(c));
-      console.log(`[TwelveData] Derived ${arr.length} ${tf} candles for ${symbol} from 1m`);
-    }
-  });
-}
 
-function fetchTDHistory(symbol) {
-  if (!TD_KEY) { console.warn('[TwelveData] No API key'); return; }
-  ensureSymbol(symbol);
-  const tdSym = toTDSymbol(symbol);
-  let pending = 0;
-  let completed = 0;
-
-  function onDone() {
-    completed++;
-    if (completed === pending) {
-      /* All REST fetches done — fill any empty timeframes from 1m */
-      deriveFromM1(symbol);
-    }
-  }
-
-  TIMEFRAMES.forEach(tf => {
-    const tdInterval = TD_TF[tf];
-    if (!tdInterval) return;
-    pending++;
+/* Fetch one timeframe from TwelveData REST, returns Promise<candle[]> */
+function fetchTDSingle(tdSym, tdInterval) {
+  return new Promise(resolve => {
     const path = `/time_series?symbol=${encodeURIComponent(tdSym)}&interval=${tdInterval}&outputsize=500&apikey=${TD_KEY}`;
     const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
       let data = '';
@@ -562,27 +531,61 @@ function fetchTDHistory(symbol) {
         try {
           const json = JSON.parse(data);
           if (json.status !== 'ok' || !Array.isArray(json.values)) {
-            console.warn(`[TwelveData] ${symbol} ${tf}:`, json.message || json.status);
-            onDone(); return;
+            console.warn(`[TwelveData] ${tdSym} ${tdInterval}:`, json.message || json.status);
+            return resolve([]);
           }
-          const arr = candles[symbol][tf];
-          arr.length = 0;
-          json.values.slice().reverse().forEach(v => {
-            arr.push({
-              t: tdTs(v.datetime),
-              o: parseFloat(v.open), h: parseFloat(v.high),
-              l: parseFloat(v.low),  c: parseFloat(v.close),
-              v: parseFloat(v.volume || 0)
-            });
-          });
-          console.log(`[TwelveData] Loaded ${arr.length} ${tf} candles for ${symbol}`);
-        } catch(e) { console.error('[TwelveData] parse error', e.message); }
-        onDone();
+          const out = json.values.slice().reverse().map(v => ({
+            t: tdTs(v.datetime),
+            o: parseFloat(v.open), h: parseFloat(v.high),
+            l: parseFloat(v.low),  c: parseFloat(v.close),
+            v: parseFloat(v.volume || 0)
+          }));
+          console.log(`[TwelveData] Loaded ${out.length} ${tdInterval} candles for ${tdSym}`);
+          resolve(out);
+        } catch(e) { console.error('[TwelveData] parse error', e.message); resolve([]); }
       });
     });
-    req.on('error', e => { console.error('[TwelveData] request error', e.message); onDone(); });
+    req.on('error', e => { console.error('[TwelveData] request error', e.message); resolve([]); });
     req.end();
   });
+}
+
+async function fetchTDHistory(symbol) {
+  if (!TD_KEY) { console.warn('[TwelveData] No API key'); return; }
+  ensureSymbol(symbol);
+  const tdSym = toTDSymbol(symbol);
+
+  /* Fetch 3 anchor timeframes — staggered to avoid rate limit burst */
+  const m1  = await fetchTDSingle(tdSym, '1min');
+  await new Promise(r => setTimeout(r, 500));
+  const h1  = await fetchTDSingle(tdSym, '1h');
+  await new Promise(r => setTimeout(r, 500));
+  const d1  = await fetchTDSingle(tdSym, '1day');
+
+  /* Store anchors */
+  const store = (tf, arr) => {
+    if (!arr.length) return;
+    candles[symbol][tf].length = 0;
+    arr.forEach(c => candles[symbol][tf].push(c));
+  };
+  store('1m', m1);
+  store('1h', h1);
+  store('1d', d1);
+
+  /* Derive all other timeframes from best available source */
+  const deriveFrom = (src, targets) => {
+    if (!src.length) return;
+    targets.forEach(tf => {
+      if (candles[symbol][tf].length > 0) return; /* already have it */
+      const derived = aggregateCandles(src, TF_MS[tf]);
+      store(tf, derived);
+      if (derived.length) console.log(`[TwelveData] Derived ${derived.length} ${tf} candles for ${symbol}`);
+    });
+  };
+
+  deriveFrom(m1, ['5m','15m','30m']);   /* from 1m: short intraday */
+  deriveFrom(h1, ['4h','1m','5m','15m','30m']); /* from 1h: fill gaps + 4h */
+  deriveFrom(d1, ['1w']);               /* from 1d: weekly */
 }
 
 /* ═══════════════════════════════════════════════════
