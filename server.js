@@ -547,7 +547,6 @@ function fetchTDHistory(symbol) {
    WS2: major crypto BTC/USD ETH/USD SOL/USD (always on)
    WS3: dynamic — user-requested symbols (subscribe on demand)
    ═══════════════════════════════════════════════════ */
-const WebSocket = require('ws');
 
 /* Reverse map: TwelveData symbol → internal symbol (e.g. BTC/USD → BTCUSDT) */
 const _tdToInternal = {};
