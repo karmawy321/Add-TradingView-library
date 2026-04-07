@@ -6309,8 +6309,14 @@ function onTfChange(){
         allCandleData[currentSymbol][currentInterval]=d.candles;
         renderChart();
         autoBarPattern();
-      } else { fetchBinanceFallback(currentSymbol,currentInterval); }
-    }).catch(function(){ fetchBinanceFallback(currentSymbol,currentInterval); });
+      } else {
+        if(isForexSymbol(currentSymbol)) fetchTwelveDataFallback(currentSymbol,currentInterval);
+        else fetchBinanceFallback(currentSymbol,currentInterval);
+      }
+    }).catch(function(){
+      if(isForexSymbol(currentSymbol)) fetchTwelveDataFallback(currentSymbol,currentInterval);
+      else fetchBinanceFallback(currentSymbol,currentInterval);
+    });
 }
 
 var _historyCheckTimer = null;
