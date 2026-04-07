@@ -183,9 +183,12 @@ async function trySavePrediction(toolName, text, pair, timeframe, userId) {
     const sym = (pair||'BTCUSDT').toUpperCase().replace('/','');
     let currentPrice = 0;
     try {
+      const tdSym = toTDSymbol(sym);
       const pr = await new Promise((resolve, reject) => {
-        const opts = { hostname:'api.binance.com', path:'/api/v3/ticker/price?symbol='+sym, method:'GET' };
-        const req = https.request(opts, res => { let d=''; res.on('data',c=>d+=c); res.on('end',()=>{ try{resolve(JSON.parse(d));}catch(e){resolve({});} }); });
+        const path = `/price?symbol=${encodeURIComponent(tdSym)}&apikey=${TD_KEY}`;
+        const req = https.request({ hostname:'api.twelvedata.com', path, method:'GET' }, res => {
+          let d=''; res.on('data',c=>d+=c); res.on('end',()=>{ try{resolve(JSON.parse(d));}catch(e){resolve({});} });
+        });
         req.on('error', reject); req.end();
       });
       currentPrice = parseFloat(pr.price) || 0;
@@ -249,8 +252,9 @@ async function checkPredictions() {
 
   for (const prediction of pendingPredictions) {
     try {
+      const tdSym2 = toTDSymbol(prediction.asset);
       const response = await axios.get(
-        `https://api.binance.com/api/v3/ticker/price?symbol=${prediction.asset}`
+        `https://api.twelvedata.com/price?symbol=${encodeURIComponent(tdSym2)}&apikey=${TD_KEY}`
       );
       const actualPrice = parseFloat(response.data.price);
 
@@ -466,83 +470,105 @@ function pushSSE(sym) {
   }, 1000);
 }
 
-const binanceWs      = {};
-const binancePollers = {};
+/* ═══════════════════════════════════════════════════
+   TWELVEDATA DATA SOURCE
+   ═══════════════════════════════════════════════════ */
+const TD_KEY      = process.env.TWELVEDATA_API_KEY || '';
+const tdPollers   = {};
+const tdLoaded    = {};
 
-function connectBinance(symbol) {
-  const lower = symbol.toLowerCase();
-  if (binanceWs[lower]) return;
-  fetchBinanceHistory(symbol.toUpperCase());
-  const wsUrls = [
-    `wss://stream.binance.com:9443/ws/${lower}@aggTrade`,
-    `wss://stream.binance.com:443/ws/${lower}@aggTrade`,
-    `wss://stream1.binance.com:9443/ws/${lower}@aggTrade`,
-    `wss://stream.binance.us:9443/ws/${lower}@aggTrade`
-  ];
-  let urlIdx = 0;
-  function tryConnect() {
-    if (urlIdx >= wsUrls.length) { startBinancePolling(symbol.toUpperCase()); return; }
-    const ws = new WebSocket(wsUrls[urlIdx]);
-    ws.on('open',    () => console.log(`[Binance] Connected: ${symbol}`));
-    ws.on('message', raw => {
-      try { const m = JSON.parse(raw); processTick(symbol.toUpperCase(), parseFloat(m.p), parseFloat(m.q), m.T || Date.now()); } catch(e) {}
-    });
-    ws.on('close', () => { delete binanceWs[lower]; });
-    ws.on('error', err => { ws.terminate(); urlIdx++; setTimeout(tryConnect, 1000); });
-    binanceWs[lower] = ws;
-  }
-  tryConnect();
+/* Convert internal symbol (BTCUSDT, EURUSD, XAUUSD) → TwelveData format (BTC/USD, EUR/USD, XAU/USD) */
+function toTDSymbol(sym) {
+  const s = sym.toUpperCase();
+  // Crypto: ends with USDT or USDC
+  if (s.endsWith('USDT')) return s.replace('USDT', '/USD');
+  if (s.endsWith('USDC')) return s.replace('USDC', '/USD');
+  if (s.endsWith('BTC'))  return s.replace('BTC',  '/BTC');
+  // Forex / metals: 6-char pairs like EURUSD, XAUUSD, GBPJPY
+  if (s.length === 6) return s.slice(0, 3) + '/' + s.slice(3);
+  // Already has slash
+  if (s.includes('/')) return s;
+  return s;
 }
 
-function startBinancePolling(symbol) {
-  if (binancePollers[symbol]) return;
-  binancePollers[symbol] = setInterval(() => {
-    const req = https.request({ hostname: 'api.binance.com', path: `/api/v3/ticker/24hr?symbol=${symbol}`, method: 'GET' }, res => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => { try { const d = JSON.parse(data); if (d.lastPrice) processTick(symbol, parseFloat(d.lastPrice), parseFloat(d.lastQty||0), Date.now()); } catch(e) {} });
-    });
-    req.on('error', () => {}); req.end();
-  }, 3000);
+/* Convert TwelveData interval names */
+const TD_TF = { '1m':'1min','5m':'5min','15m':'15min','1h':'1h','4h':'4h','1d':'1day' };
+
+/* Parse TwelveData datetime string → Unix ms */
+function tdTs(dt) {
+  return new Date(dt.replace(' ', 'T') + 'Z').getTime();
 }
 
-function stopBinancePolling(symbol) {
-  if (binancePollers[symbol]) { clearInterval(binancePollers[symbol]); delete binancePollers[symbol]; }
-}
-
-function fetchBinanceHistory(symbol) {
-  const tfMap = { '1m':'1m','5m':'5m','15m':'15m','1h':'1h','4h':'4h','1d':'1d' };
+function fetchTDHistory(symbol) {
+  if (!TD_KEY) { console.warn('[TwelveData] No API key'); return; }
   ensureSymbol(symbol);
+  const tdSym = toTDSymbol(symbol);
   TIMEFRAMES.forEach(tf => {
-    const binanceTf = tfMap[tf];
-    if (!binanceTf) return;
-    const path = `/api/v3/klines?symbol=${symbol}&interval=${binanceTf}&limit=500`;
-    const req = https.request({ hostname: 'api.binance.com', path, method: 'GET' }, res => {
+    const tdInterval = TD_TF[tf];
+    if (!tdInterval) return;
+    const path = `/time_series?symbol=${encodeURIComponent(tdSym)}&interval=${tdInterval}&outputsize=500&apikey=${TD_KEY}`;
+    const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
       let data = '';
       res.on('data', c => { data += c; });
       res.on('end', () => {
         try {
-          const klines = JSON.parse(data);
-          if (Array.isArray(klines)) {
-            const arr = candles[symbol][tf];
-            arr.length = 0;
-            klines.forEach(k => {
-              arr.push({
-                t: k[0],
-                o: parseFloat(k[1]),
-                h: parseFloat(k[2]),
-                l: parseFloat(k[3]),
-                c: parseFloat(k[4]),
-                v: parseFloat(k[5])
-              });
-            });
-            console.log(`[Binance] Loaded ${arr.length} ${tf} candles for ${symbol}`);
+          const json = JSON.parse(data);
+          if (json.status !== 'ok' || !Array.isArray(json.values)) {
+            console.warn(`[TwelveData] ${symbol} ${tf}:`, json.message || json.status);
+            return;
           }
+          const arr = candles[symbol][tf];
+          arr.length = 0;
+          /* TwelveData returns newest-first — reverse to oldest-first */
+          json.values.slice().reverse().forEach(v => {
+            arr.push({
+              t: tdTs(v.datetime),
+              o: parseFloat(v.open),
+              h: parseFloat(v.high),
+              l: parseFloat(v.low),
+              c: parseFloat(v.close),
+              v: parseFloat(v.volume || 0)
+            });
+          });
+          console.log(`[TwelveData] Loaded ${arr.length} ${tf} candles for ${symbol}`);
+        } catch(e) { console.error('[TwelveData] parse error', e.message); }
+      });
+    });
+    req.on('error', e => console.error('[TwelveData] request error', e.message));
+    req.end();
+  });
+}
+
+function startTDPolling(symbol) {
+  if (tdPollers[symbol]) return;
+  if (!TD_KEY) return;
+  const tdSym = toTDSymbol(symbol);
+  tdPollers[symbol] = setInterval(() => {
+    const path = `/price?symbol=${encodeURIComponent(tdSym)}&apikey=${TD_KEY}`;
+    const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const price = parseFloat(json.price);
+          if (price) processTick(symbol, price, 0, Date.now());
         } catch(e) {}
       });
     });
-    req.on('error', () => {}); req.end();
-  });
+    req.on('error', () => {});
+    req.end();
+  }, 10000); /* poll every 10s */
+}
+
+function connectTD(symbol) {
+  const sym = symbol.toUpperCase();
+  ensureSymbol(sym);
+  if (!tdLoaded[sym]) {
+    tdLoaded[sym] = true;
+    fetchTDHistory(sym);
+  }
+  startTDPolling(sym);
 }
 
 const app = express();
@@ -615,38 +641,44 @@ app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
   const tf = req.query.tf || '1h';
   const sym = symbol.toUpperCase();
   if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
-  connectBinance(sym);
+  connectTD(sym);
   ensureSymbol(sym);
   const arr = candles[sym][tf] || [];
   res.json(arr);
 });
 
-// Historical candles endpoint — lazy scroll pagination
+// Historical candles endpoint — lazy scroll pagination via TwelveData
 app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
-  const sym     = req.params.symbol.toUpperCase();
-  const tf      = req.query.tf || '4h';
-  const endTime = parseInt(req.query.endTime, 10);
+  const sym      = req.params.symbol.toUpperCase();
+  const tf       = req.query.tf || '4h';
+  const endTime  = parseInt(req.query.endTime, 10);
   if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
-  const tfMap   = { '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' };
-  const interval = tfMap[tf];
-  if (!interval || !endTime || endTime < 0) return res.status(400).json({ candles: [] });
-  const path = `/api/v3/klines?symbol=${sym}&interval=${interval}&limit=500&endTime=${endTime}`;
-  const breq = https.request({ hostname:'api.binance.com', path, method:'GET' }, bres => {
+  if (!TD_KEY) return res.status(500).json({ candles: [] });
+  const tdInterval = TD_TF[tf];
+  if (!tdInterval || !endTime || endTime < 0) return res.status(400).json({ candles: [] });
+  const tdSym  = toTDSymbol(sym);
+  /* Convert endTime ms → ISO date string for TwelveData end_date param */
+  const endDate = new Date(endTime).toISOString().slice(0, 19).replace('T', ' ');
+  const path = `/time_series?symbol=${encodeURIComponent(tdSym)}&interval=${tdInterval}&outputsize=500&end_date=${encodeURIComponent(endDate)}&apikey=${TD_KEY}`;
+  const treq = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, tres => {
     let data = '';
-    bres.on('data', c => { data += c; });
-    bres.on('end', () => {
+    tres.on('data', c => { data += c; });
+    tres.on('end', () => {
       try {
-        const klines = JSON.parse(data);
-        if (!Array.isArray(klines)) return res.json({ candles: [] });
-        res.json({ candles: klines.map(k => ({
-          t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]),
-          l: parseFloat(k[3]), c: parseFloat(k[4]), v: parseFloat(k[5])
-        }))});
+        const json = JSON.parse(data);
+        if (json.status !== 'ok' || !Array.isArray(json.values)) return res.json({ candles: [] });
+        const out = json.values.slice().reverse().map(v => ({
+          t: tdTs(v.datetime),
+          o: parseFloat(v.open),  h: parseFloat(v.high),
+          l: parseFloat(v.low),   c: parseFloat(v.close),
+          v: parseFloat(v.volume || 0)
+        }));
+        res.json({ candles: out });
       } catch(e) { res.json({ candles: [] }); }
     });
   });
-  breq.on('error', () => res.json({ candles: [] }));
-  breq.end();
+  treq.on('error', () => res.json({ candles: [] }));
+  treq.end();
 });
 
 // Subscribe SSE — max 5 concurrent connections per IP
@@ -658,7 +690,7 @@ app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
   if (!validSymbol(req.params.symbol.toUpperCase())) return res.status(400).json({ error: 'Invalid symbol' });
   _sseConnCount.set(ip, cur + 1);
   const sym = req.params.symbol.toUpperCase();
-  connectBinance(sym);
+  connectTD(sym);
   ensureSymbol(sym);
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -677,7 +709,7 @@ app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
 app.get('/price/:symbol', rateLimit(30, 60000), (req, res) => {
   const sym = req.params.symbol.toUpperCase();
   if (!validSymbol(sym)) return res.status(400).json({ price: 0 });
-  connectBinance(sym);
+  connectTD(sym);
   ensureSymbol(sym);
   const tf = '1m';
   const arr = candles[sym][tf] || [];
