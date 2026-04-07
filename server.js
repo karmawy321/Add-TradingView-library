@@ -473,9 +473,8 @@ function pushSSE(sym) {
 /* ═══════════════════════════════════════════════════
    TWELVEDATA DATA SOURCE
    ═══════════════════════════════════════════════════ */
-const TD_KEY      = process.env.TWELVEDATA_API_KEY || '';
-const tdPollers   = {};
-const tdLoaded    = {};
+const TD_KEY  = process.env.TWELVEDATA_API_KEY || '';
+const tdLoaded = {};
 
 /* Convert internal symbol (BTCUSDT, EURUSD, XAUUSD) → TwelveData format (BTC/USD, EUR/USD, XAU/USD) */
 function toTDSymbol(sym) {
@@ -542,26 +541,103 @@ function fetchTDHistory(symbol) {
   });
 }
 
-function startTDPolling(symbol) {
-  if (tdPollers[symbol]) return;
-  if (!TD_KEY) return;
-  const tdSym = toTDSymbol(symbol);
-  tdPollers[symbol] = setInterval(() => {
-    const path = `/price?symbol=${encodeURIComponent(tdSym)}&apikey=${TD_KEY}`;
-    const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          const price = parseFloat(json.price);
-          if (price) processTick(symbol, price, 0, Date.now());
-        } catch(e) {}
-      });
+/* ═══════════════════════════════════════════════════
+   TWELVEDATA WEBSOCKET — 3-socket architecture
+   WS1: XAU/USD (gold, always on — priority)
+   WS2: major crypto BTC/USD ETH/USD SOL/USD (always on)
+   WS3: dynamic — user-requested symbols (subscribe on demand)
+   ═══════════════════════════════════════════════════ */
+const WebSocket = require('ws');
+
+/* Reverse map: TwelveData symbol → internal symbol (e.g. BTC/USD → BTCUSDT) */
+const _tdToInternal = {};
+function fromTDSymbol(tdSym) { return _tdToInternal[tdSym] || tdSym.replace('/', ''); }
+
+/* Create and manage one TwelveData WebSocket connection */
+function createTDSocket(name, initialSymbols) {
+  if (!TD_KEY) return null;
+  let ws = null;
+  let subscribed = new Set(initialSymbols);
+  let ready = false;
+  let reconnectTimer = null;
+
+  function connect() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    ws = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${TD_KEY}`);
+
+    ws.on('open', () => {
+      ready = true;
+      console.log(`[TDws:${name}] connected`);
+      if (subscribed.size > 0) {
+        ws.send(JSON.stringify({ action:'subscribe', params:{ symbols: [...subscribed].join(',') } }));
+      }
     });
-    req.on('error', () => {});
-    req.end();
-  }, 10000); /* poll every 10s */
+
+    ws.on('message', raw => {
+      try {
+        const msg = JSON.parse(raw);
+        if (msg.event === 'price') {
+          const internalSym = fromTDSymbol(msg.symbol);
+          const price = parseFloat(msg.price);
+          if (price && internalSym) processTick(internalSym, price, 0, (msg.timestamp || 0) * 1000 || Date.now());
+        }
+      } catch(e) {}
+    });
+
+    ws.on('close', () => {
+      ready = false;
+      console.log(`[TDws:${name}] closed — reconnecting in 5s`);
+      reconnectTimer = setTimeout(connect, 5000);
+    });
+
+    ws.on('error', e => {
+      console.error(`[TDws:${name}] error:`, e.message);
+      ws.terminate();
+    });
+  }
+
+  connect();
+
+  return {
+    subscribe(tdSym) {
+      subscribed.add(tdSym);
+      if (ready && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action:'subscribe', params:{ symbols: tdSym } }));
+        console.log(`[TDws:${name}] subscribed ${tdSym}`);
+      }
+    },
+    unsubscribe(tdSym) {
+      subscribed.delete(tdSym);
+      if (ready && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action:'unsubscribe', params:{ symbols: tdSym } }));
+        console.log(`[TDws:${name}] unsubscribed ${tdSym}`);
+      }
+    },
+    has(tdSym) { return subscribed.has(tdSym); }
+  };
+}
+
+/* Initialise the 3 sockets */
+const _tdWS1 = TD_KEY ? createTDSocket('gold',   ['XAU/USD']) : null;
+const _tdWS2 = TD_KEY ? createTDSocket('major',  ['BTC/USD','ETH/USD','SOL/USD']) : null;
+const _tdWS3 = TD_KEY ? createTDSocket('dynamic', []) : null;
+
+/* Register reverse-map entries for always-on symbols */
+['XAUUSD','BTCUSDT','ETHUSDT','SOLUSDT'].forEach(s => { _tdToInternal[toTDSymbol(s)] = s; });
+
+/* Subscribe a symbol on WS3 (dynamic), avoiding duplicates with WS1/WS2 */
+function tdWSSubscribe(internalSym) {
+  const tdSym = toTDSymbol(internalSym);
+  _tdToInternal[tdSym] = internalSym;
+  if (_tdWS1 && _tdWS1.has(tdSym)) return;
+  if (_tdWS2 && _tdWS2.has(tdSym)) return;
+  if (_tdWS3 && !_tdWS3.has(tdSym)) _tdWS3.subscribe(tdSym);
+}
+
+/* Unsubscribe from WS3 when no SSE clients remain for that symbol */
+function tdWSUnsubscribe(internalSym) {
+  const tdSym = toTDSymbol(internalSym);
+  if (_tdWS3 && _tdWS3.has(tdSym)) _tdWS3.unsubscribe(tdSym);
 }
 
 function connectTD(symbol) {
@@ -571,7 +647,8 @@ function connectTD(symbol) {
     tdLoaded[sym] = true;
     fetchTDHistory(sym);
   }
-  startTDPolling(sym);
+  /* Subscribe live ticks via WebSocket */
+  tdWSSubscribe(sym);
 }
 
 const app = express();
@@ -704,6 +781,8 @@ app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
     sseClients[sym].delete(res);
     const n = (_sseConnCount.get(ip) || 1) - 1;
     if (n <= 0) _sseConnCount.delete(ip); else _sseConnCount.set(ip, n);
+    /* Unsubscribe from dynamic WS3 when no users are watching this symbol */
+    if (sseClients[sym].size === 0) tdWSUnsubscribe(sym);
   });
   res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
 });
