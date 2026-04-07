@@ -477,16 +477,26 @@ const TD_KEY  = process.env.TWELVEDATA_API_KEY || '';
 const tdLoaded = {};
 
 /* Convert internal symbol (BTCUSDT, EURUSD, XAUUSD) → TwelveData format (BTC/USD, EUR/USD, XAU/USD) */
+/* Known stock tickers — TwelveData needs plain ticker (no slash) */
+const _STOCK_TICKERS = new Set([
+  'AAPL','MSFT','GOOGL','GOOG','AMZN','META','NVDA','TSLA','NFLX','AMD',
+  'INTC','BABA','DIS','JPM','GS','BAC','V','MA','PYPL','UBER','LYFT',
+  'COIN','HOOD','PLTR','RIVN','NIO','LCID','GME','AMC','SPY','QQQ','GLD','SLV'
+]);
+
 function toTDSymbol(sym) {
   const s = sym.toUpperCase();
+  // Already has slash — pass through
+  if (s.includes('/')) return s;
+  // Known stock tickers — use as-is (TwelveData accepts plain US tickers)
+  if (_STOCK_TICKERS.has(s)) return s;
   // Crypto: ends with USDT or USDC
   if (s.endsWith('USDT')) return s.replace('USDT', '/USD');
   if (s.endsWith('USDC')) return s.replace('USDC', '/USD');
   if (s.endsWith('BTC'))  return s.replace('BTC',  '/BTC');
-  // Forex / metals: 6-char pairs like EURUSD, XAUUSD, GBPJPY
+  // Metals / forex: exactly 6 chars like XAUUSD, XAGUSD, XPTUSD, EURUSD, GBPJPY
   if (s.length === 6) return s.slice(0, 3) + '/' + s.slice(3);
-  // Already has slash
-  if (s.includes('/')) return s;
+  // Short tickers (1-5 chars) that aren't in known list — assume stock
   return s;
 }
 
@@ -521,9 +531,18 @@ function aggregateCandles(src, periodMs) {
 
 
 /* Fetch one timeframe from TwelveData REST, returns Promise<candle[]> */
-function fetchTDSingle(tdSym, tdInterval) {
+function fetchTDSingle(tdSym, tdInterval, extraParams) {
   return new Promise(resolve => {
-    const path = `/time_series?symbol=${encodeURIComponent(tdSym)}&interval=${tdInterval}&outputsize=500&apikey=${TD_KEY}`;
+    const params = new URLSearchParams({
+      symbol:     tdSym,
+      interval:   tdInterval,
+      outputsize: '5000',   /* max allowed */
+      order:      'ASC',    /* oldest-first — no need to reverse */
+      timezone:   'UTC',    /* normalize all assets to UTC */
+      apikey:     TD_KEY,
+      ...extraParams
+    });
+    const path = `/time_series?${params.toString()}`;
     const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
       let data = '';
       res.on('data', c => { data += c; });
@@ -534,7 +553,7 @@ function fetchTDSingle(tdSym, tdInterval) {
             console.warn(`[TwelveData] ${tdSym} ${tdInterval}:`, json.message || json.status);
             return resolve([]);
           }
-          const out = json.values.slice().reverse().map(v => ({
+          const out = json.values.map(v => ({
             t: tdTs(v.datetime),
             o: parseFloat(v.open), h: parseFloat(v.high),
             l: parseFloat(v.low),  c: parseFloat(v.close),
@@ -550,42 +569,55 @@ function fetchTDSingle(tdSym, tdInterval) {
   });
 }
 
-async function fetchTDHistory(symbol) {
-  if (!TD_KEY) { console.warn('[TwelveData] No API key'); return; }
+const _intradayLoaded = {}; /* tracks which symbols have had intraday (1m+1h) fetched */
+
+function storeTF(symbol, tf, arr) {
+  if (!arr.length) return;
+  candles[symbol][tf].length = 0;
+  arr.forEach(c => candles[symbol][tf].push(c));
+}
+
+function deriveFrom(symbol, src, targets) {
+  if (!src.length) return;
+  targets.forEach(tf => {
+    if (candles[symbol][tf].length > 0) return; /* don't overwrite */
+    const derived = aggregateCandles(src, TF_MS[tf]);
+    storeTF(symbol, tf, derived);
+    if (derived.length) console.log(`[TwelveData] Derived ${derived.length} ${tf} for ${symbol}`);
+  });
+}
+
+/* Fetch daily history only — cheap (1 request), called on prefetch & first connect */
+async function fetchTDDaily(symbol) {
+  if (!TD_KEY) return;
   ensureSymbol(symbol);
   const tdSym = toTDSymbol(symbol);
+  const d1 = await fetchTDSingle(tdSym, '1day');
+  storeTF(symbol, '1d', d1);
+  deriveFrom(symbol, d1, ['1w']); /* weekly from daily */
+  console.log(`[TwelveData] Daily ready for ${symbol}`);
+}
 
-  /* Fetch 3 anchor timeframes — staggered to avoid rate limit burst */
-  const m1  = await fetchTDSingle(tdSym, '1min');
-  await new Promise(r => setTimeout(r, 500));
-  const h1  = await fetchTDSingle(tdSym, '1h');
-  await new Promise(r => setTimeout(r, 500));
-  const d1  = await fetchTDSingle(tdSym, '1day');
+/* Fetch intraday (1m + 1h) — called lazily when user opens a symbol */
+async function fetchTDIntraday(symbol) {
+  if (!TD_KEY || _intradayLoaded[symbol]) return;
+  _intradayLoaded[symbol] = true;
+  ensureSymbol(symbol);
+  const tdSym = toTDSymbol(symbol);
+  const m1 = await fetchTDSingle(tdSym, '1min');
+  storeTF(symbol, '1m', m1);
+  deriveFrom(symbol, m1, ['5m','15m','30m']); /* short intraday from 1m */
+  await new Promise(r => setTimeout(r, 400));
+  const h1 = await fetchTDSingle(tdSym, '1h');
+  storeTF(symbol, '1h', h1);
+  deriveFrom(symbol, h1, ['4h','5m','15m','30m']); /* 4h + fill gaps from 1h */
+  console.log(`[TwelveData] Intraday ready for ${symbol}`);
+}
 
-  /* Store anchors */
-  const store = (tf, arr) => {
-    if (!arr.length) return;
-    candles[symbol][tf].length = 0;
-    arr.forEach(c => candles[symbol][tf].push(c));
-  };
-  store('1m', m1);
-  store('1h', h1);
-  store('1d', d1);
-
-  /* Derive all other timeframes from best available source */
-  const deriveFrom = (src, targets) => {
-    if (!src.length) return;
-    targets.forEach(tf => {
-      if (candles[symbol][tf].length > 0) return; /* already have it */
-      const derived = aggregateCandles(src, TF_MS[tf]);
-      store(tf, derived);
-      if (derived.length) console.log(`[TwelveData] Derived ${derived.length} ${tf} candles for ${symbol}`);
-    });
-  };
-
-  deriveFrom(m1, ['5m','15m','30m']);   /* from 1m: short intraday */
-  deriveFrom(h1, ['4h','1m','5m','15m','30m']); /* from 1h: fill gaps + 4h */
-  deriveFrom(d1, ['1w']);               /* from 1d: weekly */
+/* Called on every connectTD — loads daily immediately, intraday lazily */
+async function fetchTDHistory(symbol) {
+  await fetchTDDaily(symbol);
+  fetchTDIntraday(symbol); /* fire-and-forget — don't await */
 }
 
 /* ═══════════════════════════════════════════════════
@@ -783,9 +815,13 @@ app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
   const tdInterval = TD_TF[tf];
   if (!tdInterval || !endTime || endTime < 0) return res.status(400).json({ candles: [] });
   const tdSym  = toTDSymbol(sym);
-  /* Convert endTime ms → ISO date string for TwelveData end_date param */
-  const endDate = new Date(endTime).toISOString().slice(0, 19).replace('T', ' ');
-  const path = `/time_series?symbol=${encodeURIComponent(tdSym)}&interval=${tdInterval}&outputsize=500&end_date=${encodeURIComponent(endDate)}&apikey=${TD_KEY}`;
+  const endDate = new Date(endTime).toISOString().slice(0, 19); /* UTC ISO */
+  const params = new URLSearchParams({
+    symbol: tdSym, interval: tdInterval,
+    outputsize: '5000', order: 'ASC', timezone: 'UTC',
+    end_date: endDate, apikey: TD_KEY
+  });
+  const path = `/time_series?${params.toString()}`;
   const treq = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, tres => {
     let data = '';
     tres.on('data', c => { data += c; });
@@ -793,7 +829,7 @@ app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
       try {
         const json = JSON.parse(data);
         if (json.status !== 'ok' || !Array.isArray(json.values)) return res.json({ candles: [] });
-        const out = json.values.slice().reverse().map(v => ({
+        const out = json.values.map(v => ({
           t: tdTs(v.datetime),
           o: parseFloat(v.open),  h: parseFloat(v.high),
           l: parseFloat(v.low),   c: parseFloat(v.close),
@@ -1790,15 +1826,15 @@ app.listen(PORT, () => {
   console.log('Stripe:',        !!stripe);
   console.log('Supabase:',      !!sbAdmin);
 
-  /* Prefetch history for high-traffic pairs so first user gets instant data */
-  const PREFETCH = ['XAUUSD','BTCUSDT','ETHUSDT','EURUSD','GBPUSD','SOLUSDT'];
-  console.log('📦 Prefetching candle history for:', PREFETCH.join(', '));
+  /* Prefetch daily candles for top pairs — 1 request per symbol, 2s apart */
+  const PREFETCH = ['XAUUSD','BTCUSDT','ETHUSDT','EURUSD','GBPUSD','SOLUSDT','XAGUSD','XPTUSD'];
+  console.log('📦 Prefetching daily candles for:', PREFETCH.join(', '));
   PREFETCH.forEach((sym, i) => {
-    /* Stagger requests 1s apart to avoid rate-limit burst on startup */
     setTimeout(() => {
       ensureSymbol(sym);
-      if (!tdLoaded[sym]) { tdLoaded[sym] = true; fetchTDHistory(sym); }
-    }, i * 1000);
+      tdLoaded[sym] = true;
+      fetchTDDaily(sym); /* daily only — intraday fetched on first user open */
+    }, i * 2000); /* 2s apart = safe under TwelveData rate limits */
   });
 
   cron.schedule('0 2 * * *', () => {
