@@ -587,31 +587,36 @@ function deriveFrom(symbol, src, targets) {
   });
 }
 
-/* Fetch daily, 1h, and 1m history concurrently — lightning fast load */
+/* Fetch daily, 1h, and 1m history sequentially to prevent burst limits */
 async function fetchTDHistory(symbol) {
   if (!TD_KEY) return;
   ensureSymbol(symbol);
   const tdSym = toTDSymbol(symbol);
   
-  // Fire all three REST requests concurrently
-  Promise.all([
-    fetchTDSingle(tdSym, '1day'),
-    fetchTDSingle(tdSym, '1h'),
-    fetchTDSingle(tdSym, '1min')
-  ]).then(([d1, h1, m1]) => {
+  try {
+    // 1. Daily
+    const d1 = await fetchTDSingle(tdSym, '1day');
     storeTF(symbol, '1d', d1);
     deriveFrom(symbol, d1, ['1w']);
     
+    await new Promise(r => setTimeout(r, 400));
+    
+    // 2. Hourly
+    const h1 = await fetchTDSingle(tdSym, '1h');
     storeTF(symbol, '1h', h1);
     deriveFrom(symbol, h1, ['4h']);
     
+    await new Promise(r => setTimeout(r, 400));
+    
+    // 3. Minute
+    const m1 = await fetchTDSingle(tdSym, '1min');
     storeTF(symbol, '1m', m1);
     deriveFrom(symbol, m1, ['5m','15m','30m']);
     
     console.log(`[TwelveData] History fully ready for ${symbol}`);
-  }).catch(e => {
+  } catch(e) {
     console.error(`[TwelveData] History fetch error for ${symbol}`, e);
-  });
+  }
 }
 
 /* ═══════════════════════════════════════════════════
