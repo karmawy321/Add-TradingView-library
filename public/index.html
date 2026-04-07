@@ -1739,7 +1739,7 @@ if (isEmbedded) {
     </div>
 
     <!-- STARTER -->
-    <div class="pc">
+    <div class="pc" id="plan-starter">
       <div class="pc-name">Starter</div>
       <div class="pc-amt"><sup>$</sup>69</div>
       <div class="pc-period">500 credits / month</div>
@@ -1757,7 +1757,7 @@ if (isEmbedded) {
     </div>
 
     <!-- PRO — featured -->
-    <div class="pc feat">
+    <div class="pc feat" id="plan-pro">
       <div class="feat-badge">MOST POPULAR</div>
       <div class="pc-name">Pro</div>
       <div style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);margin-bottom:4px;letter-spacing:.1em">ALL TOOLS UNLOCKED</div>
@@ -3506,7 +3506,7 @@ function buildToolGrid() {
     var card = document.createElement('button');
     card.className = 'ai-tc';
     card.id = 'tbtn-' + t.id;
-    if (!hasChart) card.setAttribute('disabled', true);
+    if (!hasChart || !allowed) card.setAttribute('disabled', true);
     card.innerHTML =
       '<div class="ai-tc-icon">' + t.icon + '</div>' +
       '<div class="ai-tc-name">' + t.label + '</div>' +
@@ -3515,7 +3515,21 @@ function buildToolGrid() {
         '<span class="ai-tc-cr">' + t.cost + ' cr</span>' +
         (!allowed ? '<span class="ai-tc-lock">🔒</span>' : '') +
       '</div>';
-    card.onclick = function() { runSingleTool(t); };
+    card.onclick = function() {
+      if (!tierAllows(t.id)) {
+        var planMap = { starter:'plan-starter', pro:'plan-pro', mentor:'plan-pro' };
+        var targetId = planMap[t.tier] || 'pricing';
+        var el = document.getElementById(targetId) || document.getElementById('pricing');
+        if (el) {
+          el.scrollIntoView({ behavior:'smooth', block:'center' });
+          el.style.transition = 'box-shadow .3s';
+          el.style.boxShadow = '0 0 0 2px rgba(201,168,76,.8)';
+          setTimeout(function(){ el.style.boxShadow = ''; }, 2000);
+        }
+        return;
+      }
+      runSingleTool(t);
+    };
     grid.appendChild(card);
   });
 }
