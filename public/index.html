@@ -6230,15 +6230,15 @@ function fetchTwelveDataFallback(sym, tf) {
             var last=d.candles[d.candles.length-1], prev=d.candles.length>1?d.candles[d.candles.length-2].c:last.o;
             showLivePrice({symbol:sym,price:last.c,change_24h:((last.c-prev)/prev*100).toFixed(3),trend_24h:last.c>=prev?'up':'dn'});
           }
-        } else if(attempts >= 6){
+        } else if(attempts >= 25){
           clearInterval(retryTimer);
           showChartMsg('Could not load '+sym+'.\nCheck TWELVEDATA_API_KEY in Railway.');
         }
       })
       .catch(function(){
-        if(attempts >= 6){ clearInterval(retryTimer); showChartMsg('Railway connection failed.'); }
+        if(attempts >= 25){ clearInterval(retryTimer); showChartMsg('Railway connection failed.'); }
       });
-  }, 1500);
+  }, 350);
 }
 
 function fetchTwelveDataPrice(sym){

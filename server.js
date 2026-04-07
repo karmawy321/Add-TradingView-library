@@ -587,44 +587,35 @@ function deriveFrom(symbol, src, targets) {
   });
 }
 
-/* Fetch daily history only — cheap (1 request), called on prefetch & first connect */
-async function fetchTDDaily(symbol) {
+/* Fetch daily, 1h, and 1m history concurrently — lightning fast load */
+async function fetchTDHistory(symbol) {
   if (!TD_KEY) return;
   ensureSymbol(symbol);
   const tdSym = toTDSymbol(symbol);
-  const d1 = await fetchTDSingle(tdSym, '1day');
-  storeTF(symbol, '1d', d1);
-  deriveFrom(symbol, d1, ['1w']); /* weekly from daily */
-  console.log(`[TwelveData] Daily ready for ${symbol}`);
-}
-
-/* Fetch intraday (1m + 1h) — called lazily when user opens a symbol */
-async function fetchTDIntraday(symbol) {
-  if (!TD_KEY || _intradayLoaded[symbol]) return;
-  _intradayLoaded[symbol] = true;
-  ensureSymbol(symbol);
-  const tdSym = toTDSymbol(symbol);
-  const m1 = await fetchTDSingle(tdSym, '1min');
-  storeTF(symbol, '1m', m1);
-  deriveFrom(symbol, m1, ['5m','15m','30m']); /* short intraday from 1m */
-  await new Promise(r => setTimeout(r, 400));
-  const h1 = await fetchTDSingle(tdSym, '1h');
-  storeTF(symbol, '1h', h1);
-  deriveFrom(symbol, h1, ['4h','5m','15m','30m']); /* 4h + fill gaps from 1h */
-  console.log(`[TwelveData] Intraday ready for ${symbol}`);
-}
-
-/* Called on every connectTD — loads daily immediately, intraday lazily */
-async function fetchTDHistory(symbol) {
-  await fetchTDDaily(symbol);
-  fetchTDIntraday(symbol); /* fire-and-forget — don't await */
+  
+  // Fire all three REST requests concurrently
+  Promise.all([
+    fetchTDSingle(tdSym, '1day'),
+    fetchTDSingle(tdSym, '1h'),
+    fetchTDSingle(tdSym, '1min')
+  ]).then(([d1, h1, m1]) => {
+    storeTF(symbol, '1d', d1);
+    deriveFrom(symbol, d1, ['1w']);
+    
+    storeTF(symbol, '1h', h1);
+    deriveFrom(symbol, h1, ['4h']);
+    
+    storeTF(symbol, '1m', m1);
+    deriveFrom(symbol, m1, ['5m','15m','30m']);
+    
+    console.log(`[TwelveData] History fully ready for ${symbol}`);
+  }).catch(e => {
+    console.error(`[TwelveData] History fetch error for ${symbol}`, e);
+  });
 }
 
 /* ═══════════════════════════════════════════════════
-   TWELVEDATA WEBSOCKET — 3-socket architecture
-   WS1: XAU/USD (gold, always on — priority)
-   WS2: major crypto BTC/USD ETH/USD SOL/USD (always on)
-   WS3: dynamic — user-requested symbols (subscribe on demand)
+   TWELVEDATA WEBSOCKET — Single Master Connection
    ═══════════════════════════════════════════════════ */
 
 /* Reverse map: TwelveData symbol → internal symbol (e.g. BTC/USD → BTCUSDT) */
@@ -695,27 +686,23 @@ function createTDSocket(name, initialSymbols) {
   };
 }
 
-/* Initialise the 3 sockets */
-const _tdWS1 = TD_KEY ? createTDSocket('gold',   ['XAU/USD']) : null;
-const _tdWS2 = TD_KEY ? createTDSocket('major',  ['BTC/USD','ETH/USD','SOL/USD']) : null;
-const _tdWS3 = TD_KEY ? createTDSocket('dynamic', []) : null;
+/* Initialise a single Master Socket to conserve TwelveData connection limits */
+const _tdRootWS = TD_KEY ? createTDSocket('master', ['XAU/USD', 'BTC/USD', 'ETH/USD', 'SOL/USD']) : null;
 
 /* Register reverse-map entries for always-on symbols */
 ['XAUUSD','BTCUSDT','ETHUSDT','SOLUSDT'].forEach(s => { _tdToInternal[toTDSymbol(s)] = s; });
 
-/* Subscribe a symbol on WS3 (dynamic), avoiding duplicates with WS1/WS2 */
+/* Subscribe a symbol on the master socket */
 function tdWSSubscribe(internalSym) {
   const tdSym = toTDSymbol(internalSym);
   _tdToInternal[tdSym] = internalSym;
-  if (_tdWS1 && _tdWS1.has(tdSym)) return;
-  if (_tdWS2 && _tdWS2.has(tdSym)) return;
-  if (_tdWS3 && !_tdWS3.has(tdSym)) _tdWS3.subscribe(tdSym);
+  if (_tdRootWS && !_tdRootWS.has(tdSym)) _tdRootWS.subscribe(tdSym);
 }
 
-/* Unsubscribe from WS3 when no SSE clients remain for that symbol */
+/* Unsubscribe from the master socket when no SSE clients remain for that symbol */
 function tdWSUnsubscribe(internalSym) {
   const tdSym = toTDSymbol(internalSym);
-  if (_tdWS3 && _tdWS3.has(tdSym)) _tdWS3.unsubscribe(tdSym);
+  if (_tdRootWS && _tdRootWS.has(tdSym)) _tdRootWS.unsubscribe(tdSym);
 }
 
 function connectTD(symbol) {
