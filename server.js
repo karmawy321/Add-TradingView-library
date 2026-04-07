@@ -420,7 +420,7 @@ async function getUserProfile(token) {
 /* ═══════════════════════════════════════════════════
    CANDLE BUILDER
    ═══════════════════════════════════════════════════ */
-const TF_MS = { '1m':60000,'5m':300000,'15m':900000,'1h':3600000,'4h':14400000,'1d':86400000 };
+const TF_MS = { '1m':60000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000 };
 const TIMEFRAMES = Object.keys(TF_MS);
 const candles    = {};
 const sseClients = {};
@@ -492,11 +492,14 @@ function toTDSymbol(sym) {
 }
 
 /* Convert TwelveData interval names */
-const TD_TF = { '1m':'1min','5m':'5min','15m':'15min','1h':'1h','4h':'4h','1d':'1day' };
+const TD_TF = { '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1h','4h':'4h','1d':'1day','1w':'1week' };
 
-/* Parse TwelveData datetime string → Unix ms */
+/* Parse TwelveData datetime string → Unix ms
+   Handles both "2026-04-07 14:30:00" (intraday) and "2026-04-07" (daily/weekly) */
 function tdTs(dt) {
-  return new Date(dt.replace(' ', 'T') + 'Z').getTime();
+  if (!dt) return 0;
+  const s = dt.includes(' ') ? dt.replace(' ', 'T') + 'Z' : dt + 'T00:00:00Z';
+  return new Date(s).getTime();
 }
 
 function fetchTDHistory(symbol) {
