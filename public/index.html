@@ -2887,7 +2887,7 @@ var TOOL_TIERS = {
 };
 
 /* User tier: 'free' | 'pro' | 'mentor' — set via auth later */
-var userTier = 'mentor'; /* DEV MODE: full access */
+var userTier = 'free'; /* default until refreshSession sets it from DB */
 
 function tierAllows(tool){
   var t = TOOL_TIERS[tool];
@@ -3371,20 +3371,20 @@ initSupabase();
 
 /* ══ CREDIT COSTS per tool ══ */
 var TOOL_COSTS = {
-  analyze:15, fib:3, smc:4, vol:3, mtf:8, age:25, liq:8, proj:25, journal:20, bar:4, ww:4
+  analyze:15, fib:12, smc:16, vol:12, mtf:20, age:15, liq:20, proj:25, journal:20, bar:12, ww:12, sniper:5
 };
 
 /* Icons match the tool-result-section headers */
 var TOOLS = [
-  { id:'fib',     label:'Fibonacci',      sub:'Auto levels · Extensions',  icon:'⟡', endpoint:'/fibonacci',   cost:3,  tier:'pro'    },
-  { id:'smc',     label:'Smart Money',    sub:'Order blocks · BOS · FVG',  icon:'⬡', endpoint:'/smc',         cost:4,  tier:'pro'    },
-  { id:'vol',     label:'Volatility',     sub:'Regime · Position size',    icon:'≋', endpoint:'/volatility',  cost:3,  tier:'pro'    },
-  { id:'bar',     label:'Bar Pattern',    sub:'Self-similarity scan',      icon:'▦', endpoint:'/bar-pattern', cost:4,  tier:'pro'    },
-  { id:'ww',      label:'Weierstrass',    sub:'Hurst · Decomposition',     icon:'∿', endpoint:'/weierstrass', cost:4,  tier:'pro'    },
+  { id:'fib',     label:'Fibonacci',      sub:'Auto levels · Extensions',  icon:'⟡', endpoint:'/fibonacci',   cost:12, tier:'pro'    },
+  { id:'smc',     label:'Smart Money',    sub:'Order blocks · BOS · FVG',  icon:'⬡', endpoint:'/smc',         cost:16, tier:'pro'    },
+  { id:'vol',     label:'Volatility',     sub:'Regime · Position size',    icon:'≋', endpoint:'/volatility',  cost:12, tier:'pro'    },
+  { id:'bar',     label:'Bar Pattern',    sub:'Self-similarity scan',      icon:'▦', endpoint:'/bar-pattern', cost:12, tier:'pro'    },
+  { id:'ww',      label:'Weierstrass',    sub:'Hurst · Decomposition',     icon:'∿', endpoint:'/weierstrass', cost:12, tier:'pro'    },
   { id:'proj',    label:'Projection',     sub:'3-scenario price path',     icon:'↗', endpoint:'/projection',  cost:25, tier:'pro'    },
-  { id:'mtf',     label:'MTF Confluence', sub:'Weekly · Daily · H4',       icon:'⊕', endpoint:'/mtf',         cost:8,  tier:'mentor' },
-  { id:'age',     label:'Fractal Age',    sub:'Cycle timing · Urgency',    icon:'⧗', endpoint:'/fractal-age', cost:25, tier:'mentor' },
-  { id:'liq',     label:'Liquidity Map',  sub:'Stop clusters · Sweeps',    icon:'◎', endpoint:'/liquidity',   cost:8,  tier:'mentor' },
+  { id:'mtf',     label:'MTF Confluence', sub:'Weekly · Daily · H4',       icon:'⊕', endpoint:'/mtf',         cost:20, tier:'mentor' },
+  { id:'age',     label:'Fractal Age',    sub:'Cycle timing · Urgency',    icon:'⧗', endpoint:'/fractal-age', cost:15, tier:'mentor' },
+  { id:'liq',     label:'Liquidity Map',  sub:'Stop clusters · Sweeps',    icon:'◎', endpoint:'/liquidity',   cost:20, tier:'mentor' },
   { id:'journal', label:'Trade Journal',  sub:'AI graded · Coaching',      icon:'✦', endpoint:'/journal',     cost:20, tier:'mentor' },
   { id:'sniper',  label:'Sniper',         sub:'Entry · SL · TP · Pips',    icon:'⊗', endpoint:'/sniper',      cost:5,  tier:'starter' }
 ];
