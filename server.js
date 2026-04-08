@@ -786,14 +786,28 @@ app.get('/api/profile', rateLimit(30, 60000), async (req, res) => {
 app.get('/profile', (req, res) => sendPage('profile.html', res));
 
 // Candles endpoint — 60 req/min per IP
-app.get('/candles/:symbol', rateLimit(60, 60000), (req, res) => {
+app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   const { symbol } = req.params;
   const tf = req.query.tf || '1h';
   const sym = symbol.toUpperCase().replace('-', '/');
   if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
+  
   connectTD(sym);
   ensureSymbol(sym);
-  const arr = candles[sym][tf] || [];
+  
+  let arr = candles[sym][tf] || [];
+  
+  /* Lazy On-Demand Fetch: If the timeframe is empty, request it directly from TwelveData instantly */
+  if (arr.length === 0 && TD_KEY) {
+    const tdSym = toTDSymbol(sym);
+    const tdInterval = TD_TF[tf] || '1h';
+    try {
+      const data = await fetchTDSingle(tdSym, tdInterval);
+      storeTF(sym, tf, data);
+      arr = candles[sym][tf];
+    } catch(e) { /* ignore and return empty */ }
+  }
+  
   res.json({ candles: arr });
 });
 
