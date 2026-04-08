@@ -888,7 +888,7 @@ app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
 
 // Subscribe SSE — max 5 concurrent connections per IP
 const _sseConnCount = new Map();
-app.get('/subscribe/:symbol', rateLimit(10, 60000), (req, res) => {
+app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
   const ip = getClientIp(req);
   const cur = _sseConnCount.get(ip) || 0;
   if (cur >= 5) return res.status(429).json({ error:'Too many SSE connections' });

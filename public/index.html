@@ -6277,28 +6277,8 @@ function showChartMsg(msg){
 }
 
 function fetchBinanceFallback(sym, tf) {
-  /* Map tf to Binance interval */
-  var ivMap = {'1m':'1m','5m':'5m','15m':'15m','1h':'1h','4h':'4h','1d':'1d'};
-  var iv = ivMap[tf] || '4h';
-  fetch('https://api.binance.com/api/v3/klines?symbol='+sym+'&interval='+iv+'&limit=500')
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if(!Array.isArray(data)||data.length<2) return;
-      var candles = data.map(function(c){
-        return { t:c[0], o:parseFloat(c[1]), h:parseFloat(c[2]), l:parseFloat(c[3]), c:parseFloat(c[4]), v:parseFloat(c[5]) };
-      });
-      chartCandles = candles;
-      if(!allCandleData[sym]) allCandleData[sym]={};
-      allCandleData[sym][tf] = candles;
-      renderChart();
-      autoBarPattern();
-      lwChartInstance = true;
-      var btn = document.getElementById('azBtn'); if(btn) btn.disabled=false;
-      if(typeof buildToolGrid==='function') buildToolGrid();
-      /* Show source label */
-
-    })
-    .catch(function(e){ console.warn('[Binance fallback] failed for',sym,e.message); });
+  /* Removed — all data comes from TwelveData via server */
+  console.warn('[fetchBinanceFallback] called for', sym, tf, '— skipped, using TwelveData');
 }
 
 
@@ -6637,18 +6617,8 @@ function hideLivePrice(){var b=document.getElementById('livePriceBar');if(b)b.cl
 var _pricePollerTimer = null;
 function stopPricePolling(){if(_pricePollerTimer){clearInterval(_pricePollerTimer);_pricePollerTimer=null;}}
 function startPricePolling(sym){
+  /* Binance direct polling removed — price comes via SSE from server */
   stopPricePolling();
-  function poll(){
-    if(sym!==currentSymbol){stopPricePolling();return;}
-    fetch('https://api.binance.com/api/v3/ticker/24hr?symbol='+sym)
-      .then(function(r){return r.json();})
-      .then(function(d){
-        if(d.lastPrice&&sym===currentSymbol)
-          showLivePrice({symbol:sym,price:parseFloat(d.lastPrice),change_24h:parseFloat(d.priceChangePercent||0).toFixed(3)});
-      }).catch(function(){});
-  }
-  poll();
-  _pricePollerTimer=setInterval(poll,5000);
 }
 
 function showCapturePrompt(){
