@@ -102,6 +102,11 @@
 
 
 /* ══ LIVE PRICE BADGE ══ */
+.src-switch{display:none;align-items:center;gap:0;border:1px solid rgba(201,168,76,.25);border-radius:3px;overflow:hidden;flex-shrink:0;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.06em}
+.src-switch.show{display:flex}
+.src-btn{padding:3px 8px;cursor:pointer;color:#4e5d78;background:transparent;border:none;transition:background .15s,color .15s}
+.src-btn:hover{color:#c9a84c}
+.src-btn.active{background:rgba(201,168,76,.15);color:#c9a84c}
 .live-price-bar{display:none;align-items:center;gap:6px;padding:4px 10px;
   background:rgba(39,174,96,.08);border:1px solid rgba(39,174,96,.25);
   border-radius:2px;white-space:nowrap;flex-shrink:0}
@@ -1028,8 +1033,13 @@ if (isEmbedded) {
             </label>
             <button id="clearUploadBtn" onclick="clearUploadedChart()" style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕ CLEAR PHOTO</button>
             <button id="terminateChartBtn" onclick="terminateChart()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em">⏹ STOP</button>
+            <!-- Data source switcher — only visible for OANDA-supported symbols -->
+            <div class="src-switch" id="srcSwitch" style="margin-left:auto">
+              <button class="src-btn active" id="srcBtnTD" onclick="setDataSource('twelvedata')">TD</button>
+              <button class="src-btn" id="srcBtnOanda" onclick="setDataSource('oanda')">OANDA</button>
+            </div>
             <!-- Live price — sits in toolbar row, right-aligned -->
-            <div class="live-price-bar" id="livePriceBar" style="margin-left:auto">
+            <div class="live-price-bar" id="livePriceBar">
               <div class="live-dot"></div>
               <div class="live-price-val" id="livePriceVal">—</div>
               <div class="live-price-change" id="livePriceChange"></div>
@@ -4233,6 +4243,8 @@ var chartCtx        = chartCanvas ? chartCanvas.getContext('2d') : null;
 var chartCandles      = [];
 var currentSymbol     = '';
 var currentInterval   = '4h';
+var currentDataSource = 'twelvedata'; /* 'twelvedata' | 'oanda' */
+var _OANDA_SYMBOLS    = new Set(['XAUUSD']); /* symbols that have OANDA data */
 var _historyLoading   = false;
 var _historyDepleted  = false;
 var chartSSE        = null;
@@ -6134,9 +6146,11 @@ function loadChart(symbol,interval){
   /* Update badge immediately for new symbol */
   var _lm=document.getElementById('livePriceMeta'),_lv=document.getElementById('livePriceVal'),_lb=document.getElementById('livePriceBar');
   if(_lm)_lm.textContent='LIVE · '+sym; if(_lv)_lv.textContent='—'; if(_lb)_lb.classList.add('show');
+  _updateSrcSwitch(sym);
   startPricePolling(sym);
 
-  fetch(BACKEND_URL+'/candles/'+sym+'?tf='+currentInterval)
+  var _srcParam = currentDataSource==='oanda' ? '&source=oanda' : '';
+  fetch(BACKEND_URL+'/candles/'+sym+'?tf='+currentInterval+_srcParam)
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.candles&&d.candles.length>0){
@@ -6234,7 +6248,8 @@ function fetchTwelveDataFallback(sym, tf) {
   var attempts = 0;
   var retryTimer = setInterval(function(){
     attempts++;
-    fetch(BACKEND_URL+'/candles/'+sym+'?tf='+tf)
+    var _srcP = currentDataSource==='oanda' ? '&source=oanda' : '';
+    fetch(BACKEND_URL+'/candles/'+sym+'?tf='+tf+_srcP)
       .then(function(r){ return r.json(); })
       .then(function(d){
         if(d.candles && d.candles.length > 0){
@@ -6301,7 +6316,8 @@ function onTfChange(){
     autoBarPattern();
     return;
   }
-  fetch(BACKEND_URL+'/candles/'+currentSymbol+'?tf='+currentInterval)
+  var _srcQ = currentDataSource==='oanda' ? '&source=oanda' : '';
+  fetch(BACKEND_URL+'/candles/'+currentSymbol+'?tf='+currentInterval+_srcQ)
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.candles&&d.candles.length>0){
@@ -6619,6 +6635,28 @@ function showLivePrice(d){
   if(meta)meta.textContent='LIVE · '+d.symbol;
 }
 function hideLivePrice(){var b=document.getElementById('livePriceBar');if(b)b.classList.remove('show');}
+
+function _updateSrcSwitch(sym) {
+  var sw = document.getElementById('srcSwitch');
+  if (!sw) return;
+  if (_OANDA_SYMBOLS.has(sym)) {
+    sw.classList.add('show');
+  } else {
+    sw.classList.remove('show');
+    currentDataSource = 'twelvedata';
+  }
+  document.getElementById('srcBtnTD').classList.toggle('active', currentDataSource === 'twelvedata');
+  document.getElementById('srcBtnOanda').classList.toggle('active', currentDataSource === 'oanda');
+}
+
+function setDataSource(src) {
+  if (currentDataSource === src) return;
+  currentDataSource = src;
+  document.getElementById('srcBtnTD').classList.toggle('active', src === 'twelvedata');
+  document.getElementById('srcBtnOanda').classList.toggle('active', src === 'oanda');
+  /* Reload chart with new source */
+  if (currentSymbol) loadChart(currentSymbol, currentInterval);
+}
 
 /* ── Live price polling — direct Binance every 5s ── */
 var _pricePollerTimer = null;
