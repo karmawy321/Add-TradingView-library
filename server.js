@@ -1051,7 +1051,17 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
         }
         const _blocked = new Set(['Warrant','Structured Product','Leverage Product','Certificate','Mini Future']);
         const filtered = (json.data || []).filter(r => !_blocked.has(r.instrument_type));
-        res.json({ data: filtered });
+
+        /* Inject OANDA results for supported symbols */
+        const _oandaCatalog = [
+          { symbol:'XAUUSD', instrument_name:'Gold Spot / US Dollar', instrument_type:'Commodity', exchange:'OANDA', source:'oanda' },
+          { symbol:'XAGUSD', instrument_name:'Silver Spot / US Dollar', instrument_type:'Commodity', exchange:'OANDA', source:'oanda' },
+          { symbol:'EURUSD', instrument_name:'Euro / US Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPUSD', instrument_name:'British Pound / US Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+        ];
+        const q = query.toUpperCase().replace('/','');
+        const oandaMatches = _maReady ? _oandaCatalog.filter(o => o.symbol.includes(q) || q.includes(o.symbol.slice(0,3))) : [];
+        res.json({ data: [...oandaMatches, ...filtered] });
       } catch (e) {
         res.json({ data: [] });
       }

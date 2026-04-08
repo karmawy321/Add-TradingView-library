@@ -6489,6 +6489,7 @@ var COIN_LIST = [
 ];
 
 function selectPair(sym){
+  currentDataSource = 'twelvedata'; /* reset to default source */
   var inp = document.getElementById('pairIn');
   if(inp) inp.value = sym;
   
@@ -6602,21 +6603,32 @@ function executeSearch() {
       }
       resDiv.innerHTML = results.map(function(r){
         var sym = r.symbol;
-        if(r.currency && sym.indexOf(r.currency) === -1 && r.instrument_type === 'Physical Currency') sym += r.currency; // safety
-        return '<div class="s-res-item" onclick="selectPair(\''+sym+'\');closeSearchModal()">'
+        if(r.currency && sym.indexOf(r.currency) === -1 && r.instrument_type === 'Physical Currency') sym += r.currency;
+        var isOanda = r.source === 'oanda';
+        var onclick = isOanda
+          ? "selectPairWithSource('"+sym+"','oanda');closeSearchModal()"
+          : "selectPair('"+sym+"');closeSearchModal()";
+        var exchStyle = isOanda ? 'color:#c9a84c;font-weight:700' : '';
+        return '<div class="s-res-item" onclick="'+onclick+'">'
           +'<div class="s-res-info" style="min-width:0">'
             +'<div class="s-res-symbol">'+sym+'</div>'
             +'<div class="s-res-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(r.instrument_name||'')+'</div>'
           +'</div>'
           +'<div class="s-res-meta">'
             +'<span>'+(r.instrument_type||'').replace('Common Stock','Stock').replace('Physical Currency','Forex').replace('Digital Currency','Crypto')+'</span>'
-            +'<span class="s-res-exch">'+(r.exchange||'')+'</span>'
+            +'<span class="s-res-exch" style="'+exchStyle+'">'+(r.exchange||'')+'</span>'
           +'</div>'
         +'</div>';
       }).join('');
     }).catch(function(){
       resDiv.innerHTML = '<div style="padding:24px;text-align:center;color:#ef5350">Error fetching results.</div>';
     });
+}
+
+function selectPairWithSource(symbol, source) {
+  currentDataSource = source || 'twelvedata';
+  var p = document.getElementById('pairIn'); if(p) p.value = symbol;
+  loadChart(symbol, document.getElementById('tfIn') ? document.getElementById('tfIn').value : '4h');
 }
 
 function quickLoad(symbol){
