@@ -1929,7 +1929,7 @@ var rmX     = document.getElementById('rmX');
 var azBtn   = document.getElementById('azBtn');
 var azSpin  = document.getElementById('azSpin');
 var azTxtEl = document.getElementById('azTxt');
-var BACKEND_URL = ''; /* same domain — Railway serves everything */
+var BACKEND_URL = ''; /* same domain */
 
 /* Guard — elements may not exist in new layout */
 if (dropZone) {
@@ -2096,7 +2096,7 @@ function setToolStatus(tool, state){
   }
 }
 
-/* ── Railway backend calls ── */
+/* ── Backend calls ── */
 function callBackend(endpoint, payload, _retry){
   return fetch(BACKEND_URL + endpoint, {
     method: 'POST',
@@ -6151,7 +6151,7 @@ function loadChart(symbol,interval){
   chartSSE.onmessage=function(e){
     try{
       var data=JSON.parse(e.data);
-      if(data.status==='loading'){ showChartMsg('Loading '+sym+'\u2026\nRailway fetching from TwelveData'); return; }
+      if(data.status==='loading'){ showChartMsg('Loading '+sym+'\u2026'); return; }
       if(sym!==currentSymbol) return;
 
       /* ── Full history on initial connect ── */
@@ -6221,9 +6221,7 @@ function isForexSymbol(sym){
 }
 
 function fetchTwelveDataFallback(sym, tf) {
-  /* TwelveData blocks browser requests (CORS) — retry Railway instead */
-  /* Railway fetches on demand and will have data within ~3s */
-  showChartMsg('Loading '+sym+'\nFetching from TwelveData via Railway\u2026');
+  showChartMsg('Loading '+sym+'\u2026');
   var attempts = 0;
   var retryTimer = setInterval(function(){
     attempts++;
@@ -6247,11 +6245,11 @@ function fetchTwelveDataFallback(sym, tf) {
           }
         } else if(attempts >= 25){
           clearInterval(retryTimer);
-          showChartMsg('Could not load '+sym+'.\nCheck TWELVEDATA_API_KEY in Railway.');
+          showChartMsg('Could not load '+sym+'.\nCheck server logs or TwelveData API key.');
         }
       })
       .catch(function(){
-        if(attempts >= 25){ clearInterval(retryTimer); showChartMsg('Railway connection failed.'); }
+        if(attempts >= 25){ clearInterval(retryTimer); showChartMsg('Could not load chart data. Please try again.'); }
       });
   }, 350);
 }
