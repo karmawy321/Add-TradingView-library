@@ -799,27 +799,52 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   ensureSymbol(sym);
   
   let arr = candles[sym][tf] || [];
-  
-  /* Lazy On-Demand Fetch: if empty AND not already fetching, grab it instantly */
+
+  /* If empty, try to derive from a lower TF that's already loaded */
+  if (arr.length === 0) {
+    /* 5m/15m/30m → derive from 1m if available */
+    if (['5m','15m','30m'].includes(tf) && candles[sym]['1m'] && candles[sym]['1m'].length > 0) {
+      deriveFrom(sym, candles[sym]['1m'], [tf]);
+      arr = candles[sym][tf] || [];
+    }
+    /* 4h → derive from 1h if available */
+    if (tf === '4h' && candles[sym]['1h'] && candles[sym]['1h'].length > 0) {
+      deriveFrom(sym, candles[sym]['1h'], ['4h']);
+      arr = candles[sym][tf] || [];
+    }
+    /* 1w → derive from 1d if available */
+    if (tf === '1w' && candles[sym]['1d'] && candles[sym]['1d'].length > 0) {
+      deriveFrom(sym, candles[sym]['1d'], ['1w']);
+      arr = candles[sym][tf] || [];
+    }
+  }
+
+  /* Still empty — fetch directly from TwelveData (anchor TFs: 1m, 1h, 1d) */
   if (arr.length === 0 && TD_KEY) {
     const fetchKey = sym + '_' + tf;
     if (!_fetchingTF[fetchKey]) {
       _fetchingTF[fetchKey] = true;
       const tdSym = toTDSymbol(sym);
-      const tdInterval = TD_TF[tf] || '1h';
+      /* For derived TFs, fetch their anchor instead */
+      const anchorTf  = ['5m','15m','30m'].includes(tf) ? '1m'
+                      : tf === '4h'                      ? '1h'
+                      : tf === '1w'                      ? '1d'
+                      : tf;
+      const tdInterval = TD_TF[anchorTf] || TD_TF[tf] || '1h';
       try {
         const data = await fetchTDSingle(tdSym, tdInterval);
-        console.log(`[DEBUG] /candles: fetched ${data.length} candles for ${tdSym} at ${tdInterval}`);
-        storeTF(sym, tf, data);
+        storeTF(sym, anchorTf, data);
+        /* Derive requested TF from anchor */
+        if (anchorTf !== tf) deriveFrom(sym, data, [tf]);
       } catch(e) {
-        console.error(`[DEBUG] /candles error for ${tdSym} ${tdInterval}:`, e);
+        console.error(`[candles] fetch error ${tdSym} ${tdInterval}:`, e.message);
       } finally {
         _fetchingTF[fetchKey] = false;
       }
     }
-    arr = candles[sym][tf] || []; // Catch it if the concurrent fetch finished while we waited
+    arr = candles[sym][tf] || [];
   }
-  
+
   res.json({ candles: arr });
 });
 
