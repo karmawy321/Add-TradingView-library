@@ -536,9 +536,9 @@ function fetchTDSingle(tdSym, tdInterval, extraParams) {
     const params = new URLSearchParams({
       symbol:     tdSym,
       interval:   tdInterval,
-      outputsize: '5000',   /* max allowed */
-      order:      'ASC',    /* oldest-first — no need to reverse */
-      timezone:   'UTC',    /* normalize all assets to UTC */
+      outputsize: '1000',   /* Reduced from 5000 to prevent Database Timeouts on heavy assets like Gold */
+      order:      'ASC',
+      timezone:   'UTC',
       apikey:     TD_KEY,
       ...extraParams
     });
@@ -809,9 +809,10 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
       const tdInterval = TD_TF[tf] || '1h';
       try {
         const data = await fetchTDSingle(tdSym, tdInterval);
+        console.log(`[DEBUG] /candles: fetched ${data.length} candles for ${tdSym} at ${tdInterval}`);
         storeTF(sym, tf, data);
       } catch(e) {
-        /* ignore */
+        console.error(`[DEBUG] /candles error for ${tdSym} ${tdInterval}:`, e);
       } finally {
         _fetchingTF[fetchKey] = false;
       }
