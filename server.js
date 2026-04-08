@@ -951,9 +951,13 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   const _oandaKey = sym.replace('/', ''); /* XAU/USD → XAUUSD */
   if (req.query.source === 'oanda' && _maReady && _maSymMap[_oandaKey] && !_oandaLoaded[_oandaKey]) {
     _oandaLoaded[_oandaKey] = true;
-    fetchOandaHistory(_oandaKey); /* background fetch — data available on next request */
+    fetchOandaHistory(_oandaKey); /* background fetch */
   }
-  const useOanda = req.query.source === 'oanda' && oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]).length > 0;
+  const oandaReady = oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]).length > 0;
+  if (req.query.source === 'oanda' && !oandaReady) {
+    return res.json({ candles: [], loading: true }); /* tell client to retry */
+  }
+  const useOanda = req.query.source === 'oanda' && oandaReady;
   let arr = useOanda ? (oandaCandles[_oandaKey][tf] || []) : (candles[sym][tf] || []);
 
   /* If empty, try to derive from a lower TF that's already loaded */

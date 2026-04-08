@@ -6143,6 +6143,12 @@ function loadChart(symbol,interval){
   fetch(BACKEND_URL+'/candles/'+sym+'?tf='+currentInterval+_srcParam)
     .then(function(r){return r.json();})
     .then(function(d){
+      if(d.loading){
+        /* OANDA history loading in background — retry in 4s */
+        showChartMsg('Loading OANDA data for '+sym+'…');
+        setTimeout(function(){ if(currentSymbol===sym && currentDataSource==='oanda') loadChart(sym, currentInterval); }, 4000);
+        return;
+      }
       if(d.candles&&d.candles.length>0){
         chartCandles=d.candles;
         if(!_srcParam){ if(!allCandleData[sym])allCandleData[sym]={}; allCandleData[sym][currentInterval]=d.candles; }
