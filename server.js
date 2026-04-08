@@ -899,8 +899,9 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   ensureSymbol(sym);
 
   /* source=oanda → serve from OANDA candle store if available */
-  const useOanda = req.query.source === 'oanda' && oandaCandles[sym] && oandaCandles[sym][tf];
-  let arr = useOanda ? (oandaCandles[sym][tf] || []) : (candles[sym][tf] || []);
+  const _oandaKey = sym.replace('/', ''); /* XAU/USD → XAUUSD */
+  const useOanda = req.query.source === 'oanda' && oandaCandles[_oandaKey] && oandaCandles[_oandaKey][tf];
+  let arr = useOanda ? (oandaCandles[_oandaKey][tf] || []) : (candles[sym][tf] || []);
 
   /* If empty, try to derive from a lower TF that's already loaded */
   if (arr.length === 0) {
