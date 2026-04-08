@@ -809,9 +809,41 @@ async function fetchOandaHistory(internalSym) {
     console.log(`[MetaApi] ${internalSym} 1m: ${m1.length} candles`);
 
     console.log(`[MetaApi] History ready for ${internalSym}`);
+    startOandaTicker(internalSym, maSym);
   } catch(e) {
     console.error('[MetaApi] fetchOandaHistory error:', e.message);
   }
+}
+
+const _oandaTickers = {};
+
+function startOandaTicker(internalSym, maSym) {
+  if (_oandaTickers[internalSym]) return; /* already running */
+  _oandaTickers[internalSym] = setInterval(async () => {
+    if (!_maConn) return;
+    try {
+      const p = await _maConn.getSymbolPrice(maSym);
+      if (!p) return;
+      const price = (p.bid + p.ask) / 2;
+      const ts = p.time ? new Date(p.time).getTime() : Date.now();
+      /* Update oandaCandles live candle */
+      ensureOandaSym(internalSym);
+      TIMEFRAMES.forEach(tf => {
+        const periodMs = TF_MS[tf];
+        const bucket   = Math.floor(ts / periodMs) * periodMs;
+        const arr      = oandaCandles[internalSym][tf];
+        const cur      = arr[arr.length - 1];
+        if (!cur || cur.t !== bucket) {
+          arr.push({ t: bucket, o: price, h: price, l: price, c: price, v: 0 });
+        } else {
+          cur.c = price; cur.h = Math.max(cur.h, price); cur.l = Math.min(cur.l, price);
+        }
+      });
+      /* Also feed into main candles store so SSE / live price bar works */
+      processTick(internalSym, price, 0, ts);
+    } catch(e) { /* ignore transient errors */ }
+  }, 2000);
+  console.log(`[MetaApi] Live ticker started for ${internalSym}`);
 }
 
 /* Subscribe a symbol on the master socket */
