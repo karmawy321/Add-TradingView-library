@@ -6577,8 +6577,9 @@ function executeSearch() {
     if(_currentSearchType === 'Physical Currency')     query = 'USD'; // EUR/USD, GBP/USD
     else if(_currentSearchType === 'Digital Currency') query = 'BTC'; // Crypto
     else if(_currentSearchType === 'Common Stock')     query = 'A';   // Apple, Amazon, AMD
-    else if(_currentSearchType === 'ETF')              query = 'SPY'; // SPY, Vanguard
-    else                                               query = 'XAU'; // Recommend Gold globally for the 'All' default
+    else if(_currentSearchType === 'ETF')              query = 'SPY';
+    else if(_currentSearchType === 'Mutual Fund')      query = 'VFIAX';
+    else                                               query = 'XAU';
   }
 
   var url = BACKEND_URL+'/search?q=' + encodeURIComponent(query);

@@ -932,8 +932,7 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
 
   const params = new URLSearchParams({
     symbol: query,
-    outputsize: '40',
-    source: 'docs', // sometimes required or useful
+    outputsize: '120',
     apikey: TD_KEY
   });
   
