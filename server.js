@@ -719,7 +719,7 @@ async function initMetaApi() {
     if (!['DEPLOYING','DEPLOYED'].includes(_maAccount.state)) await _maAccount.deploy();
     _maConn = _maAccount.getRPCConnection();
     await _maConn.connect();
-    await _maConn.waitSynchronized({ timeoutInSeconds: 60 });
+    await _maConn.waitSynchronized({ timeoutInSeconds: 120 });
     _maReady = true;
     console.log('[MetaApi] OANDA connection ready');
   } catch(e) {
@@ -2014,13 +2014,15 @@ app.listen(PORT, () => {
     }, i * 2000);
   });
 
-  /* OANDA gold via MetaApi — fetched in parallel, stored separately for source switcher */
+  /* OANDA gold via MetaApi — delay 30s to let TwelveData fetches settle first */
   if (METAAPI_TOKEN) {
-    console.log('[MetaApi] Initializing OANDA connection...');
-    initMetaApi().then(() => {
-      if (_maReady) fetchOandaHistory('XAUUSD');
-      else console.warn('[MetaApi] Not ready — OANDA gold unavailable');
-    });
+    setTimeout(() => {
+      console.log('[MetaApi] Initializing OANDA connection...');
+      initMetaApi().then(() => {
+        if (_maReady) fetchOandaHistory('XAUUSD');
+        else console.warn('[MetaApi] Not ready — OANDA gold unavailable');
+      });
+    }, 30000);
   }
 
   cron.schedule('0 2 * * *', () => {
