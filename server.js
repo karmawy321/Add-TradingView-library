@@ -785,6 +785,9 @@ app.get('/api/profile', rateLimit(30, 60000), async (req, res) => {
 // /profile page redirect
 app.get('/profile', (req, res) => sendPage('profile.html', res));
 
+// Tracks in-flight lazy fetches to prevent polling loops from spamming TwelveData
+const _fetchingTF = {};
+
 // Candles endpoint — 60 req/min per IP
 app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   const { symbol } = req.params;
@@ -797,15 +800,23 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   
   let arr = candles[sym][tf] || [];
   
-  /* Lazy On-Demand Fetch: If the timeframe is empty, request it directly from TwelveData instantly */
+  /* Lazy On-Demand Fetch: if empty AND not already fetching, grab it instantly */
   if (arr.length === 0 && TD_KEY) {
-    const tdSym = toTDSymbol(sym);
-    const tdInterval = TD_TF[tf] || '1h';
-    try {
-      const data = await fetchTDSingle(tdSym, tdInterval);
-      storeTF(sym, tf, data);
-      arr = candles[sym][tf];
-    } catch(e) { /* ignore and return empty */ }
+    const fetchKey = sym + '_' + tf;
+    if (!_fetchingTF[fetchKey]) {
+      _fetchingTF[fetchKey] = true;
+      const tdSym = toTDSymbol(sym);
+      const tdInterval = TD_TF[tf] || '1h';
+      try {
+        const data = await fetchTDSingle(tdSym, tdInterval);
+        storeTF(sym, tf, data);
+      } catch(e) {
+        /* ignore */
+      } finally {
+        _fetchingTF[fetchKey] = false;
+      }
+    }
+    arr = candles[sym][tf] || []; // Catch it if the concurrent fetch finished while we waited
   }
   
   res.json({ candles: arr });
