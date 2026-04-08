@@ -704,7 +704,24 @@ const METAAPI_TOKEN      = process.env.METAAPI_TOKEN || '';
 const METAAPI_ACCOUNT_ID = '620f74cf-9c2e-46d0-8073-36ab51e621c0';
 
 /* Internal symbol → OANDA MT5 symbol name */
-const _maSymMap = { 'XAUUSD': 'GOLD.pro' };
+const _maSymMap = {
+  'XAUUSD':  'GOLD.pro',
+  'XAGUSD':  'SILVER.pro',
+  'EURUSD':  'EURUSD.pro',
+  'GBPUSD':  'GBPUSD.pro',
+  'USDJPY':  'USDJPY.pro',
+  'USDCHF':  'USDCHF.pro',
+  'AUDUSD':  'AUDUSD.pro',
+  'NZDUSD':  'NZDUSD.pro',
+  'USDCAD':  'USDCAD.pro',
+  'BTCUSDT': 'BTCUSD',
+  'ETHUSDT': 'ETHUSD',
+  'SOLUSDT': 'SOLUSD',
+  'ADAUSDT': 'ADAUSD',
+  'DOTUSD':  'DOTUSD',
+  'LTCUSD':  'LTCUSD',
+};
+const _oandaLoaded = {};
 
 let _maAccount = null;
 let _maConn    = null;
@@ -900,7 +917,11 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
 
   /* source=oanda → serve from OANDA candle store if available */
   const _oandaKey = sym.replace('/', ''); /* XAU/USD → XAUUSD */
-  const useOanda = req.query.source === 'oanda' && oandaCandles[_oandaKey] && oandaCandles[_oandaKey][tf];
+  if (req.query.source === 'oanda' && _maReady && _maSymMap[_oandaKey] && !_oandaLoaded[_oandaKey]) {
+    _oandaLoaded[_oandaKey] = true;
+    fetchOandaHistory(_oandaKey); /* background fetch — data available on next request */
+  }
+  const useOanda = req.query.source === 'oanda' && oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]).length > 0;
   let arr = useOanda ? (oandaCandles[_oandaKey][tf] || []) : (candles[sym][tf] || []);
 
   /* If empty, try to derive from a lower TF that's already loaded */
@@ -1054,10 +1075,20 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
 
         /* Inject OANDA results for supported symbols */
         const _oandaCatalog = [
-          { symbol:'XAUUSD', instrument_name:'Gold Spot / US Dollar', instrument_type:'Commodity', exchange:'OANDA', source:'oanda' },
-          { symbol:'XAGUSD', instrument_name:'Silver Spot / US Dollar', instrument_type:'Commodity', exchange:'OANDA', source:'oanda' },
-          { symbol:'EURUSD', instrument_name:'Euro / US Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'GBPUSD', instrument_name:'British Pound / US Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'XAUUSD',  instrument_name:'Gold Spot / US Dollar',          instrument_type:'Commodity',       exchange:'OANDA', source:'oanda' },
+          { symbol:'XAGUSD',  instrument_name:'Silver Spot / US Dollar',         instrument_type:'Commodity',       exchange:'OANDA', source:'oanda' },
+          { symbol:'EURUSD',  instrument_name:'Euro / US Dollar',                instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPUSD',  instrument_name:'British Pound / US Dollar',       instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDJPY',  instrument_name:'US Dollar / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDCHF',  instrument_name:'US Dollar / Swiss Franc',         instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'AUDUSD',  instrument_name:'Australian Dollar / US Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'NZDUSD',  instrument_name:'New Zealand Dollar / US Dollar',  instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDCAD',  instrument_name:'US Dollar / Canadian Dollar',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',             instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'ETHUSDT', instrument_name:'Ethereum / US Dollar',            instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',              instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',             instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',            instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
         ];
         const q = query.toUpperCase().replace('/','');
         const oandaMatches = _maReady ? _oandaCatalog.filter(o => o.symbol.includes(q) || q.includes(o.symbol.slice(0,3))) : [];
