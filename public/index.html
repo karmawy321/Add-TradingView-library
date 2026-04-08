@@ -5762,7 +5762,7 @@ if(chartCanvas){
     var pivotBar = screenToWorldX(cssX);
     /* Zoom factor: ~10% per scroll tick, clamped to sensible scaleX range */
     var factor   = Math.pow(1.10, -Math.sign(e.deltaY));
-    var newScaleX = Math.max(2, Math.min(300, viewState.scaleX * factor));
+    var newScaleX = Math.max(0.05, Math.min(300, viewState.scaleX * factor)); // Unlocked minimum limit for full deep history zoom
     /* Keep pivotBar at cssX: worldToScreenX(pivotBar) = PAD.l + (pivotBar+0.5)*newScaleX + newOffsetX = cssX */
     viewState.offsetX = cssX - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
     viewState.scaleX  = newScaleX;
@@ -5805,7 +5805,7 @@ if(chartCanvas){
       var pivotBar = (_touchStartOffsetX === viewState.offsetX)
         ? screenToWorldX(cx)
         : screenToWorldX(cx);
-      var newScaleX=Math.max(2,Math.min(300,_touchStartScaleX*(dist/_lastTouchDist)));
+      var newScaleX=Math.max(0.05,Math.min(300,_touchStartScaleX*(dist/_lastTouchDist)));
       viewState.offsetX = cx - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
       viewState.scaleX  = newScaleX;
       renderChart();
@@ -5993,7 +5993,7 @@ if(chartCanvas){
     if (_dateAxisDrag) {
       var dx = e.clientX - _dateAxisDrag.startX;
       /* drag left = zoom in (fewer bars = larger scaleX), drag right = zoom out */
-      var newScaleX = Math.max(2, Math.min(300, _dateAxisDrag.startScaleX * Math.pow(1.003, -dx)));
+      var newScaleX = Math.max(0.05, Math.min(300, _dateAxisDrag.startScaleX * Math.pow(1.003, -dx)));
       /* Keep pivot bar at the same screen position */
       viewState.scaleX  = newScaleX;
       viewState.offsetX = _dateAxisDrag.pivotX - _chartPAD.l - (_dateAxisDrag.pivotBar + 0.5) * newScaleX;
@@ -6066,7 +6066,7 @@ function _initViewState(candles) {
   var defaultVis = Math.min(120, Math.max(30, n));
   /* Newest bar sits at 85% across the chart area, leaving ~15% future gap */
   var targetX    = _chartPAD.l + CW * 0.85;
-  viewState.scaleX  = Math.max(2, Math.min(20, CW / (defaultVis + 1)));
+  viewState.scaleX  = Math.max(0.05, Math.min(20, CW / (defaultVis + 1)));
   /* worldToScreenX(n-1) = PAD.l + (n-0.5)*scaleX + offsetX = targetX */
   viewState.offsetX     = targetX - _chartPAD.l - (n - 0.5) * viewState.scaleX;
   viewState.priceOffset = 0;
