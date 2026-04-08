@@ -1048,7 +1048,9 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
         if (json.status !== 'ok') {
           return res.json({ data: [] });
         }
-        res.json({ data: json.data || [] });
+        const _blocked = new Set(['Warrant','Structured Product','Leverage Product','Certificate','Mini Future']);
+        const filtered = (json.data || []).filter(r => !_blocked.has(r.instrument_type));
+        res.json({ data: filtered });
       } catch (e) {
         res.json({ data: [] });
       }
