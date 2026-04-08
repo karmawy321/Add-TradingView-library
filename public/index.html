@@ -5762,7 +5762,12 @@ if(chartCanvas){
     var pivotBar = screenToWorldX(cssX);
     /* Zoom factor: ~10% per scroll tick, clamped to sensible scaleX range */
     var factor   = Math.pow(1.10, -Math.sign(e.deltaY));
-    var newScaleX = Math.max(0.05, Math.min(300, viewState.scaleX * factor)); // Unlocked minimum limit for full deep history zoom
+    var n2 = (chartCandles && chartCandles.length) || 1;
+    var dpr2 = window.devicePixelRatio || 1;
+    var CW2 = chartCanvas.width / dpr2 - _chartPAD.l - _chartPAD.r;
+    /* Min scale: all bars fit in chart area (zoom all the way out to see full history) */
+    var minScale = Math.max(0.5, CW2 / (n2 + 1));
+    var newScaleX = Math.max(minScale, Math.min(300, viewState.scaleX * factor));
     /* Keep pivotBar at cssX: worldToScreenX(pivotBar) = PAD.l + (pivotBar+0.5)*newScaleX + newOffsetX = cssX */
     viewState.offsetX = cssX - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
     viewState.scaleX  = newScaleX;
@@ -5805,7 +5810,10 @@ if(chartCanvas){
       var pivotBar = (_touchStartOffsetX === viewState.offsetX)
         ? screenToWorldX(cx)
         : screenToWorldX(cx);
-      var newScaleX=Math.max(0.05,Math.min(300,_touchStartScaleX*(dist/_lastTouchDist)));
+      var n3=(chartCandles&&chartCandles.length)||1;
+      var r3=chartCanvas.getBoundingClientRect();
+      var minScale3=Math.max(0.5,(r3.width-_chartPAD.l-_chartPAD.r)/(n3+1));
+      var newScaleX=Math.max(minScale3,Math.min(300,_touchStartScaleX*(dist/_lastTouchDist)));
       viewState.offsetX = cx - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
       viewState.scaleX  = newScaleX;
       renderChart();
@@ -5876,8 +5884,10 @@ if(chartCanvas){
        maxOffX: bar 0 (oldest) at LEFT edge — can't pan further right than first bar
        minOffX: bar n-1 (newest) stays ~5 bars from right edge (future gap)        */
     var CW2 = W - _chartPAD.l - _chartPAD.r;
-    var maxOffX = -0.5 * barW;
-    var minOffX = CW2 * 0.7 - (n - 0.5) * barW;  /* newest bar stops at 70% of chart width */
+    /* maxOffX: allow bar 0 to reach left edge (pan all the way into history) */
+    var maxOffX = 0;
+    /* minOffX: newest bar sits at least 20% from right edge (small future gap) */
+    var minOffX = CW2 * 0.2 - (n - 0.5) * barW;
     if(dx) viewState.offsetX = Math.min(maxOffX, Math.max(minOffX, viewState.offsetX + dx));
     /* Y pan: drag down (dy>0) = content moves down = see lower prices */
     if(dy && _lastCH > 0){
@@ -5993,7 +6003,11 @@ if(chartCanvas){
     if (_dateAxisDrag) {
       var dx = e.clientX - _dateAxisDrag.startX;
       /* drag left = zoom in (fewer bars = larger scaleX), drag right = zoom out */
-      var newScaleX = Math.max(0.05, Math.min(300, _dateAxisDrag.startScaleX * Math.pow(1.003, -dx)));
+      var n4=(chartCandles&&chartCandles.length)||1;
+      var dpr4=window.devicePixelRatio||1;
+      var CW4=chartCanvas.width/dpr4-_chartPAD.l-_chartPAD.r;
+      var minScale4=Math.max(0.5,CW4/(n4+1));
+      var newScaleX = Math.max(minScale4, Math.min(300, _dateAxisDrag.startScaleX * Math.pow(1.003, -dx)));
       /* Keep pivot bar at the same screen position */
       viewState.scaleX  = newScaleX;
       viewState.offsetX = _dateAxisDrag.pivotX - _chartPAD.l - (_dateAxisDrag.pivotBar + 0.5) * newScaleX;
