@@ -9553,7 +9553,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
 
 <!-- ADVANCED SYMBOL SEARCH MODAL -->
 <style>
-.s-tab { padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;transition:all 0.2s;white-space:nowrap; }
+.s-tab { padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;transition:all 0.2s;white-space:nowrap;flex-shrink:0; }
 .s-tab:hover { color:#fff;background:rgba(255,255,255,0.05); }
 .s-tab-active { color:#c9a84c !important;background:rgba(201,168,76,0.15) !important;box-shadow:inset 0 0 0 1px rgba(201,168,76,0.4); }
 .s-res-item { display:flex;align-items:center;padding:12px 24px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.03);transition:all 0.2s; }
@@ -9571,7 +9571,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
       <input type="text" id="searchInputReal" placeholder="Search by symbol or name..." autocomplete="off" style="flex:1;background:transparent;border:none;color:#f0f4fa;font-size:16px;outline:none;font-family:'Inter',sans-serif;">
       <button onclick="closeSearchModal()" style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
     </div>
-    <div style="padding:12px 24px;display:flex;gap:8px;border-bottom:1px solid rgba(255,255,255,0.06);overflow-x:auto;">
+    <div style="padding:10px 24px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.06);overflow-x:auto;flex-shrink:0;scrollbar-width:none;">
       <div class="s-tab s-tab-active" data-type="">All</div>
       <div class="s-tab" data-type="Common Stock">Stocks</div>
       <div class="s-tab" data-type="Physical Currency">Forex</div>
