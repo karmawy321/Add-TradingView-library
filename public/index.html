@@ -6151,7 +6151,6 @@ function loadChart(symbol,interval){
       }
       if(d.candles&&d.candles.length>0){
         chartCandles=d.candles;
-        if(!_srcParam){ if(!allCandleData[sym])allCandleData[sym]={}; allCandleData[sym][currentInterval]=d.candles; }
         _initViewState(d.candles);
         renderChart();
         lwChartInstance=true;
@@ -6175,8 +6174,6 @@ function loadChart(symbol,interval){
       /* ── Full history on initial connect ── */
       if(data.candles){
         if(!data.candles[currentInterval]) return;
-        if(!allCandleData[sym]) allCandleData[sym]={};
-        allCandleData[sym][currentInterval]=data.candles[currentInterval];
         if(typeof _btActive!=='undefined'&&_btActive){ _btAllCandles=data.candles[currentInterval]; return; }
         chartCandles=data.candles[currentInterval];
         renderChart();
@@ -6212,8 +6209,6 @@ function loadChart(symbol,interval){
           chartCandles.push(tc);
           if(chartCandles.length>500) chartCandles.shift();
         }
-        if(!allCandleData[sym]) allCandleData[sym]={};
-        allCandleData[sym][currentInterval]=chartCandles;
         renderChart();
         var last2=chartCandles[chartCandles.length-1];
         var prev2=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last2.o;
@@ -6250,8 +6245,6 @@ function fetchTwelveDataFallback(sym, tf) {
         if(d.candles && d.candles.length > 0){
           clearInterval(retryTimer);
           chartCandles = d.candles;
-          if(!allCandleData[sym]) allCandleData[sym]={};
-          allCandleData[sym][tf] = d.candles;
           _initViewState(d.candles);
           renderChart();
           autoBarPattern();
@@ -6305,19 +6298,11 @@ function onTfChange(){
   currentInterval=tf.value;
   _historyLoading=false; _historyDepleted=false;
   var _srcQ = currentDataSource==='oanda' ? '&source=oanda' : '';
-  if(!_srcQ && allCandleData[currentSymbol]&&allCandleData[currentSymbol][currentInterval]&&allCandleData[currentSymbol][currentInterval].length>0){
-    chartCandles=allCandleData[currentSymbol][currentInterval];
-    _initViewState(chartCandles);
-    renderChart();
-    autoBarPattern();
-    return;
-  }
   fetch(BACKEND_URL+'/candles/'+currentSymbol+'?tf='+currentInterval+_srcQ)
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.candles&&d.candles.length>0){
         chartCandles=d.candles;
-        if(!_srcQ){ if(!allCandleData[currentSymbol])allCandleData[currentSymbol]={}; allCandleData[currentSymbol][currentInterval]=d.candles; }
         _initViewState(d.candles);
         renderChart();
         autoBarPattern();
