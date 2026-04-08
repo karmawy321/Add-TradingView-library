@@ -803,7 +803,7 @@ async function fetchOandaHistory(internalSym) {
 
     await new Promise(r => setTimeout(r, 400));
 
-    const m1 = await fetchOandaCandles(maSym, '1m', new Date(Date.now() - 500 * 60000), 500);
+    const m1 = await fetchOandaCandles(maSym, '1m', new Date(Date.now() - 3000 * 60000), 3000);
     storeOandaTF(internalSym, '1m', m1);
     deriveOanda(internalSym, m1, ['5m','15m','30m']);
     console.log(`[MetaApi] ${internalSym} 1m: ${m1.length} candles`);
@@ -953,9 +953,24 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
     _oandaLoaded[_oandaKey] = true;
     fetchOandaHistory(_oandaKey); /* background fetch */
   }
-  const oandaReady = oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]).length > 0;
+  const _oandaArr = oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]);
+  const oandaReady = _oandaArr && _oandaArr.length > 0;
+
+  /* If OANDA data exists but last candle is stale (>1h old), refresh in background */
+  if (oandaReady && _oandaArr.length > 0) {
+    const lastTs = _oandaArr[_oandaArr.length - 1].t;
+    if (Date.now() - lastTs > 3600000) { /* stale */
+      _oandaLoaded[_oandaKey] = false; /* allow re-fetch */
+    }
+  }
+
+  if (req.query.source === 'oanda' && _maReady && _maSymMap[_oandaKey] && !_oandaLoaded[_oandaKey]) {
+    _oandaLoaded[_oandaKey] = true;
+    fetchOandaHistory(_oandaKey);
+  }
+
   if (req.query.source === 'oanda' && !oandaReady) {
-    return res.json({ candles: [], loading: true }); /* tell client to retry */
+    return res.json({ candles: [], loading: true });
   }
   const useOanda = req.query.source === 'oanda' && oandaReady;
   let arr = useOanda ? (oandaCandles[_oandaKey][tf] || []) : (candles[sym][tf] || []);
