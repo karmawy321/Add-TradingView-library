@@ -3361,6 +3361,15 @@ function initSupabase() {
       sbReady = true;
       loadLocalSession();
       refreshSession();
+      /* Keep fractal_token fresh — Supabase auto-refreshes JWT every ~50min */
+      sb.auth.onAuthStateChange(function(event, session) {
+        if(session && session.access_token) {
+          localStorage.setItem('fractal_token', session.access_token);
+          if(event === 'TOKEN_REFRESHED') console.log('[Auth] Token refreshed silently');
+        } else if(event === 'SIGNED_OUT') {
+          localStorage.removeItem('fractal_token');
+        }
+      });
     } else {
       setTimeout(initSupabase, 100);
     }
