@@ -697,6 +697,105 @@ const _tdRootWS = TD_KEY ? createTDSocket('master', ['XAU/USD', 'BTC/USD', 'ETH/
 /* Register reverse-map entries for always-on symbols */
 ['XAUUSD','BTCUSDT','ETHUSDT','SOLUSDT'].forEach(s => { _tdToInternal[toTDSymbol(s)] = s; });
 
+/* ═══════════════════════════════════════════════════
+   METAAPI (OANDA) DATA SOURCE
+   ═══════════════════════════════════════════════════ */
+const METAAPI_TOKEN      = process.env.METAAPI_TOKEN || '';
+const METAAPI_ACCOUNT_ID = '620f74cf-9c2e-46d0-8073-36ab51e621c0';
+
+/* Internal symbol → OANDA MT5 symbol name */
+const _maSymMap = { 'XAUUSD': 'GOLD.pro' };
+
+let _maAccount = null;
+let _maConn    = null;
+let _maReady   = false;
+
+async function initMetaApi() {
+  if (!METAAPI_TOKEN) return;
+  try {
+    const MetaApi = require('metaapi.cloud-sdk').default;
+    const api = new MetaApi(METAAPI_TOKEN);
+    _maAccount = await api.metatraderAccountApi.getAccount(METAAPI_ACCOUNT_ID);
+    if (!['DEPLOYING','DEPLOYED'].includes(_maAccount.state)) await _maAccount.deploy();
+    _maConn = _maAccount.getRPCConnection();
+    await _maConn.connect();
+    await _maConn.waitSynchronized({ timeoutInSeconds: 60 });
+    _maReady = true;
+    console.log('[MetaApi] OANDA connection ready');
+  } catch(e) {
+    console.error('[MetaApi] Init failed:', e.message);
+  }
+}
+
+/* Separate candle store for OANDA data — same structure as candles{} */
+const oandaCandles = {};
+
+function ensureOandaSym(sym) {
+  if (!oandaCandles[sym]) { oandaCandles[sym] = {}; TIMEFRAMES.forEach(tf => { oandaCandles[sym][tf] = []; }); }
+}
+
+function storeOandaTF(sym, tf, arr) {
+  if (!arr.length) return;
+  oandaCandles[sym][tf].length = 0;
+  arr.forEach(c => oandaCandles[sym][tf].push(c));
+}
+
+function deriveOanda(sym, src, targets) {
+  if (!src.length) return;
+  targets.forEach(tf => {
+    if (oandaCandles[sym][tf].length > 0) return;
+    const derived = aggregateCandles(src, TF_MS[tf]);
+    storeOandaTF(sym, tf, derived);
+    if (derived.length) console.log(`[MetaApi] Derived ${derived.length} ${tf} for ${sym}`);
+  });
+}
+
+function maToCandle(c) {
+  return { t: new Date(c.time).getTime(), o: c.open, h: c.high, l: c.low, c: c.close, v: c.tickVolume || 0 };
+}
+
+async function fetchOandaCandles(maSym, tf, startTime, limit) {
+  if (!_maAccount) return [];
+  try {
+    const raw = await _maAccount.getHistoricalCandles(maSym, tf, startTime, limit);
+    return (raw || []).filter(c => c.state === 'complete').map(maToCandle);
+  } catch(e) {
+    console.error('[MetaApi] fetchOandaCandles error:', e.message);
+    return [];
+  }
+}
+
+async function fetchOandaHistory(internalSym) {
+  if (!_maReady) return;
+  const maSym = _maSymMap[internalSym];
+  if (!maSym) return;
+  ensureOandaSym(internalSym);
+  try {
+    const d1 = await fetchOandaCandles(maSym, '1d', new Date(Date.now() - 5000 * 86400000), 5000);
+    storeOandaTF(internalSym, '1d', d1);
+    deriveOanda(internalSym, d1, ['1w']);
+    console.log(`[MetaApi] ${internalSym} 1d: ${d1.length} candles`);
+
+    await new Promise(r => setTimeout(r, 400));
+
+    const h1 = await fetchOandaCandles(maSym, '1h', new Date(Date.now() - 2000 * 3600000), 2000);
+    storeOandaTF(internalSym, '1h', h1);
+    deriveOanda(internalSym, h1, ['4h']);
+    console.log(`[MetaApi] ${internalSym} 1h: ${h1.length} candles`);
+
+    await new Promise(r => setTimeout(r, 400));
+
+    const m1 = await fetchOandaCandles(maSym, '1m', new Date(Date.now() - 500 * 60000), 500);
+    storeOandaTF(internalSym, '1m', m1);
+    deriveOanda(internalSym, m1, ['5m','15m','30m']);
+    console.log(`[MetaApi] ${internalSym} 1m: ${m1.length} candles`);
+
+    console.log(`[MetaApi] History ready for ${internalSym}`);
+  } catch(e) {
+    console.error('[MetaApi] fetchOandaHistory error:', e.message);
+  }
+}
+
 /* Subscribe a symbol on the master socket */
 function tdWSSubscribe(internalSym) {
   const tdSym = toTDSymbol(internalSym);
@@ -797,8 +896,10 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   
   connectTD(sym);
   ensureSymbol(sym);
-  
-  let arr = candles[sym][tf] || [];
+
+  /* source=oanda → serve from OANDA candle store if available */
+  const useOanda = req.query.source === 'oanda' && oandaCandles[sym] && oandaCandles[sym][tf];
+  let arr = useOanda ? (oandaCandles[sym][tf] || []) : (candles[sym][tf] || []);
 
   /* If empty, try to derive from a lower TF that's already loaded */
   if (arr.length === 0) {
@@ -1909,9 +2010,18 @@ app.listen(PORT, () => {
     setTimeout(() => {
       ensureSymbol(sym);
       tdLoaded[sym] = true;
-      fetchTDHistory(sym); /* fetch all frames concurrently on startup */
-    }, i * 2000); /* 2s apart = safe under TwelveData rate limits */
+      fetchTDHistory(sym);
+    }, i * 2000);
   });
+
+  /* OANDA gold via MetaApi — fetched in parallel, stored separately for source switcher */
+  if (METAAPI_TOKEN) {
+    console.log('[MetaApi] Initializing OANDA connection...');
+    initMetaApi().then(() => {
+      if (_maReady) fetchOandaHistory('XAUUSD');
+      else console.warn('[MetaApi] Not ready — OANDA gold unavailable');
+    });
+  }
 
   cron.schedule('0 2 * * *', () => {
     console.log('\n⏰ [Scheduled] Running daily prediction check...');
