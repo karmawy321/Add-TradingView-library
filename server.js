@@ -719,7 +719,8 @@ async function initMetaApi() {
     if (!['DEPLOYING','DEPLOYED'].includes(_maAccount.state)) await _maAccount.deploy();
     _maConn = _maAccount.getRPCConnection();
     await _maConn.connect();
-    await _maConn.waitSynchronized({ timeoutInSeconds: 120 });
+    /* Give the connection 5s to settle without blocking on full sync */
+    await new Promise(r => setTimeout(r, 5000));
     _maReady = true;
     console.log('[MetaApi] OANDA connection ready');
   } catch(e) {
