@@ -6558,9 +6558,16 @@ function executeSearch() {
   var loadingHtml = '<div style="padding:24px;text-align:center;color:rgba(255,255,255,0.5)">Searching...</div>';
   resDiv.innerHTML = loadingHtml;
 
-  var url = BACKEND_URL+'/search';
-  if(query.length > 0) url += '?q=' + encodeURIComponent(query);
-  else url += '?q=BTC'; // default loaded if empty
+  // Intelligently feed default results when the search bar is empty based on the tab chosen
+  if(query.length === 0){
+    if(_currentSearchType === 'Physical Currency')     query = 'USD'; // EUR/USD, GBP/USD
+    else if(_currentSearchType === 'Digital Currency') query = 'BTC'; // Crypto
+    else if(_currentSearchType === 'Common Stock')     query = 'A';   // Apple, Amazon, AMD
+    else if(_currentSearchType === 'ETF')              query = 'SPY'; // SPY, Vanguard
+    else                                               query = 'XAU'; // Recommend Gold globally for the 'All' default
+  }
+
+  var url = BACKEND_URL+'/search?q=' + encodeURIComponent(query);
 
   fetch(url)
     .then(function(r){ return r.json(); })
