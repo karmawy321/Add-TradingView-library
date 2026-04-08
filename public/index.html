@@ -102,11 +102,6 @@
 
 
 /* ══ LIVE PRICE BADGE ══ */
-.src-switch{display:none;align-items:center;gap:0;border:1px solid rgba(201,168,76,.25);border-radius:3px;overflow:hidden;flex-shrink:0;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.06em}
-.src-switch.show{display:flex}
-.src-btn{padding:3px 8px;cursor:pointer;color:#4e5d78;background:transparent;border:none;transition:background .15s,color .15s}
-.src-btn:hover{color:#c9a84c}
-.src-btn.active{background:rgba(201,168,76,.15);color:#c9a84c}
 .live-price-bar{display:none;align-items:center;gap:6px;padding:4px 10px;
   background:rgba(39,174,96,.08);border:1px solid rgba(39,174,96,.25);
   border-radius:2px;white-space:nowrap;flex-shrink:0}
@@ -1033,13 +1028,8 @@ if (isEmbedded) {
             </label>
             <button id="clearUploadBtn" onclick="clearUploadedChart()" style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕ CLEAR PHOTO</button>
             <button id="terminateChartBtn" onclick="terminateChart()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em">⏹ STOP</button>
-            <!-- Data source switcher — only visible for OANDA-supported symbols -->
-            <div class="src-switch" id="srcSwitch" style="margin-left:auto">
-              <button class="src-btn active" id="srcBtnTD" onclick="setDataSource('twelvedata')">TD</button>
-              <button class="src-btn" id="srcBtnOanda" onclick="setDataSource('oanda')">OANDA</button>
-            </div>
             <!-- Live price — sits in toolbar row, right-aligned -->
-            <div class="live-price-bar" id="livePriceBar">
+            <div class="live-price-bar" id="livePriceBar" style="margin-left:auto">
               <div class="live-dot"></div>
               <div class="live-price-val" id="livePriceVal">—</div>
               <div class="live-price-change" id="livePriceChange"></div>
