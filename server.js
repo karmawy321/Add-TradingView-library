@@ -766,6 +766,10 @@ const _maSymMap = {
   'AU200':    'AU200.pro',
   'EU50':     'EU50.pro',
   'FR40':     'FR40.pro',
+  /* ── Equity CFDs ── */
+  'TSLA':     'TSLA_CFD.US',
+  'NVDA':     'NVDA_CFD.US',
+  'AAPL':     'AAPL_CFD.US',
   /* ── Crypto ── */
   'BTCUSDT':  'BTCUSD',
   'ETHUSDT':  'ETHUSD',
@@ -1311,6 +1315,10 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           { symbol:'CADJPY',  instrument_name:'Canadian Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'CHFJPY',  instrument_name:'Swiss Franc / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'NZDJPY',  instrument_name:'New Zealand Dollar / Japanese Yen', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          /* Equity CFDs */
+          { symbol:'TSLA',    instrument_name:'Tesla Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
+          { symbol:'NVDA',    instrument_name:'NVIDIA Corp',                 instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
+          { symbol:'AAPL',    instrument_name:'Apple Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
           /* Indices */
           { symbol:'US500',   instrument_name:'S&P 500',                     instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
           { symbol:'US30',    instrument_name:'Dow Jones 30',                instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
