@@ -851,6 +851,50 @@ async function _loadOandaSymbols() {
 /* Separate candle store for OANDA data — same structure as candles{} */
 const oandaCandles = {};
 
+/* ── Disk cache for OANDA candles ── */
+const OANDA_CACHE_DIR = path.join(__dirname, 'oanda_cache');
+try { if (!fs.existsSync(OANDA_CACHE_DIR)) fs.mkdirSync(OANDA_CACHE_DIR); } catch(e) {}
+
+function saveCacheToDisk(sym) {
+  try {
+    fs.writeFileSync(
+      path.join(OANDA_CACHE_DIR, sym + '.json'),
+      JSON.stringify(oandaCandles[sym])
+    );
+    console.log(`[Cache] Saved ${sym}`);
+  } catch(e) { console.error('[Cache] Save error ' + sym + ':', e.message); }
+}
+
+function loadCacheFromDisk() {
+  let n = 0;
+  for (const sym of Object.keys(_maSymMap)) {
+    const file = path.join(OANDA_CACHE_DIR, sym + '.json');
+    try {
+      if (!fs.existsSync(file)) continue;
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      oandaCandles[sym] = data;
+      _oandaLoaded[sym] = true;
+      n++;
+    } catch(e) { console.error('[Cache] Load error ' + sym + ':', e.message); }
+  }
+  console.log('[Cache] Loaded ' + n + ' symbols from disk');
+}
+
+let _cacheRefreshing = false;
+async function refreshAllOandaCache() {
+  if (!_maReady || _cacheRefreshing) return;
+  _cacheRefreshing = true;
+  console.log('[Cache] Starting full OANDA cache refresh (' + Object.keys(_maSymMap).length + ' symbols)...');
+  const syms = Object.keys(_maSymMap);
+  for (const sym of syms) {
+    const hasData = oandaCandles[sym] && TIMEFRAMES.some(tf => (oandaCandles[sym][tf] || []).length > 0);
+    try { await fetchOandaHistory(sym, hasData); } catch(e) { console.error('[Cache] Error refreshing ' + sym + ':', e.message); }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  _cacheRefreshing = false;
+  console.log('[Cache] Full OANDA cache refresh complete');
+}
+
 function ensureOandaSym(sym) {
   if (!oandaCandles[sym]) { oandaCandles[sym] = {}; TIMEFRAMES.forEach(tf => { oandaCandles[sym][tf] = []; }); }
 }
@@ -886,7 +930,9 @@ async function fetchOandaCandles(maSym, tf, startTime, limit) {
   }
 }
 
-async function fetchOandaHistory(internalSym) {
+const _OANDA_FULL_LIMITS = { '1w': 500, '1d': 5000, '4h': 1000, '1h': 2000, '30m': 2000, '15m': 2000, '5m': 2000, '1m': 3000 };
+
+async function fetchOandaHistory(internalSym, incremental) {
   if (!_maReady) return;
   const maSym = _maSymMap[internalSym];
   if (!maSym) return;
@@ -894,26 +940,35 @@ async function fetchOandaHistory(internalSym) {
 
   const delay = () => new Promise(r => setTimeout(r, 400));
 
-  const fetches = [
-    { tf: '1w', start: new Date(), limit: 500  },
-    { tf: '1d', start: new Date(), limit: 5000 },
-    { tf: '4h', start: new Date(),  limit: 1000 },
-    { tf: '1h', start: new Date(),   limit: 2000 },
-    { tf: '30m',start: new Date(),   limit: 2000 },
-    { tf: '15m',start: new Date(),    limit: 2000 },
-    { tf: '5m', start: new Date(),    limit: 2000 },
-    { tf: '1m', start: new Date(),     limit: 3000 },
-  ];
-
   try {
-    for (const f of fetches) {
-      const candles = await fetchOandaCandles(maSym, f.tf, f.start, f.limit);
-      storeOandaTF(internalSym, f.tf, candles);
-      console.log(`[MetaApi] ${internalSym} ${f.tf}: ${candles.length} candles`);
+    for (const tf of TIMEFRAMES) {
+      const arr    = oandaCandles[internalSym][tf];
+      const fullLim = _OANDA_FULL_LIMITS[tf];
+      let limit = fullLim;
+
+      if (incremental && arr.length > 0) {
+        const lastT   = arr[arr.length - 1].t;
+        const elapsed = Date.now() - lastT;
+        /* only fetch the candles that could have appeared since last save */
+        limit = Math.min(fullLim, Math.ceil(elapsed / TF_MS[tf]) + 20);
+      }
+
+      const candles = await fetchOandaCandles(maSym, tf, new Date(), limit);
+
+      if (incremental && arr.length > 0) {
+        const lastT = arr[arr.length - 1].t;
+        const fresh = candles.filter(c => c.t > lastT);
+        fresh.forEach(c => arr.push(c));
+        if (fresh.length) console.log(`[MetaApi] ${internalSym} ${tf}: +${fresh.length} new (incremental)`);
+      } else {
+        storeOandaTF(internalSym, tf, candles);
+        console.log(`[MetaApi] ${internalSym} ${tf}: ${candles.length} candles`);
+      }
       await delay();
     }
     console.log(`[MetaApi] History ready for ${internalSym}`);
     startOandaTicker(internalSym, maSym);
+    saveCacheToDisk(internalSym);
   } catch(e) {
     console.error('[MetaApi] fetchOandaHistory error:', e.message);
   }
@@ -2292,13 +2347,20 @@ app.listen(PORT, () => {
 
   /* TD_DISABLED — prefetch skipped. Re-enable by restoring PREFETCH loop */
 
-  /* OANDA gold via MetaApi — delay 30s to let TwelveData fetches settle first */
+  /* OANDA — load disk cache immediately, then full refresh after MetaApi ready */
+  loadCacheFromDisk();
+
   if (METAAPI_TOKEN) {
     setTimeout(() => {
       console.log('[MetaApi] Initializing OANDA connection...');
       initMetaApi().then(() => {
-        if (_maReady) fetchOandaHistory('XAUUSD');
-        else console.warn('[MetaApi] Not ready — OANDA gold unavailable');
+        if (_maReady) {
+          refreshAllOandaCache();
+          /* Refresh again every 12 hours */
+          setInterval(() => refreshAllOandaCache(), 12 * 3600 * 1000);
+        } else {
+          console.warn('[MetaApi] Not ready — OANDA unavailable');
+        }
       });
     }, 30000);
   }
