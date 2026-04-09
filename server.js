@@ -462,11 +462,25 @@ function pushSSE(sym) {
     delete _ssePending[sym];
     const cs = sseClients[sym];
     if (!cs || cs.size === 0) return;
-    /* Send only the latest candle per timeframe — ~360 bytes vs 180KB for full history */
+    
     const tick = {};
     TIMEFRAMES.forEach(tf => { const a = candles[sym][tf]; if (a && a.length) tick[tf] = a[a.length - 1]; });
-    const msg = `data: ${JSON.stringify({ symbol: sym, tick })}\n\n`;
-    cs.forEach(res => { try { res.write(msg); } catch(e) { cs.delete(res); } });
+    const msgDef = `data: ${JSON.stringify({ symbol: sym, tick })}\n\n`;
+    
+    const _oKey = sym.replace('/', '');
+    let msgOanda = msgDef;
+    if (oandaCandles[_oKey]) {
+      const oTick = {};
+      TIMEFRAMES.forEach(tf => { const a = oandaCandles[_oKey][tf]; if (a && a.length) oTick[tf] = a[a.length - 1]; });
+      msgOanda = `data: ${JSON.stringify({ symbol: sym, tick: oTick })}\n\n`;
+    }
+
+    cs.forEach(res => { 
+      try { 
+        if (res.reqSource === 'oanda') res.write(msgOanda);
+        else res.write(msgDef);
+      } catch(e) { cs.delete(res); } 
+    });
   }, 1000);
 }
 
@@ -776,7 +790,7 @@ async function fetchOandaCandles(maSym, tf, startTime, limit) {
   if (!_maAccount) return [];
   try {
     const raw = await _maAccount.getHistoricalCandles(maSym, tf, startTime, limit);
-    return (raw || []).filter(c => c.state === 'complete').map(maToCandle);
+    return (raw || []).map(maToCandle);
   } catch(e) {
     console.error('[MetaApi] fetchOandaCandles error:', e.message);
     return [];
@@ -831,9 +845,15 @@ function startOandaTicker(internalSym, maSym) {
       ensureOandaSym(internalSym);
       TIMEFRAMES.forEach(tf => {
         const periodMs = TF_MS[tf];
-        const bucket   = Math.floor(ts / periodMs) * periodMs;
         const arr      = oandaCandles[internalSym][tf];
         const cur      = arr[arr.length - 1];
+        
+        let bucket = Math.floor(ts / periodMs) * periodMs;
+        if (cur) {
+          const periodsElapsed = Math.floor((ts - cur.t) / periodMs);
+          bucket = cur.t + periodsElapsed * periodMs;
+        }
+
         if (!cur || cur.t !== bucket) {
           arr.push({ t: bucket, o: price, h: price, l: price, c: price, v: 0 });
         } else {
@@ -1110,6 +1130,9 @@ app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
   const sym = req.params.symbol.toUpperCase().replace('-', '/');
   connectTD(sym);
   ensureSymbol(sym);
+  
+  res.reqSource = req.query.source;
+  
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -1122,7 +1145,10 @@ app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
     /* Unsubscribe from dynamic WS3 when no users are watching this symbol */
     if (sseClients[sym].size === 0) tdWSUnsubscribe(sym);
   });
-  res.write(`data: ${JSON.stringify({ symbol: sym, candles: candles[sym] })}\n\n`);
+  
+  const _oKey = sym.replace('/', '');
+  const initialCandles = (res.reqSource === 'oanda' && oandaCandles[_oKey]) ? oandaCandles[_oKey] : candles[sym];
+  res.write(`data: ${JSON.stringify({ symbol: sym, candles: initialCandles || {} })}\n\n`);
 });
 
 // Current price endpoint
