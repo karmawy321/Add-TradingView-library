@@ -420,7 +420,7 @@ async function getUserProfile(token) {
 /* ═══════════════════════════════════════════════════
    CANDLE BUILDER
    ═══════════════════════════════════════════════════ */
-const TF_MS = { '1m':60000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000 };
+const TF_MS = { '1m':60000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000,'1M':2592000000 };
 const TIMEFRAMES = Object.keys(TF_MS);
 const candles    = {};
 const sseClients = {};
@@ -955,8 +955,9 @@ function maToCandle(c) {
 
 async function fetchOandaCandles(maSym, tf, startTime, limit) {
   if (!_maAccount) return [];
+  const maTF = _maTFMap[tf] || tf;
   try {
-    const raw = await _maAccount.getHistoricalCandles(maSym, tf, startTime, limit);
+    const raw = await _maAccount.getHistoricalCandles(maSym, maTF, startTime, limit);
     return (raw || []).map(maToCandle);
   } catch(e) {
     console.error('[MetaApi] fetchOandaCandles error:', e.message);
@@ -964,7 +965,16 @@ async function fetchOandaCandles(maSym, tf, startTime, limit) {
   }
 }
 
-const _OANDA_FULL_LIMITS = { '1w': 500, '1d': 5000, '4h': 1000, '1h': 2000, '30m': 2000, '15m': 2000, '5m': 2000, '1m': 3000 };
+/* MetaAPI uses '1MN' for monthly candles — map internal TF keys that differ */
+const _maTFMap = { '1M': '1MN' };
+
+/* Target candle counts per TF for full history fetch:
+   1M  → 300  (~25 years)   1w  → 1100 (~21 years)
+   4h  → 7800 (~5 years)    1h  → 17520 (~2 years)
+   1m  → 10080 (7 days)     others unchanged            */
+const _OANDA_FULL_LIMITS = { '1M': 300, '1w': 1100, '1d': 5000, '4h': 7800, '1h': 17520, '30m': 2000, '15m': 2000, '5m': 2000, '1m': 10080 };
+
+const _OANDA_PAGE_SIZE = 1000; /* max candles per MetaAPI request */
 
 async function fetchOandaHistory(internalSym, incremental) {
   if (!_maReady) return;
@@ -972,33 +982,42 @@ async function fetchOandaHistory(internalSym, incremental) {
   if (!maSym) return;
   ensureOandaSym(internalSym);
 
-  const delay = () => new Promise(r => setTimeout(r, 400));
+  const delay = () => new Promise(r => setTimeout(r, 500));
 
   try {
     for (const tf of TIMEFRAMES) {
       _cacheProgress.currentTF = tf;
       const arr    = oandaCandles[internalSym][tf];
-      const fullLim = _OANDA_FULL_LIMITS[tf];
-      let limit = fullLim;
+      const target = _OANDA_FULL_LIMITS[tf] || 1000;
 
       if (incremental && arr.length > 0) {
+        /* Incremental: only fetch candles that could have appeared since last save */
         const lastT   = arr[arr.length - 1].t;
         const elapsed = Date.now() - lastT;
-        /* only fetch the candles that could have appeared since last save */
-        limit = Math.min(fullLim, Math.ceil(elapsed / TF_MS[tf]) + 20);
-      }
-
-      const candles = await fetchOandaCandles(maSym, tf, new Date(), limit);
-
-      if (incremental && arr.length > 0) {
-        const lastT = arr[arr.length - 1].t;
-        const fresh = candles.filter(c => c.t > lastT);
+        const limit   = Math.min(_OANDA_PAGE_SIZE, Math.ceil(elapsed / TF_MS[tf]) + 20);
+        const batch   = await fetchOandaCandles(maSym, tf, new Date(), limit);
+        const fresh   = batch.filter(c => c.t > lastT);
         fresh.forEach(c => arr.push(c));
         if (fresh.length) console.log(`[MetaApi] ${internalSym} ${tf}: +${fresh.length} new (incremental)`);
       } else {
-        storeOandaTF(internalSym, tf, candles);
-        console.log(`[MetaApi] ${internalSym} ${tf}: ${candles.length} candles`);
+        /* Full fetch with pagination — walk backwards in time until target reached */
+        let collected = [];
+        let fromTime  = new Date();
+
+        while (collected.length < target) {
+          const limit = Math.min(_OANDA_PAGE_SIZE, target - collected.length);
+          const batch = await fetchOandaCandles(maSym, tf, fromTime, limit);
+          if (!batch.length) break;
+          collected = [...batch, ...collected]; /* prepend older candles */
+          fromTime  = new Date(batch[0].t - 1); /* go further back */
+          if (batch.length < limit) break; /* no more history available */
+          await delay();
+        }
+
+        storeOandaTF(internalSym, tf, collected);
+        console.log(`[MetaApi] ${internalSym} ${tf}: ${collected.length} candles (target ${target})`);
       }
+
       _cacheProgress.tfDone++;
       await delay();
     }
