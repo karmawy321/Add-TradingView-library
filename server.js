@@ -692,7 +692,7 @@ function createTDSocket(name, initialSymbols) {
 }
 
 /* Initialise a single Master Socket to conserve TwelveData connection limits */
-const _tdRootWS = TD_KEY ? createTDSocket('master', ['XAU/USD', 'BTC/USD', 'ETH/USD', 'SOL/USD']) : null;
+const _tdRootWS = null; /* TD_DISABLED — re-enable: TD_KEY ? createTDSocket('master', ['XAU/USD', 'BTC/USD', 'ETH/USD', 'SOL/USD']) : null */
 
 /* Register reverse-map entries for always-on symbols */
 ['XAUUSD','BTCUSDT','ETHUSDT','SOLUSDT'].forEach(s => { _tdToInternal[toTDSymbol(s)] = s; });
@@ -861,14 +861,13 @@ function tdWSUnsubscribe(internalSym) {
 }
 
 function connectTD(symbol) {
+  /* TD_DISABLED — only OANDA active. Re-enable by restoring body below:
   const sym = symbol.toUpperCase();
   ensureSymbol(sym);
-  if (!tdLoaded[sym]) {
-    tdLoaded[sym] = true;
-    fetchTDHistory(sym);
-  }
-  /* Subscribe live ticks via WebSocket */
+  if (!tdLoaded[sym]) { tdLoaded[sym] = true; fetchTDHistory(sym); }
   tdWSSubscribe(sym);
+  */
+  ensureSymbol(symbol.toUpperCase());
 }
 
 const app = express();
@@ -2100,16 +2099,7 @@ app.listen(PORT, () => {
   console.log('Stripe:',        !!stripe);
   console.log('Supabase:',      !!sbAdmin);
 
-  /* Prefetch daily candles for top pairs — 1 request per symbol, 2s apart */
-  const PREFETCH = ['XAUUSD','BTCUSDT','ETHUSDT','EURUSD','GBPUSD','SOLUSDT','XAGUSD','XPTUSD'];
-  console.log('📦 Prefetching daily candles for:', PREFETCH.join(', '));
-  PREFETCH.forEach((sym, i) => {
-    setTimeout(() => {
-      ensureSymbol(sym);
-      tdLoaded[sym] = true;
-      fetchTDHistory(sym);
-    }, i * 2000);
-  });
+  /* TD_DISABLED — prefetch skipped. Re-enable by restoring PREFETCH loop */
 
   /* OANDA gold via MetaApi — delay 30s to let TwelveData fetches settle first */
   if (METAAPI_TOKEN) {
