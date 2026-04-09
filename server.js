@@ -990,7 +990,10 @@ async function fetchOandaHistory(internalSym, incremental) {
       const arr    = oandaCandles[internalSym][tf];
       const target = _OANDA_FULL_LIMITS[tf] || 1000;
 
-      if (incremental && arr.length > 0) {
+      /* If existing data is less than 70% of the new target, back-fill regardless of incremental flag */
+      const needsBackfill = arr.length > 0 && arr.length < target * 0.7;
+
+      if (incremental && arr.length > 0 && !needsBackfill) {
         /* Incremental: only fetch candles that could have appeared since last save */
         const lastT   = arr[arr.length - 1].t;
         const elapsed = Date.now() - lastT;
@@ -1000,6 +1003,7 @@ async function fetchOandaHistory(internalSym, incremental) {
         fresh.forEach(c => arr.push(c));
         if (fresh.length) console.log(`[MetaApi] ${internalSym} ${tf}: +${fresh.length} new (incremental)`);
       } else {
+        if (needsBackfill) console.log(`[MetaApi] ${internalSym} ${tf}: only ${arr.length}/${target} candles — back-filling history...`);
         /* Full fetch with pagination — walk backwards in time until target reached */
         let collected = [];
         let fromTime  = new Date();
