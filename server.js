@@ -806,14 +806,14 @@ async function fetchOandaHistory(internalSym) {
   const delay = () => new Promise(r => setTimeout(r, 400));
 
   const fetches = [
-    { tf: '1w', start: new Date(Date.now() - 500  * 604800000), limit: 500  },
-    { tf: '1d', start: new Date(Date.now() - 5000 * 86400000),  limit: 5000 },
-    { tf: '4h', start: new Date(Date.now() - 1000 * 14400000),  limit: 1000 },
-    { tf: '1h', start: new Date(Date.now() - 2000 * 3600000),   limit: 2000 },
-    { tf: '30m',start: new Date(Date.now() - 2000 * 1800000),   limit: 2000 },
-    { tf: '15m',start: new Date(Date.now() - 2000 * 900000),    limit: 2000 },
-    { tf: '5m', start: new Date(Date.now() - 2000 * 300000),    limit: 2000 },
-    { tf: '1m', start: new Date(Date.now() - 3000 * 60000),     limit: 3000 },
+    { tf: '1w', start: new Date(), limit: 500  },
+    { tf: '1d', start: new Date(), limit: 5000 },
+    { tf: '4h', start: new Date(),  limit: 1000 },
+    { tf: '1h', start: new Date(),   limit: 2000 },
+    { tf: '30m',start: new Date(),   limit: 2000 },
+    { tf: '15m',start: new Date(),    limit: 2000 },
+    { tf: '5m', start: new Date(),    limit: 2000 },
+    { tf: '1m', start: new Date(),     limit: 3000 },
   ];
 
   try {
@@ -1064,8 +1064,7 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
     if (before.length < 50 && maSym && _maAccount) {
       /* Not enough — fetch a fresh batch from MetaApi going back from endTime */
       const limit  = 2000;
-      const periodMs = TF_MS[tf] || 60000;
-      const startT = new Date(endTime - limit * periodMs);
+      const startT = new Date(endTime);
       try {
         const fetched = await fetchOandaCandles(maSym, tf, startT, limit);
         /* Prepend new candles to store, keeping sorted, deduplicated */
