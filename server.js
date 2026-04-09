@@ -719,21 +719,63 @@ const METAAPI_ACCOUNT_ID = '620f74cf-9c2e-46d0-8073-36ab51e621c0';
 
 /* Internal symbol → OANDA MT5 symbol name */
 const _maSymMap = {
-  'XAUUSD':  'GOLD.pro',
-  'XAGUSD':  'SILVER.pro',
-  'EURUSD':  'EURUSD.pro',
-  'GBPUSD':  'GBPUSD.pro',
-  'USDJPY':  'USDJPY.pro',
-  'USDCHF':  'USDCHF.pro',
-  'AUDUSD':  'AUDUSD.pro',
-  'NZDUSD':  'NZDUSD.pro',
-  'USDCAD':  'USDCAD.pro',
-  'BTCUSDT': 'BTCUSD',
-  'ETHUSDT': 'ETHUSD',
-  'SOLUSDT': 'SOLUSD',
-  'ADAUSDT': 'ADAUSD',
-  'DOTUSD':  'DOTUSD',
-  'LTCUSD':  'LTCUSD',
+  /* ── Metals / Commodities ── */
+  'XAUUSD':   'GOLD.pro',
+  'XAGUSD':   'SILVER.pro',
+  'OILWTI':   'OILWTI.pro',
+  'OILBRNT':  'OILBRNT.pro',
+  'NATGAS':   'NATGAS.pro',
+  'COPPER':   'COPPER-US.pro',
+  'PLATIN':   'PLATIN.pro',
+  'PALLAD':   'PALLAD.pro',
+  /* ── Forex majors ── */
+  'EURUSD':   'EURUSD.pro',
+  'GBPUSD':   'GBPUSD.pro',
+  'USDJPY':   'USDJPY.pro',
+  'USDCHF':   'USDCHF.pro',
+  'AUDUSD':   'AUDUSD.pro',
+  'NZDUSD':   'NZDUSD.pro',
+  'USDCAD':   'USDCAD.pro',
+  /* ── Forex crosses ── */
+  'EURJPY':   'EURJPY.pro',
+  'GBPJPY':   'GBPJPY.pro',
+  'EURGBP':   'EURGBP.pro',
+  'EURAUD':   'EURAUD.pro',
+  'EURCAD':   'EURCAD.pro',
+  'EURCHF':   'EURCHF.pro',
+  'EURNZD':   'EURNZD.pro',
+  'GBPAUD':   'GBPAUD.pro',
+  'GBPCAD':   'GBPCAD.pro',
+  'GBPCHF':   'GBPCHF.pro',
+  'GBPNZD':   'GBPNZD.pro',
+  'AUDCAD':   'AUDCAD.pro',
+  'AUDCHF':   'AUDCHF.pro',
+  'AUDJPY':   'AUDJPY.pro',
+  'AUDNZD':   'AUDNZD.pro',
+  'CADCHF':   'CADCHF.pro',
+  'CADJPY':   'CADJPY.pro',
+  'CHFJPY':   'CHFJPY.pro',
+  'NZDJPY':   'NZDJPY.pro',
+  /* ── Indices ── */
+  'US500':    'US500.pro',
+  'US30':     'US30.pro',
+  'US100':    'US100.pro',
+  'DE30':     'DE30.pro',
+  'GB100':    'GB100.pro',
+  'JP225':    'JP225.pro',
+  'AU200':    'AU200.pro',
+  'EU50':     'EU50.pro',
+  'FR40':     'FR40.pro',
+  /* ── Equity CFDs ── */
+  'TSLA':     'TSLA_CFD.US',
+  'NVDA':     'NVDA_CFD.US',
+  'AAPL':     'AAPL_CFD.US',
+  /* ── Crypto ── */
+  'BTCUSDT':  'BTCUSD',
+  'ETHUSDT':  'ETHUSD',
+  'SOLUSDT':  'SOLUSD',
+  'ADAUSDT':  'ADAUSD',
+  'LTCUSD':   'LTCUSD',
 };
 const _oandaLoaded = {};
 
@@ -754,8 +796,55 @@ async function initMetaApi() {
     await new Promise(r => setTimeout(r, 5000));
     _maReady = true;
     console.log('[MetaApi] OANDA connection ready');
+    /* Fetch full symbol list from broker and build dynamic map + catalog */
+    _loadOandaSymbols().catch(e => console.error('[MetaApi] symbol load failed:', e.message));
   } catch(e) {
     console.error('[MetaApi] Init failed:', e.message);
+  }
+}
+
+/* Populated dynamically after connect — overrides the static _maSymMap entries */
+let _oandaSymbolCatalog = []; /* [{ symbol, brokerSym, name, type }] */
+
+async function _loadOandaSymbols() {
+  try {
+    const symbols = await _maConn.getSymbols();
+    /* symbols is an array of strings: ['GOLD.pro', 'EURUSD.pro', 'BTCUSD', ...] */
+    console.log(`[MetaApi] Broker has ${symbols.length} symbols`);
+
+    /* Build internal-key → broker-symbol map from the live list */
+    symbols.forEach(brokerSym => {
+      /* Derive a clean internal key: strip .pro/.PRO suffix, normalise */
+      const key = brokerSym.replace(/\.pro$/i, '').toUpperCase()
+                            .replace('GOLD',   'XAUUSD')
+                            .replace('SILVER', 'XAGUSD');
+      if (!_maSymMap[key]) _maSymMap[key] = brokerSym; /* don't overwrite hardcoded entries */
+    });
+
+    /* Build the catalog used by the search endpoint */
+    _oandaSymbolCatalog = symbols.map(brokerSym => {
+      const key  = brokerSym.replace(/\.pro$/i, '').toUpperCase()
+                             .replace('GOLD',   'XAUUSD')
+                             .replace('SILVER', 'XAGUSD');
+      /* Best-effort human name */
+      const knownNames = {
+        XAUUSD:'Gold / US Dollar', XAGUSD:'Silver / US Dollar',
+        EURUSD:'Euro / US Dollar', GBPUSD:'British Pound / US Dollar',
+        USDJPY:'US Dollar / Japanese Yen', USDCHF:'US Dollar / Swiss Franc',
+        AUDUSD:'Australian Dollar / US Dollar', NZDUSD:'New Zealand Dollar / US Dollar',
+        USDCAD:'US Dollar / Canadian Dollar', BTCUSD:'Bitcoin / US Dollar',
+        ETHUSD:'Ethereum / US Dollar', SOLUSD:'Solana / US Dollar',
+      };
+      const type = brokerSym.match(/BTC|ETH|SOL|ADA|LTC|XRP|DOT/) ? 'Digital Currency'
+                 : brokerSym.match(/GOLD|SILVER|OIL|GAS|PLAT/)     ? 'Commodity'
+                 : 'Physical Currency';
+      return { symbol: key, brokerSym, instrument_name: knownNames[key] || brokerSym, instrument_type: type, exchange: 'OANDA', source: 'oanda' };
+    });
+
+    console.log(`[MetaApi] Catalog built: ${_oandaSymbolCatalog.length} entries`);
+    console.log('[MetaApi] Sample symbols:', symbols.slice(0, 10));
+  } catch(e) {
+    console.error('[MetaApi] getSymbols failed:', e.message);
   }
 }
 
@@ -1187,25 +1276,64 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
         const _blocked = new Set(['Warrant','Structured Product','Leverage Product','Certificate','Mini Future']);
         const filtered = (json.data || []).filter(r => !_blocked.has(r.instrument_type));
 
-        /* Inject OANDA results for supported symbols */
+        /* Inject OANDA results — static catalog matching _maSymMap */
         const _oandaCatalog = [
-          { symbol:'XAUUSD',  instrument_name:'Gold Spot / US Dollar',          instrument_type:'Commodity',       exchange:'OANDA', source:'oanda' },
-          { symbol:'XAGUSD',  instrument_name:'Silver Spot / US Dollar',         instrument_type:'Commodity',       exchange:'OANDA', source:'oanda' },
-          { symbol:'EURUSD',  instrument_name:'Euro / US Dollar',                instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'GBPUSD',  instrument_name:'British Pound / US Dollar',       instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'USDJPY',  instrument_name:'US Dollar / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'USDCHF',  instrument_name:'US Dollar / Swiss Franc',         instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'AUDUSD',  instrument_name:'Australian Dollar / US Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'NZDUSD',  instrument_name:'New Zealand Dollar / US Dollar',  instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'USDCAD',  instrument_name:'US Dollar / Canadian Dollar',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',             instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'ETHUSDT', instrument_name:'Ethereum / US Dollar',            instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',              instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',             instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',            instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          /* Metals / Commodities */
+          { symbol:'XAUUSD',  instrument_name:'Gold / US Dollar',            instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          { symbol:'XAGUSD',  instrument_name:'Silver / US Dollar',          instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          { symbol:'OILWTI',  instrument_name:'WTI Crude Oil',               instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          { symbol:'OILBRNT', instrument_name:'Brent Crude Oil',             instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          { symbol:'NATGAS',  instrument_name:'Natural Gas',                 instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          { symbol:'COPPER',  instrument_name:'Copper',                      instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          { symbol:'PLATIN',  instrument_name:'Platinum',                    instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          { symbol:'PALLAD',  instrument_name:'Palladium',                   instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          /* Forex majors */
+          { symbol:'EURUSD',  instrument_name:'Euro / US Dollar',            instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPUSD',  instrument_name:'British Pound / US Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDJPY',  instrument_name:'US Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDCHF',  instrument_name:'US Dollar / Swiss Franc',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'AUDUSD',  instrument_name:'Australian Dollar / USD',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'NZDUSD',  instrument_name:'New Zealand Dollar / USD',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDCAD',  instrument_name:'US Dollar / Canadian Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          /* Forex crosses */
+          { symbol:'EURJPY',  instrument_name:'Euro / Japanese Yen',         instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPJPY',  instrument_name:'British Pound / Japanese Yen',instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'EURGBP',  instrument_name:'Euro / British Pound',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'EURAUD',  instrument_name:'Euro / Australian Dollar',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'EURCAD',  instrument_name:'Euro / Canadian Dollar',      instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'EURCHF',  instrument_name:'Euro / Swiss Franc',          instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'EURNZD',  instrument_name:'Euro / New Zealand Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPAUD',  instrument_name:'British Pound / Australian Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPCAD',  instrument_name:'British Pound / Canadian Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPCHF',  instrument_name:'British Pound / Swiss Franc',       instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPNZD',  instrument_name:'British Pound / New Zealand Dollar',instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'AUDCAD',  instrument_name:'Australian Dollar / Canadian Dollar',instrument_type:'Physical Currency',exchange:'OANDA', source:'oanda' },
+          { symbol:'AUDCHF',  instrument_name:'Australian Dollar / Swiss Franc',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'AUDJPY',  instrument_name:'Australian Dollar / Japanese Yen',  instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'AUDNZD',  instrument_name:'Australian Dollar / New Zealand Dollar',instrument_type:'Physical Currency',exchange:'OANDA',source:'oanda'},
+          { symbol:'CADCHF',  instrument_name:'Canadian Dollar / Swiss Franc',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'CADJPY',  instrument_name:'Canadian Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'CHFJPY',  instrument_name:'Swiss Franc / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'NZDJPY',  instrument_name:'New Zealand Dollar / Japanese Yen', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          /* Equity CFDs */
+          { symbol:'TSLA',    instrument_name:'Tesla Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
+          { symbol:'NVDA',    instrument_name:'NVIDIA Corp',                 instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
+          { symbol:'AAPL',    instrument_name:'Apple Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
+          /* Indices */
+          { symbol:'US500',   instrument_name:'S&P 500',                     instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+          { symbol:'US30',    instrument_name:'Dow Jones 30',                instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+          { symbol:'US100',   instrument_name:'NASDAQ 100',                  instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+          { symbol:'DE30',    instrument_name:'Germany DAX 30',              instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+          { symbol:'GB100',   instrument_name:'UK FTSE 100',                 instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+          { symbol:'JP225',   instrument_name:'Japan Nikkei 225',            instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+          { symbol:'AU200',   instrument_name:'Australia ASX 200',           instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+          { symbol:'EU50',    instrument_name:'Euro Stoxx 50',               instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+          { symbol:'FR40',    instrument_name:'France CAC 40',               instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
         ];
         const q = query.toUpperCase().replace('/','');
-        const oandaMatches = _maReady ? _oandaCatalog.filter(o => o.symbol.includes(q) || q.includes(o.symbol.slice(0,3))) : [];
+        const oandaMatches = _maReady
+          ? _oandaCatalog.filter(o => o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q))
+          : [];
         res.json({ data: [...oandaMatches, ...filtered] });
       } catch (e) {
         res.json({ data: [] });
