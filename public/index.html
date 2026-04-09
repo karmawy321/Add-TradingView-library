@@ -4510,8 +4510,8 @@ function renderTimeAxis(visible, px, W, H, PAD) {
     boundaryFn = function(d, prev) { return d.getMinutes() !== prev.getMinutes(); };
   }
 
-  /* Step: space labels ~80px apart */
-  var barW = (W - PAD.l - PAD.r) / n;
+  /* Step: space labels ~80px apart — use actual scaleX (pixels per bar) for accuracy */
+  var barW = Math.max(0.25, viewState.scaleX);
   var targetGap = 80; /* px between labels */
   var step = Math.max(1, Math.round(targetGap / barW));
 
@@ -4564,7 +4564,7 @@ function renderChart() {
   var PAD = { l:8, r:75, t:16, b:56, vol:40 };
   var CW = W-PAD.l-PAD.r, CH = H-PAD.t-PAD.b-PAD.vol;
   /* ── viewState is the source of truth for pan/zoom ── */
-  var barW = Math.max(1, viewState.scaleX);
+  var barW = Math.max(0.25, viewState.scaleX);  /* must match worldToScreenX which uses scaleX directly */
   var candleW = Math.max(1.5, barW * 0.72);
   /* Visible bar range: include 1 extra bar each side for smooth edge rendering */
   var startIdx = Math.max(0, Math.floor(-viewState.offsetX / barW) - 1);
@@ -5769,8 +5769,6 @@ if(chartCanvas){
     var cssX = (e.ctrlKey || e.metaKey || e.shiftKey)
                ? (e.clientX - r.left)
                : (chartCanvas.width / dpr - _chartPAD.r);
-    /* Bar index currently under the anchor point — stays fixed after zoom */
-    var pivotBar = screenToWorldX(cssX);
     /* Zoom factor: ~10% per scroll tick, clamped to sensible scaleX range */
     var factor   = Math.pow(1.10, -Math.sign(e.deltaY));
     var n2 = (chartCandles && chartCandles.length) || 1;
@@ -5779,8 +5777,14 @@ if(chartCanvas){
     /* Min scale: all bars fit in chart area (zoom all the way out to see full history) */
     var minScale = Math.max(0.5, CW2 / (n2 + 1));
     var newScaleX = Math.max(minScale, Math.min(300, viewState.scaleX * factor));
+    /* Bar index under anchor — clamp to [0, n-1] so we never anchor on future empty space */
+    var pivotBar = Math.min(n2 - 1, Math.max(0, screenToWorldX(cssX)));
     /* Keep pivotBar at cssX: worldToScreenX(pivotBar) = PAD.l + (pivotBar+0.5)*newScaleX + newOffsetX = cssX */
-    viewState.offsetX = cssX - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+    var newOffX = cssX - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+    /* Clamp offsetX to the same pan limits so zoom never puts bars off-screen */
+    var maxOff = 0;
+    var minOff = CW2 * 0.2 - (n2 - 0.5) * newScaleX;
+    viewState.offsetX = Math.min(maxOff, Math.max(minOff, newOffX));
     viewState.scaleX  = newScaleX;
     renderChart();
     if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
@@ -5818,14 +5822,15 @@ if(chartCanvas){
       var dist=Math.sqrt(dx*dx+dy*dy);
       var r=chartCanvas.getBoundingClientRect();
       var cx=(e.touches[0].clientX+e.touches[1].clientX)/2 - r.left;
-      var pivotBar = (_touchStartOffsetX === viewState.offsetX)
-        ? screenToWorldX(cx)
-        : screenToWorldX(cx);
       var n3=(chartCandles&&chartCandles.length)||1;
+      var pivotBar = Math.min(n3 - 1, Math.max(0, screenToWorldX(cx)));
       var r3=chartCanvas.getBoundingClientRect();
-      var minScale3=Math.max(0.5,(r3.width-_chartPAD.l-_chartPAD.r)/(n3+1));
+      var CW3=r3.width-_chartPAD.l-_chartPAD.r;
+      var minScale3=Math.max(0.5,CW3/(n3+1));
       var newScaleX=Math.max(minScale3,Math.min(300,_touchStartScaleX*(dist/_lastTouchDist)));
-      viewState.offsetX = cx - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+      var newOffX3 = cx - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+      var maxOff3 = 0; var minOff3 = CW3 * 0.2 - (n3 - 0.5) * newScaleX;
+      viewState.offsetX = Math.min(maxOff3, Math.max(minOff3, newOffX3));
       viewState.scaleX  = newScaleX;
       renderChart();
     } else if(e.touches.length===1&&!_pinching){
@@ -5890,10 +5895,10 @@ if(chartCanvas){
     var n = (chartCandles && chartCandles.length) || 0;
     var dpr = window.devicePixelRatio || 1;
     var W   = chartCanvas.width / dpr;
-    var barW = Math.max(1, viewState.scaleX);
+    var barW = Math.max(0.25, viewState.scaleX);
     /* X clamp:
        maxOffX: bar 0 (oldest) at LEFT edge — can't pan further right than first bar
-       minOffX: bar n-1 (newest) stays ~5 bars from right edge (future gap)        */
+       minOffX: bar n-1 (newest) stays ~20% from right edge (small future gap)     */
     var CW2 = W - _chartPAD.l - _chartPAD.r;
     /* maxOffX: allow bar 0 to reach left edge (pan all the way into history) */
     var maxOffX = 0;
@@ -6104,7 +6109,7 @@ function _syncChartViewFromViewState() {
   var dpr = window.devicePixelRatio || 1;
   var W   = chartCanvas ? chartCanvas.width / dpr : 800;
   var CW  = W - _chartPAD.l - _chartPAD.r;
-  var barW  = Math.max(1, viewState.scaleX);
+  var barW  = Math.max(0.25, viewState.scaleX);
   var visibleBars = Math.max(10, Math.round(CW / barW));
   chartView.zoom   = n / Math.max(1, visibleBars);
   var startIdx = Math.max(0, Math.floor(-viewState.offsetX / barW) - 1);
@@ -6320,8 +6325,7 @@ function _scheduleHistoryCheck(){
   _historyCheckTimer = setTimeout(function(){
     if(!chartCandles.length||!currentSymbol||_historyLoading||_historyDepleted) return;
     /* Compute start index using viewState (world-space coordinates) */
-    var barW = Math.max(1, viewState.scaleX);
-    var si   = Math.max(0, Math.floor(-viewState.offsetX / barW) - 1);
+    var si   = Math.max(0, Math.floor(-viewState.offsetX / Math.max(0.01, viewState.scaleX)) - 1);
     /* Pre-fetch when within 300 bars of the oldest loaded candle — gives enough runway */
     if(si < 300) _fetchMoreHistory();
   }, 50);
@@ -6332,7 +6336,8 @@ function _fetchMoreHistory(){
   _historyLoading=true;
   renderChart&&renderChart(); /* show loading indicator immediately */
   var endTime = chartCandles[0].t - 1;
-  fetch(BACKEND_URL+'/history/'+currentSymbol+'?tf='+currentInterval+'&endTime='+endTime)
+  var _hSrcQ = currentDataSource==='oanda' ? '&source=oanda' : '';
+  fetch(BACKEND_URL+'/history/'+currentSymbol+'?tf='+currentInterval+'&endTime='+endTime+_hSrcQ)
     .then(function(r){ return r.json(); })
     .then(function(d){
       _historyLoading=false;
@@ -6341,7 +6346,7 @@ function _fetchMoreHistory(){
       if(!batch.length){ _historyDepleted=true; renderChart&&renderChart(); return; }
       /* Prepend batch — shift viewState.offsetX so existing bars stay in place (no jump) */
       Array.prototype.unshift.apply(chartCandles, batch);
-      viewState.offsetX -= batch.length * Math.max(1, viewState.scaleX);
+      viewState.offsetX -= batch.length * viewState.scaleX;
       renderChart&&renderChart();
     })
     .catch(function(){ _historyLoading=false; renderChart&&renderChart(); });
