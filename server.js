@@ -788,26 +788,27 @@ async function fetchOandaHistory(internalSym) {
   const maSym = _maSymMap[internalSym];
   if (!maSym) return;
   ensureOandaSym(internalSym);
+
+  const delay = () => new Promise(r => setTimeout(r, 400));
+
+  const fetches = [
+    { tf: '1w', start: new Date(Date.now() - 500  * 604800000), limit: 500  },
+    { tf: '1d', start: new Date(Date.now() - 5000 * 86400000),  limit: 5000 },
+    { tf: '4h', start: new Date(Date.now() - 1000 * 14400000),  limit: 1000 },
+    { tf: '1h', start: new Date(Date.now() - 2000 * 3600000),   limit: 2000 },
+    { tf: '30m',start: new Date(Date.now() - 2000 * 1800000),   limit: 2000 },
+    { tf: '15m',start: new Date(Date.now() - 2000 * 900000),    limit: 2000 },
+    { tf: '5m', start: new Date(Date.now() - 2000 * 300000),    limit: 2000 },
+    { tf: '1m', start: new Date(Date.now() - 3000 * 60000),     limit: 3000 },
+  ];
+
   try {
-    const d1 = await fetchOandaCandles(maSym, '1d', new Date(Date.now() - 5000 * 86400000), 5000);
-    storeOandaTF(internalSym, '1d', d1);
-    deriveOanda(internalSym, d1, ['1w']);
-    console.log(`[MetaApi] ${internalSym} 1d: ${d1.length} candles`);
-
-    await new Promise(r => setTimeout(r, 400));
-
-    const h1 = await fetchOandaCandles(maSym, '1h', new Date(Date.now() - 2000 * 3600000), 2000);
-    storeOandaTF(internalSym, '1h', h1);
-    deriveOanda(internalSym, h1, ['4h']);
-    console.log(`[MetaApi] ${internalSym} 1h: ${h1.length} candles`);
-
-    await new Promise(r => setTimeout(r, 400));
-
-    const m1 = await fetchOandaCandles(maSym, '1m', new Date(Date.now() - 3000 * 60000), 3000);
-    storeOandaTF(internalSym, '1m', m1);
-    deriveOanda(internalSym, m1, ['5m','15m','30m']);
-    console.log(`[MetaApi] ${internalSym} 1m: ${m1.length} candles`);
-
+    for (const f of fetches) {
+      const candles = await fetchOandaCandles(maSym, f.tf, f.start, f.limit);
+      storeOandaTF(internalSym, f.tf, candles);
+      console.log(`[MetaApi] ${internalSym} ${f.tf}: ${candles.length} candles`);
+      await delay();
+    }
     console.log(`[MetaApi] History ready for ${internalSym}`);
     startOandaTicker(internalSym, maSym);
   } catch(e) {
