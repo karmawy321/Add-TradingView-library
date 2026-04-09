@@ -4255,7 +4255,7 @@ var kalmanOn         = false;
 var vpvrAnchorX      = null;  /* null = auto right edge (W-PAD.r-2); set by drag */
 var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
-var allCandleData   = {};
+var allCandleData   = {}; /* cache disabled — kept as empty object to avoid reference errors */
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0, rightPad: 0, yScale: 1 };
 var C = { up:'#26a69a', dn:'#ef5350', bg:'#06080d', grid:'rgba(201,168,76,0.05)', sma50:'#c9a84c', sma200:'#3498db', crosshair:'rgba(201,168,76,0.4)' };
@@ -9085,11 +9085,11 @@ window.addEventListener('load',function(){
     if(typeof renderChart==='function') renderChart();
   };
 
-  /* ── Auto-load BTCUSDT on startup ── */
+  /* ── Auto-load XAUUSD from OANDA on startup ── */
   var _pairInput = document.getElementById('pairIn');
-  if(_pairInput) _pairInput.value = 'BTC/USDT';
+  if(_pairInput) _pairInput.value = 'XAU/USD';
   setTimeout(function(){
-    if(typeof loadChart==='function') loadChart('BTCUSDT','4h');
+    if(typeof selectPairWithSource==='function') selectPairWithSource('XAUUSD','oanda');
   }, 100);
 });
 })();
