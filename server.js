@@ -98,7 +98,7 @@ function requireAdmin(req, res, next) {
   if (!ADMIN_SECRET) {
     return res.status(503).send('Admin access not configured. Set ADMIN_SECRET env var.');
   }
-  const key = req.headers['x-admin-key'];
+  const key = req.headers['x-admin-key'] || req.query.key;
   const keyBuf = Buffer.from(key || '');
   const secBuf = Buffer.from(ADMIN_SECRET);
   const valid = keyBuf.length === secBuf.length && crypto.timingSafeEqual(keyBuf, secBuf);
