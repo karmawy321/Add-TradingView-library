@@ -5775,7 +5775,13 @@ if(chartCanvas){
     var factor   = Math.pow(1.10, -Math.sign(e.deltaY));
     var newScaleX = Math.max(2, Math.min(300, viewState.scaleX * factor));
     /* Keep pivotBar at cssX: worldToScreenX(pivotBar) = PAD.l + (pivotBar+0.5)*newScaleX + newOffsetX = cssX */
-    viewState.offsetX = cssX - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+    var newOffX = cssX - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+    /* Guard: newest bar must stay at or right of the 20%-from-left line so chart never goes blank.
+       Same limit the pan clamp uses: minOff = CW*0.2 - (n-0.5)*scaleX */
+    var n2  = (chartCandles && chartCandles.length) || 1;
+    var CW2 = chartCanvas.width / dpr - _chartPAD.l - _chartPAD.r;
+    var minOff = CW2 * 0.2 - (n2 - 0.5) * newScaleX;
+    viewState.offsetX = Math.max(minOff, newOffX);
     viewState.scaleX  = newScaleX;
     renderChart();
     if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
@@ -5817,7 +5823,10 @@ if(chartCanvas){
         ? screenToWorldX(cx)
         : screenToWorldX(cx);
       var newScaleX=Math.max(2,Math.min(300,_touchStartScaleX*(dist/_lastTouchDist)));
-      viewState.offsetX = cx - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+      var newOffXt = cx - _chartPAD.l - (pivotBar + 0.5) * newScaleX;
+      var nt  = (chartCandles && chartCandles.length) || 1;
+      var CWt = chartCanvas.width / (window.devicePixelRatio||1) - _chartPAD.l - _chartPAD.r;
+      viewState.offsetX = Math.max(CWt * 0.2 - (nt - 0.5) * newScaleX, newOffXt);
       viewState.scaleX  = newScaleX;
       renderChart();
     } else if(e.touches.length===1&&!_pinching){
