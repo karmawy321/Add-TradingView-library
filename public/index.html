@@ -6559,9 +6559,11 @@ function executeSearch() {
 
   // Intelligently feed default results when the search bar is empty based on the tab chosen
   if(query.length === 0){
-    if(_currentSearchType === 'Physical Currency')     query = 'USD'; // EUR/USD, GBP/USD
-    else if(_currentSearchType === 'Digital Currency') query = 'BTC'; // Crypto
-    else if(_currentSearchType === 'Common Stock')     query = 'A';   // Apple, Amazon, AMD
+    if(_currentSearchType === 'Physical Currency')     query = 'USD';
+    else if(_currentSearchType === 'Commodity')        query = 'GOLD';
+    else if(_currentSearchType === 'Index')            query = 'US';
+    else if(_currentSearchType === 'Digital Currency') query = 'BTC';
+    else if(_currentSearchType === 'Common Stock')     query = 'A';
     else if(_currentSearchType === 'ETF')              query = 'SPY';
     else if(_currentSearchType === 'Mutual Fund')      query = 'VFIAX';
     else                                               query = 'XAU';
@@ -6596,7 +6598,7 @@ function executeSearch() {
             +'<div class="s-res-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(r.instrument_name||'')+'</div>'
           +'</div>'
           +'<div class="s-res-meta">'
-            +'<span>'+(r.instrument_type||'').replace('Common Stock','Stock').replace('Physical Currency','Forex').replace('Digital Currency','Crypto')+'</span>'
+            +'<span>'+(r.instrument_type||'').replace('Common Stock','Stock').replace('Physical Currency','Forex').replace('Digital Currency','Crypto').replace('Commodity','Commodity').replace('Index','Index')+'</span>'
             +'<span class="s-res-exch" style="'+exchStyle+'">'+(r.exchange||'')+'</span>'
           +'</div>'
         +'</div>';
@@ -9582,8 +9584,10 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     </div>
     <div style="padding:10px 24px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.06);overflow-x:auto;flex-shrink:0;scrollbar-width:none;">
       <div class="s-tab s-tab-active" data-type="">All</div>
-      <div class="s-tab" data-type="Common Stock">Stocks</div>
       <div class="s-tab" data-type="Physical Currency">Forex</div>
+      <div class="s-tab" data-type="Commodity">Commodities</div>
+      <div class="s-tab" data-type="Index">Indices</div>
+      <div class="s-tab" data-type="Common Stock">Stocks</div>
       <div class="s-tab" data-type="Digital Currency">Crypto</div>
       <div class="s-tab" data-type="ETF">ETFs</div>
       <div class="s-tab" data-type="Mutual Fund">Mutual Funds</div>
