@@ -881,17 +881,51 @@ function loadCacheFromDisk() {
 }
 
 let _cacheRefreshing = false;
+const _cacheProgress = {
+  active: false,
+  currentSym: null,
+  currentTF: null,
+  symDone: 0,
+  symTotal: 0,
+  tfDone: 0,
+  tfTotal: 0,
+  pct: 0,
+  startedAt: null,
+  log: [], /* last 20 messages */
+};
+function _cpLog(msg) {
+  _cacheProgress.log.push({ t: new Date().toISOString(), msg });
+  if (_cacheProgress.log.length > 20) _cacheProgress.log.shift();
+}
+
 async function refreshAllOandaCache() {
   if (!_maReady || _cacheRefreshing) return;
   _cacheRefreshing = true;
-  console.log('[Cache] Starting full OANDA cache refresh (' + Object.keys(_maSymMap).length + ' symbols)...');
   const syms = Object.keys(_maSymMap);
+  _cacheProgress.active    = true;
+  _cacheProgress.symDone   = 0;
+  _cacheProgress.symTotal  = syms.length;
+  _cacheProgress.tfDone    = 0;
+  _cacheProgress.tfTotal   = syms.length * TIMEFRAMES.length;
+  _cacheProgress.pct       = 0;
+  _cacheProgress.startedAt = new Date().toISOString();
+  _cacheProgress.log       = [];
+  _cpLog('Started full refresh (' + syms.length + ' symbols)');
+  console.log('[Cache] Starting full OANDA cache refresh (' + syms.length + ' symbols)...');
   for (const sym of syms) {
+    _cacheProgress.currentSym = sym;
+    _cacheProgress.currentTF  = null;
     const hasData = oandaCandles[sym] && TIMEFRAMES.some(tf => (oandaCandles[sym][tf] || []).length > 0);
-    try { await fetchOandaHistory(sym, hasData); } catch(e) { console.error('[Cache] Error refreshing ' + sym + ':', e.message); }
+    try { await fetchOandaHistory(sym, hasData); } catch(e) { console.error('[Cache] Error refreshing ' + sym + ':', e.message); _cpLog('ERROR ' + sym + ': ' + e.message); }
+    _cacheProgress.symDone++;
+    _cacheProgress.pct = Math.round((_cacheProgress.symDone / _cacheProgress.symTotal) * 100);
     await new Promise(r => setTimeout(r, 1000));
   }
+  _cacheProgress.active     = false;
+  _cacheProgress.currentSym = null;
+  _cacheProgress.currentTF  = null;
   _cacheRefreshing = false;
+  _cpLog('Refresh complete');
   console.log('[Cache] Full OANDA cache refresh complete');
 }
 
@@ -942,6 +976,7 @@ async function fetchOandaHistory(internalSym, incremental) {
 
   try {
     for (const tf of TIMEFRAMES) {
+      _cacheProgress.currentTF = tf;
       const arr    = oandaCandles[internalSym][tf];
       const fullLim = _OANDA_FULL_LIMITS[tf];
       let limit = fullLim;
@@ -964,9 +999,11 @@ async function fetchOandaHistory(internalSym, incremental) {
         storeOandaTF(internalSym, tf, candles);
         console.log(`[MetaApi] ${internalSym} ${tf}: ${candles.length} candles`);
       }
+      _cacheProgress.tfDone++;
       await delay();
     }
     console.log(`[MetaApi] History ready for ${internalSym}`);
+    _cpLog(`Done: ${internalSym}`);
     startOandaTicker(internalSym, maSym);
     saveCacheToDisk(internalSym);
   } catch(e) {
@@ -1890,6 +1927,148 @@ app.get('/api/predictions/stats', requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/admin/cache', requireAdmin, (_req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OANDA Cache Monitor</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0c12;color:#e0e0e0;font-family:monospace;padding:24px}
+  h1{color:#c9a84c;margin-bottom:20px;font-size:20px}
+  .card{background:#13161f;border:1px solid rgba(201,168,76,0.15);border-radius:8px;padding:20px;margin-bottom:16px}
+  .row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px}
+  .stat{flex:1;min-width:120px;text-align:center}
+  .stat .val{font-size:32px;font-weight:700;color:#c9a84c}
+  .stat .lbl{font-size:12px;color:rgba(255,255,255,0.4);margin-top:4px}
+  .bar-wrap{background:#1e2130;border-radius:4px;height:22px;overflow:hidden;margin-bottom:8px}
+  .bar-fill{height:100%;background:linear-gradient(90deg,#9a7a2e,#c9a84c);transition:width 0.4s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:12px;font-weight:700;color:#0a0c12;white-space:nowrap}
+  .status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}
+  .dot-active{background:#22c55e;box-shadow:0 0 6px #22c55e}
+  .dot-idle{background:#64748b}
+  .current{font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:12px;min-height:20px}
+  .log-box{background:#0d0f18;border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:12px;max-height:200px;overflow-y:auto;font-size:12px;line-height:1.8}
+  .log-box .entry{color:rgba(255,255,255,0.45)}
+  .log-box .entry .ts{color:rgba(201,168,76,0.5);margin-right:8px}
+  .log-box .entry.err{color:#f87171}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;color:rgba(201,168,76,0.7);border-bottom:1px solid rgba(255,255,255,0.06);padding:6px 8px}
+  td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255,255,255,0.7)}
+  tr:hover td{background:rgba(255,255,255,0.02)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px}
+  .badge-ok{background:rgba(34,197,94,0.15);color:#22c55e}
+  .badge-empty{background:rgba(100,116,139,0.15);color:#64748b}
+  h2{color:rgba(201,168,76,0.8);font-size:14px;margin-bottom:12px}
+  #refresh-btn{background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px}
+  #refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
+</style>
+</head>
+<body>
+<h1>OANDA Cache Monitor</h1>
+<button id="refresh-btn" onclick="triggerRefresh()">Force Full Refresh</button>
+<div class="card">
+  <div class="row">
+    <div class="stat"><div class="val" id="pct">—</div><div class="lbl">Overall %</div></div>
+    <div class="stat"><div class="val" id="sym-done">—</div><div class="lbl">Symbols Done</div></div>
+    <div class="stat"><div class="val" id="sym-total">—</div><div class="lbl">Total Symbols</div></div>
+    <div class="stat"><div class="val" id="tf-done">—</div><div class="lbl">TFs Fetched</div></div>
+    <div class="stat"><div class="val" id="tf-total">—</div><div class="lbl">Total TFs</div></div>
+  </div>
+  <div class="bar-wrap"><div class="bar-fill" id="bar" style="width:0%">0%</div></div>
+  <div class="current" id="current-info">Idle</div>
+  <h2>Activity Log</h2>
+  <div class="log-box" id="log"></div>
+</div>
+<div class="card">
+  <h2>Symbols Status</h2>
+  <table>
+    <thead><tr><th>Symbol</th><th>1m</th><th>5m</th><th>15m</th><th>30m</th><th>1h</th><th>4h</th><th>1d</th><th>1w</th><th>Last Candle</th><th>Status</th></tr></thead>
+    <tbody id="sym-table"></tbody>
+  </table>
+</div>
+<script>
+const ADMIN_KEY = new URLSearchParams(location.search).get('key') || '';
+const TFS = ['1m','5m','15m','30m','1h','4h','1d','1w'];
+
+async function poll() {
+  try {
+    const r = await fetch('/admin/cache-status', { headers: { 'x-admin-key': ADMIN_KEY } });
+    if (!r.ok) { document.body.innerHTML = '<p style="color:red;padding:24px">Unauthorized — add ?key=YOUR_ADMIN_SECRET to URL</p>'; return; }
+    const d = await r.json();
+    const p = d.progress;
+
+    document.getElementById('pct').textContent       = p.active ? p.pct + '%' : (d.loaded === d.total ? '100%' : Math.round(d.loaded/d.total*100)+'%');
+    document.getElementById('sym-done').textContent  = p.active ? p.symDone : d.loaded;
+    document.getElementById('sym-total').textContent = d.total;
+    document.getElementById('tf-done').textContent   = p.active ? p.tfDone : '—';
+    document.getElementById('tf-total').textContent  = p.active ? p.tfTotal : '—';
+
+    const fillPct = p.active ? p.pct : (d.loaded === d.total ? 100 : Math.round(d.loaded/d.total*100));
+    const bar = document.getElementById('bar');
+    bar.style.width = fillPct + '%';
+    bar.textContent = fillPct + '%';
+
+    const info = document.getElementById('current-info');
+    if (p.active && p.currentSym) {
+      info.innerHTML = '<span class="status-dot dot-active"></span>Fetching <b style="color:#c9a84c">' + p.currentSym + '</b>' + (p.currentTF ? ' &mdash; TF: <b>' + p.currentTF + '</b>' : '');
+    } else {
+      info.innerHTML = '<span class="status-dot dot-idle"></span>Idle' + (p.startedAt ? ' &mdash; Last run: ' + new Date(p.startedAt).toLocaleString() : '');
+    }
+
+    const log = document.getElementById('log');
+    log.innerHTML = (p.log || []).slice().reverse().map(e => {
+      const isErr = e.msg.startsWith('ERROR');
+      return '<div class="entry' + (isErr?' err':'') + '"><span class="ts">' + e.t.slice(11,19) + '</span>' + e.msg + '</div>';
+    }).join('') || '<div class="entry">No activity yet</div>';
+
+    const tbody = document.getElementById('sym-table');
+    const allSyms = [...d.symbols, ...d.notStarted.map(s => ({ sym: s, tfs: {} }))];
+    tbody.innerHTML = allSyms.map(entry => {
+      const sym = entry.sym || entry;
+      const tfs = entry.tfs || {};
+      const isActive = p.active && p.currentSym === sym;
+      const cells = TFS.map(tf => {
+        const info = tfs[tf];
+        if (!info || !info.candles) return '<td style="color:rgba(255,255,255,0.2)">—</td>';
+        return '<td>' + info.candles.toLocaleString() + '</td>';
+      }).join('');
+      const lastCandle = (() => {
+        let latest = null;
+        TFS.forEach(tf => { if (tfs[tf]?.lastCandle) { const d = new Date(tfs[tf].lastCandle); if (!latest || d > latest) latest = d; } });
+        return latest ? latest.toLocaleTimeString() : '—';
+      })();
+      const hasTfs = Object.keys(tfs).length > 0;
+      const badge = isActive
+        ? '<span class="badge" style="background:rgba(34,197,94,0.2);color:#22c55e">&#9654; fetching</span>'
+        : hasTfs ? '<span class="badge badge-ok">loaded</span>' : '<span class="badge badge-empty">pending</span>';
+      return '<tr' + (isActive?' style="background:rgba(201,168,76,0.05)"':'') + '><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td></tr>';
+    }).join('');
+
+    document.getElementById('refresh-btn').disabled = p.active || d.refreshing;
+  } catch(e) { console.error(e); }
+}
+
+async function triggerRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  await fetch('/admin/cache-refresh', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  poll();
+}
+
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>`);
+});
+
+app.post('/admin/cache-refresh', requireAdmin, (_req, res) => {
+  refreshAllOandaCache().catch(e => console.error('[Cache] Manual refresh error:', e.message));
+  res.json({ ok: true, message: 'Refresh started' });
+});
+
 app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
   try {
     await checkPredictions();
@@ -1898,6 +2077,34 @@ app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
     console.error('[Manual Check] Error:', error);
     res.status(500).json({ error: 'Check failed' });
   }
+});
+
+app.get('/admin/cache-status', requireAdmin, (_req, res) => {
+  const syms = Object.keys(_maSymMap);
+  const done = [], empty = [];
+  for (const sym of syms) {
+    const d = oandaCandles[sym];
+    if (!d) { empty.push(sym); continue; }
+    const tfInfo = {};
+    let hasAny = false;
+    for (const tf of TIMEFRAMES) {
+      const len = (d[tf] || []).length;
+      const lastT = len ? d[tf][len - 1].t : null;
+      tfInfo[tf] = { candles: len, lastCandle: lastT ? new Date(lastT).toISOString() : null };
+      if (len > 0) hasAny = true;
+    }
+    const entry = { sym, tfs: tfInfo };
+    if (hasAny) done.push(entry); else empty.push(sym);
+  }
+  res.json({
+    refreshing: _cacheRefreshing,
+    total: syms.length,
+    loaded: done.length,
+    empty: empty.length,
+    progress: _cacheProgress,
+    symbols: done,
+    notStarted: empty,
+  });
 });
 
 app.get('/admin/stats', requireAdmin, async (req, res) => {
