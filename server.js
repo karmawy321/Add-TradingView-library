@@ -1024,21 +1024,47 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
 });
 
 // Historical candles endpoint — lazy scroll pagination via TwelveData
-app.get('/history/:symbol', rateLimit(30, 60000), (req, res) => {
+app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
   const sym      = req.params.symbol.toUpperCase().replace('-', '/');
   const tf       = req.query.tf || '4h';
   const endTime  = parseInt(req.query.endTime, 10);
   if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
 
-  /* ── OANDA history: slice from in-memory store ── */
+  /* ── OANDA history: serve from store, fetch more from MetaApi if needed ── */
   if (req.query.source === 'oanda') {
-    const _oKey = sym.replace('/', '');
-    const store = oandaCandles[_oKey] && oandaCandles[_oKey][tf];
-    if (!store || !store.length) return res.json({ candles: [] });
+    if (!endTime || endTime < 0) return res.json({ candles: [] });
+    const _oKey  = sym.replace('/', '');
+    const maSym  = _maSymMap[_oKey];
+    ensureOandaSym(_oKey);
+    const store = oandaCandles[_oKey][tf];
+
+    /* Check how many candles exist before the requested endTime */
     const before = endTime > 0 ? store.filter(c => c.t < endTime) : store;
-    /* Return up to 2000 candles before the requested endTime */
-    const out = before.slice(Math.max(0, before.length - 2000));
-    return res.json({ candles: out });
+
+    if (before.length < 50 && maSym && _maAccount) {
+      /* Not enough — fetch a fresh batch from MetaApi going back from endTime */
+      const limit  = 2000;
+      const periodMs = TF_MS[tf] || 60000;
+      const startT = new Date(endTime - limit * periodMs);
+      try {
+        const fetched = await fetchOandaCandles(maSym, tf, startT, limit);
+        /* Prepend new candles to store, keeping sorted, deduplicated */
+        if (fetched.length) {
+          const existingTs = new Set(store.map(c => c.t));
+          const newOnes    = fetched.filter(c => !existingTs.has(c.t) && c.t < endTime);
+          if (newOnes.length) {
+            Array.prototype.unshift.apply(store, newOnes);
+            store.sort((a, b) => a.t - b.t);
+            console.log(`[OANDA history] Fetched ${newOnes.length} more ${tf} for ${_oKey}`);
+          }
+        }
+      } catch(e) {
+        console.error('[OANDA history] fetch error:', e.message);
+      }
+    }
+
+    const result = store.filter(c => c.t < endTime).slice(-2000);
+    return res.json({ candles: result });
   }
 
   if (!TD_KEY) return res.status(500).json({ candles: [] });
