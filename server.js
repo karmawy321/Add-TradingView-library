@@ -754,55 +754,8 @@ async function initMetaApi() {
     await new Promise(r => setTimeout(r, 5000));
     _maReady = true;
     console.log('[MetaApi] OANDA connection ready');
-    /* Fetch full symbol list from broker and build dynamic map + catalog */
-    _loadOandaSymbols().catch(e => console.error('[MetaApi] symbol load failed:', e.message));
   } catch(e) {
     console.error('[MetaApi] Init failed:', e.message);
-  }
-}
-
-/* Populated dynamically after connect — overrides the static _maSymMap entries */
-let _oandaSymbolCatalog = []; /* [{ symbol, brokerSym, name, type }] */
-
-async function _loadOandaSymbols() {
-  try {
-    const symbols = await _maConn.getSymbols();
-    /* symbols is an array of strings: ['GOLD.pro', 'EURUSD.pro', 'BTCUSD', ...] */
-    console.log(`[MetaApi] Broker has ${symbols.length} symbols`);
-
-    /* Build internal-key → broker-symbol map from the live list */
-    symbols.forEach(brokerSym => {
-      /* Derive a clean internal key: strip .pro/.PRO suffix, normalise */
-      const key = brokerSym.replace(/\.pro$/i, '').toUpperCase()
-                            .replace('GOLD',   'XAUUSD')
-                            .replace('SILVER', 'XAGUSD');
-      if (!_maSymMap[key]) _maSymMap[key] = brokerSym; /* don't overwrite hardcoded entries */
-    });
-
-    /* Build the catalog used by the search endpoint */
-    _oandaSymbolCatalog = symbols.map(brokerSym => {
-      const key  = brokerSym.replace(/\.pro$/i, '').toUpperCase()
-                             .replace('GOLD',   'XAUUSD')
-                             .replace('SILVER', 'XAGUSD');
-      /* Best-effort human name */
-      const knownNames = {
-        XAUUSD:'Gold / US Dollar', XAGUSD:'Silver / US Dollar',
-        EURUSD:'Euro / US Dollar', GBPUSD:'British Pound / US Dollar',
-        USDJPY:'US Dollar / Japanese Yen', USDCHF:'US Dollar / Swiss Franc',
-        AUDUSD:'Australian Dollar / US Dollar', NZDUSD:'New Zealand Dollar / US Dollar',
-        USDCAD:'US Dollar / Canadian Dollar', BTCUSD:'Bitcoin / US Dollar',
-        ETHUSD:'Ethereum / US Dollar', SOLUSD:'Solana / US Dollar',
-      };
-      const type = brokerSym.match(/BTC|ETH|SOL|ADA|LTC|XRP|DOT/) ? 'Digital Currency'
-                 : brokerSym.match(/GOLD|SILVER|OIL|GAS|PLAT/)     ? 'Commodity'
-                 : 'Physical Currency';
-      return { symbol: key, brokerSym, instrument_name: knownNames[key] || brokerSym, instrument_type: type, exchange: 'OANDA', source: 'oanda' };
-    });
-
-    console.log(`[MetaApi] Catalog built: ${_oandaSymbolCatalog.length} entries`);
-    console.log('[MetaApi] Sample symbols:', symbols.slice(0, 10));
-  } catch(e) {
-    console.error('[MetaApi] getSymbols failed:', e.message);
   }
 }
 
@@ -1234,18 +1187,25 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
         const _blocked = new Set(['Warrant','Structured Product','Leverage Product','Certificate','Mini Future']);
         const filtered = (json.data || []).filter(r => !_blocked.has(r.instrument_type));
 
-        /* Inject OANDA results — dynamic catalog built from broker symbol list */
-        const q = query.toUpperCase().replace('/','');
-        const catalog = _oandaSymbolCatalog.length ? _oandaSymbolCatalog : [
-          /* Fallback hardcoded list until broker catalog loads */
-          { symbol:'XAUUSD', instrument_name:'Gold / US Dollar',       instrument_type:'Commodity',        exchange:'OANDA', source:'oanda' },
-          { symbol:'EURUSD', instrument_name:'Euro / US Dollar',       instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'GBPUSD', instrument_name:'British Pound / USD',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          { symbol:'USDJPY', instrument_name:'US Dollar / Japanese Yen',instrument_type:'Physical Currency',exchange:'OANDA', source:'oanda' },
+        /* Inject OANDA results for supported symbols */
+        const _oandaCatalog = [
+          { symbol:'XAUUSD',  instrument_name:'Gold Spot / US Dollar',          instrument_type:'Commodity',       exchange:'OANDA', source:'oanda' },
+          { symbol:'XAGUSD',  instrument_name:'Silver Spot / US Dollar',         instrument_type:'Commodity',       exchange:'OANDA', source:'oanda' },
+          { symbol:'EURUSD',  instrument_name:'Euro / US Dollar',                instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'GBPUSD',  instrument_name:'British Pound / US Dollar',       instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDJPY',  instrument_name:'US Dollar / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDCHF',  instrument_name:'US Dollar / Swiss Franc',         instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'AUDUSD',  instrument_name:'Australian Dollar / US Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'NZDUSD',  instrument_name:'New Zealand Dollar / US Dollar',  instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'USDCAD',  instrument_name:'US Dollar / Canadian Dollar',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',             instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'ETHUSDT', instrument_name:'Ethereum / US Dollar',            instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',              instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',             instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
+          { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',            instrument_type:'Digital Currency', exchange:'OANDA', source:'oanda' },
         ];
-        const oandaMatches = _maReady
-          ? catalog.filter(o => o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q))
-          : [];
+        const q = query.toUpperCase().replace('/','');
+        const oandaMatches = _maReady ? _oandaCatalog.filter(o => o.symbol.includes(q) || q.includes(o.symbol.slice(0,3))) : [];
         res.json({ data: [...oandaMatches, ...filtered] });
       } catch (e) {
         res.json({ data: [] });
