@@ -481,7 +481,7 @@ function pushSSE(sym) {
         else res.write(msgDef);
       } catch(e) { cs.delete(res); } 
     });
-  }, 1000);
+  }, 250);
 }
 
 /* ═══════════════════════════════════════════════════
