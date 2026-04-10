@@ -4637,6 +4637,7 @@ function renderChart() {
   }
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
+  if(smaCrossZoneOn) { drawSMA(200,'rgba(100,180,255,0.9)'); drawSMA(400,'rgba(255,160,80,0.9)'); }
 
   /* ── SMA Cross Zone overlay ── */
   if(smaCrossZoneOn && candles.length >= 900) {
@@ -4676,6 +4677,19 @@ function renderChart() {
         if(prev400b >= prev900 && cur400b < cur900) { cross400_900 = ci; cross400_900_bull = false; break; }
       }
     }
+
+    /* Vertical lines at each cross point */
+    function drawCrossLine(bi, color, label) {
+      var vx = worldToScreenX(bi);
+      if(vx < PAD.l || vx > W - PAD.r) return;
+      chartCtx.strokeStyle = color; chartCtx.lineWidth = 1.5; chartCtx.setLineDash([5,4]);
+      chartCtx.beginPath(); chartCtx.moveTo(vx, PAD.t); chartCtx.lineTo(vx, PAD.t + CH); chartCtx.stroke();
+      chartCtx.setLineDash([]);
+      chartCtx.fillStyle = color; chartCtx.font = 'bold 9px DM Mono'; chartCtx.textAlign = 'center';
+      chartCtx.fillText(label, vx, PAD.t + 12);
+    }
+    if(cross200_400 >= 0) drawCrossLine(cross200_400, 'rgba(100,180,255,0.85)', '200×400');
+    if(cross400_900 >= 0) drawCrossLine(cross400_900, 'rgba(255,160,80,0.85)',  '400×900');
 
     /* Draw mini bar pattern above the chart */
     var zoneStart = -1, zoneEnd = -1, isBull = false;
