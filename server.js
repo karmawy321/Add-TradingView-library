@@ -895,10 +895,19 @@ async function startOandaStream() {
     });
 
     await _maStreamConn.connect();
-    await new Promise(r => setTimeout(r, 10000)); /* wait for streaming sync */
+    /* Wait for full broker sync — required before subscribing to market data */
+    try {
+      await _maStreamConn.waitSynchronized({ timeoutInSeconds: 60 });
+      console.log('[Stream] Connection synchronized');
+    } catch(e) {
+      console.warn('[Stream] Sync timeout — proceeding anyway:', e.message);
+    }
+
+    /* Symbols that OANDA does not support for streaming market data */
+    const _streamUnsupported = new Set(['ADAUSD', 'LTCUSD']);
 
     /* Subscribe all symbols — log each result */
-    const brokerSyms = Object.values(_maSymMap);
+    const brokerSyms = Object.values(_maSymMap).filter(s => !_streamUnsupported.has(s));
     console.log(`[Stream] Subscribing ${brokerSyms.length} symbols...`);
     for (const brokerSym of brokerSyms) {
       _streamStatus[brokerSym] = 'pending';
