@@ -1098,11 +1098,7 @@ async function fetchOandaHistory(internalSym, incremental) {
     }
     console.log(`[MetaApi] History ready for ${internalSym}`);
     _cpLog(`Done: ${internalSym}`);
-    /* Fall back to 2s polling if streaming subscription failed for this symbol */
-    if (_streamStatus[maSym] && _streamStatus[maSym].startsWith('failed')) {
-      console.warn(`[Stream] ${maSym} not subscribed — falling back to poll ticker`);
-      startOandaTicker(internalSym, maSym);
-    }
+    startOandaTicker(internalSym, maSym); /* 2s poll — safety net alongside streaming */
     saveCacheToDisk(internalSym);
   } catch(e) {
     console.error('[MetaApi] fetchOandaHistory error:', e.message);
