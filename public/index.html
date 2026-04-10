@@ -1021,6 +1021,8 @@ if (isEmbedded) {
               <option value="line">Line</option>
             </select>
 
+            <button id="smaCrossZoneBtn" onclick="toggleSmaCrossZone()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA CROSS</button>
+
             <!-- Upload fallback -->
             <label id="uploadLabel" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
               ↑ UPLOAD
@@ -4241,6 +4243,7 @@ var chartSSE        = null;
 var sma50On         = false;
 var sma200On        = false;
 var sma400On        = false;
+var smaCrossZoneOn  = false;
 var complexFractalOn = false;
 var vpvrOn           = false;
 var liqHeatmapOn     = false;
@@ -4634,6 +4637,81 @@ function renderChart() {
   }
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
+
+  /* ── SMA Cross Zone overlay ── */
+  if(smaCrossZoneOn && candles.length >= 900) {
+    /* Calculate SMAs for full candle array */
+    function calcSMA(period) {
+      var out = new Array(candles.length).fill(null);
+      for(var i = period-1; i < candles.length; i++) {
+        var s = 0; for(var k = 0; k < period; k++) s += candles[i-k].c;
+        out[i] = s / period;
+      }
+      return out;
+    }
+    var sma200arr = calcSMA(200);
+    var sma400arr = calcSMA(400);
+    var sma900arr = candles.length >= 900 ? calcSMA(900) : null;
+
+    /* Find last cross of SMA200 x SMA400 */
+    var cross200_400 = -1;
+    var cross200_400_bull = false;
+    for(var ci = candles.length-1; ci >= 400; ci--) {
+      var prev200 = sma200arr[ci-1], prev400 = sma400arr[ci-1];
+      var cur200  = sma200arr[ci],   cur400  = sma400arr[ci];
+      if(prev200 === null || prev400 === null || cur200 === null || cur400 === null) continue;
+      if(prev200 <= prev400 && cur200 > cur400) { cross200_400 = ci; cross200_400_bull = true; break; }
+      if(prev200 >= prev400 && cur200 < cur400) { cross200_400 = ci; cross200_400_bull = false; break; }
+    }
+
+    /* Find last cross of SMA400 x SMA900 */
+    var cross400_900 = -1;
+    var cross400_900_bull = false;
+    if(sma900arr) {
+      for(var ci = candles.length-1; ci >= 900; ci--) {
+        var prev400b = sma400arr[ci-1], prev900 = sma900arr[ci-1];
+        var cur400b  = sma400arr[ci],   cur900  = sma900arr[ci];
+        if(prev400b === null || prev900 === null || cur400b === null || cur900 === null) continue;
+        if(prev400b <= prev900 && cur400b > cur900) { cross400_900 = ci; cross400_900_bull = true; break; }
+        if(prev400b >= prev900 && cur400b < cur900) { cross400_900 = ci; cross400_900_bull = false; break; }
+      }
+    }
+
+    /* Draw zone between the two cross points */
+    if(cross200_400 >= 0 && cross400_900 >= 0) {
+      var zoneStart = Math.min(cross200_400, cross400_900);
+      var zoneEnd   = Math.max(cross200_400, cross400_900);
+      var bothBull  = cross200_400_bull && cross400_900_bull;
+      var bothBear  = !cross200_400_bull && !cross400_900_bull;
+      var zoneColor = bothBull ? 'rgba(38,166,154,0.12)' : bothBear ? 'rgba(239,83,80,0.12)' : 'rgba(201,168,76,0.10)';
+      var borderColor = bothBull ? 'rgba(38,166,154,0.5)' : bothBear ? 'rgba(239,83,80,0.5)' : 'rgba(201,168,76,0.4)';
+
+      var x1 = worldToScreenX(zoneStart);
+      var x2 = worldToScreenX(zoneEnd);
+      chartCtx.fillStyle = zoneColor;
+      chartCtx.fillRect(x1, PAD.t, x2 - x1, CH);
+
+      /* Border lines at cross points */
+      chartCtx.strokeStyle = borderColor; chartCtx.lineWidth = 1.5; chartCtx.setLineDash([4,3]);
+      chartCtx.beginPath(); chartCtx.moveTo(x1, PAD.t); chartCtx.lineTo(x1, PAD.t + CH); chartCtx.stroke();
+      chartCtx.beginPath(); chartCtx.moveTo(x2, PAD.t); chartCtx.lineTo(x2, PAD.t + CH); chartCtx.stroke();
+      chartCtx.setLineDash([]);
+
+      /* Label */
+      var barCount = zoneEnd - zoneStart;
+      var label = (bothBull ? '▲' : bothBear ? '▼' : '↔') + ' ' + barCount + ' bars';
+      chartCtx.fillStyle = borderColor; chartCtx.font = 'bold 10px DM Mono'; chartCtx.textAlign = 'center';
+      chartCtx.fillText(label, (x1+x2)/2, PAD.t + 14);
+    } else if(cross200_400 >= 0) {
+      /* Only one cross found — mark it */
+      var xc = worldToScreenX(cross200_400);
+      chartCtx.strokeStyle = 'rgba(201,168,76,0.6)'; chartCtx.lineWidth = 1.5; chartCtx.setLineDash([4,3]);
+      chartCtx.beginPath(); chartCtx.moveTo(xc, PAD.t); chartCtx.lineTo(xc, PAD.t+CH); chartCtx.stroke();
+      chartCtx.setLineDash([]);
+      chartCtx.fillStyle = 'rgba(201,168,76,0.8)'; chartCtx.font = 'bold 10px DM Mono'; chartCtx.textAlign = 'center';
+      chartCtx.fillText('200×400', xc, PAD.t+14);
+    }
+  }
 
   /* ── Complex Fractal Index (complexfractal.com) — works with 100+ candles ── */
   if(complexFractalOn && candles.length >= 100) {
@@ -6374,6 +6452,13 @@ function toggleSMA(period){
     }
   }
   if(!chart) renderChart();
+}
+
+function toggleSmaCrossZone(){
+  smaCrossZoneOn = !smaCrossZoneOn;
+  var b = document.getElementById('smaCrossZoneBtn');
+  if(b){ b.style.opacity = smaCrossZoneOn ? '1' : '0.35'; b.style.color = smaCrossZoneOn ? '#c9a84c' : '#8a95a8'; b.style.borderColor = smaCrossZoneOn ? 'rgba(201,168,76,.4)' : 'rgba(255,255,255,.08)'; }
+  renderChart();
 }
 
 function yToPrice(y){
