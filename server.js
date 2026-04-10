@@ -780,12 +780,14 @@ const _maSymMap = {
 const _oandaLoaded = {};
 
 let _maAccount  = null;
-let _maConn     = null;
-let _maReady    = false;
-let _maStatus   = 'disconnected'; /* 'connecting' | 'connected' | 'disconnected' | 'error' */
-let _maLastSeen = null;           /* timestamp of last successful API call */
-let _maRetry    = 0;              /* reconnect attempt counter */
-let _maWatchdog = null;           /* watchdog interval handle */
+let _maConn       = null;
+let _maStreamConn = null;                /* streaming connection for live prices */
+let _streamStatus = {};                  /* brokerSym → 'subscribed'|'failed: ...'|'pending' */
+let _maReady      = false;
+let _maStatus     = 'disconnected';      /* 'connecting' | 'connected' | 'disconnected' | 'error' */
+let _maLastSeen   = null;
+let _maRetry      = 0;
+let _maWatchdog   = null;
 
 async function initMetaApi() {
   if (!METAAPI_TOKEN) return;
@@ -805,6 +807,7 @@ async function initMetaApi() {
     _maRetry    = 0;
     console.log('[MetaApi] OANDA connection ready');
     _startWatchdog();
+    startOandaStream(); /* non-blocking — subscribes all symbols for live prices */
   } catch(e) {
     _maStatus = 'error';
     console.error('[MetaApi] Init failed:', e.message);
@@ -841,9 +844,77 @@ function _startWatchdog() {
       _maReady  = false;
       clearInterval(_maWatchdog);
       _maWatchdog = null;
+      _maStreamConn = null;
+      _streamStatus = {};
       _scheduleReconnect();
     }
   }, 120000);
+}
+
+async function startOandaStream() {
+  if (!_maAccount) return;
+  try {
+    console.log('[Stream] Starting streaming connection...');
+    _maStreamConn = _maAccount.getStreamingConnection();
+
+    /* Price update listener */
+    _maStreamConn.addSynchronizationListener({
+      onSymbolPriceUpdated(_instanceIndex, price) {
+        try {
+          const bid = price.bid, ask = price.ask;
+          if (!bid && !ask) return;
+          const mid = ((bid || ask) + (ask || bid)) / 2;
+          const ts  = price.time ? new Date(price.time).getTime() : Date.now();
+          /* Find internal symbol from broker symbol */
+          const internalSym = Object.keys(_maSymMap).find(k => _maSymMap[k] === price.symbol);
+          if (!internalSym) return;
+          ensureOandaSym(internalSym);
+          TIMEFRAMES.forEach(tf => {
+            const periodMs = TF_MS[tf];
+            const arr      = oandaCandles[internalSym][tf];
+            const cur      = arr[arr.length - 1];
+            let bucket = Math.floor(ts / periodMs) * periodMs;
+            if (cur) {
+              const periodsElapsed = Math.floor((ts - cur.t) / periodMs);
+              bucket = cur.t + periodsElapsed * periodMs;
+            }
+            if (!cur || cur.t !== bucket) {
+              arr.push({ t: bucket, o: mid, h: mid, l: mid, c: mid, v: 0 });
+            } else {
+              cur.c = mid; cur.h = Math.max(cur.h, mid); cur.l = Math.min(cur.l, mid);
+            }
+          });
+          processTick(internalSym, mid, 0, ts);
+          _maLastSeen = Date.now();
+        } catch(e) { /* ignore per-tick errors */ }
+      }
+    });
+
+    await _maStreamConn.connect();
+    await new Promise(r => setTimeout(r, 3000)); /* settle */
+
+    /* Subscribe all symbols — log each result */
+    const brokerSyms = Object.values(_maSymMap);
+    console.log(`[Stream] Subscribing ${brokerSyms.length} symbols...`);
+    for (const brokerSym of brokerSyms) {
+      _streamStatus[brokerSym] = 'pending';
+      try {
+        await _maStreamConn.subscribeToMarketData(brokerSym, [{ type: 'quotes' }]);
+        _streamStatus[brokerSym] = 'subscribed';
+        console.log(`[Stream] ${brokerSym} ✓`);
+      } catch(e) {
+        _streamStatus[brokerSym] = 'failed: ' + e.message;
+        console.warn(`[Stream] ${brokerSym} ✗: ${e.message}`);
+      }
+      await new Promise(r => setTimeout(r, 200)); /* small gap between subscriptions */
+    }
+
+    const ok   = Object.values(_streamStatus).filter(v => v === 'subscribed').length;
+    const fail = Object.values(_streamStatus).filter(v => v.startsWith('failed')).length;
+    console.log(`[Stream] Done — ${ok} subscribed, ${fail} failed`);
+  } catch(e) {
+    console.error('[Stream] Streaming connection failed:', e.message);
+  }
 }
 
 
@@ -1026,7 +1097,11 @@ async function fetchOandaHistory(internalSym, incremental) {
     }
     console.log(`[MetaApi] History ready for ${internalSym}`);
     _cpLog(`Done: ${internalSym}`);
-    startOandaTicker(internalSym, maSym);
+    /* Fall back to 2s polling if streaming subscription failed for this symbol */
+    if (_streamStatus[maSym] && _streamStatus[maSym].startsWith('failed')) {
+      console.warn(`[Stream] ${maSym} not subscribed — falling back to poll ticker`);
+      startOandaTicker(internalSym, maSym);
+    }
     saveCacheToDisk(internalSym);
   } catch(e) {
     console.error('[MetaApi] fetchOandaHistory error:', e.message);
@@ -2138,6 +2213,12 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
   }
   res.json({
     metaapi: { status: _maStatus, lastSeen: _maLastSeen ? new Date(_maLastSeen).toISOString() : null, retryCount: _maRetry },
+    stream: {
+      subscribed: Object.values(_streamStatus).filter(v => v === 'subscribed').length,
+      failed:     Object.values(_streamStatus).filter(v => v.startsWith('failed')).length,
+      pending:    Object.values(_streamStatus).filter(v => v === 'pending').length,
+      details:    _streamStatus,
+    },
     refreshing: _cacheRefreshing,
     total: syms.length,
     loaded: done.length,
