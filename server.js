@@ -851,8 +851,10 @@ function _startWatchdog() {
   }, 120000);
 }
 
+let _streamStarted = false;
 async function startOandaStream() {
-  if (!_maAccount) return;
+  if (!_maAccount || _streamStarted) return;
+  _streamStarted = true;
   try {
     console.log('[Stream] Starting streaming connection...');
     _maStreamConn = _maAccount.getStreamingConnection();
