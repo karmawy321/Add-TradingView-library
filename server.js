@@ -930,7 +930,9 @@ async function refreshAllOandaCache() {
 }
 
 function ensureOandaSym(sym) {
-  if (!oandaCandles[sym]) { oandaCandles[sym] = {}; TIMEFRAMES.forEach(tf => { oandaCandles[sym][tf] = []; }); }
+  if (!oandaCandles[sym]) oandaCandles[sym] = {};
+  /* Always ensure every current TF exists — catches symbols loaded from old disk cache missing new TFs like 1M */
+  TIMEFRAMES.forEach(tf => { if (!oandaCandles[sym][tf]) oandaCandles[sym][tf] = []; });
 }
 
 function storeOandaTF(sym, tf, arr) {
@@ -991,7 +993,7 @@ async function fetchOandaHistory(internalSym, incremental) {
       const target = _OANDA_FULL_LIMITS[tf] || 1000;
 
       /* If existing data is less than 70% of the new target, back-fill regardless of incremental flag */
-      const needsBackfill = arr.length > 0 && arr.length < target * 0.7;
+      const needsBackfill = arr && arr.length > 0 && arr.length < target * 0.7;
 
       if (incremental && arr.length > 0 && !needsBackfill) {
         /* Incremental: only fetch candles that could have appeared since last save */
