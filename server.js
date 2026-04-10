@@ -1432,8 +1432,9 @@ app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
   });
   
   const _oKey = sym.replace('/', '');
-  const initialCandles = (res.reqSource === 'oanda' && oandaCandles[_oKey]) ? oandaCandles[_oKey] : candles[sym];
-  res.write(`data: ${JSON.stringify({ symbol: sym, candles: initialCandles || {} })}\n\n`);
+  /* OANDA: skip initial candle snapshot — frontend loads via REST /candles. Sending full oandaCandles would be several MB. */
+  const initialCandles = res.reqSource === 'oanda' ? {} : (candles[sym] || {});
+  res.write(`data: ${JSON.stringify({ symbol: sym, candles: initialCandles })}\n\n`);
 });
 
 // Current price endpoint
