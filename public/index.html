@@ -4637,7 +4637,7 @@ function renderChart() {
   }
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
-  if(smaCrossZoneOn) { drawSMA(200,'rgba(100,180,255,0.9)'); drawSMA(400,'rgba(255,160,80,0.9)'); }
+  if(smaCrossZoneOn) { drawSMA(200,'rgba(100,180,255,0.9)'); drawSMA(400,'rgba(255,160,80,0.9)'); drawSMA(900,'rgba(180,100,255,0.9)'); }
 
   /* ── SMA Cross Zone overlay ── */
   if(smaCrossZoneOn && candles.length >= 900) {
