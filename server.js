@@ -779,12 +779,17 @@ const _maSymMap = {
 };
 const _oandaLoaded = {};
 
-let _maAccount = null;
-let _maConn    = null;
-let _maReady   = false;
+let _maAccount  = null;
+let _maConn     = null;
+let _maReady    = false;
+let _maStatus   = 'disconnected'; /* 'connecting' | 'connected' | 'disconnected' | 'error' */
+let _maLastSeen = null;           /* timestamp of last successful API call */
+let _maRetry    = 0;              /* reconnect attempt counter */
+let _maWatchdog = null;           /* watchdog interval handle */
 
 async function initMetaApi() {
   if (!METAAPI_TOKEN) return;
+  _maStatus = 'connecting';
   try {
     const MetaApi = require('metaapi.cloud-sdk').default;
     const api = new MetaApi(METAAPI_TOKEN);
@@ -794,13 +799,52 @@ async function initMetaApi() {
     await _maConn.connect();
     /* Give the connection 5s to settle without blocking on full sync */
     await new Promise(r => setTimeout(r, 5000));
-    _maReady = true;
+    _maReady    = true;
+    _maStatus   = 'connected';
+    _maLastSeen = Date.now();
+    _maRetry    = 0;
     console.log('[MetaApi] OANDA connection ready');
-    /* Fetch full symbol list from broker and build dynamic map + catalog */
     _loadOandaSymbols().catch(e => console.error('[MetaApi] symbol load failed:', e.message));
+    _startWatchdog();
   } catch(e) {
+    _maStatus = 'error';
     console.error('[MetaApi] Init failed:', e.message);
+    _scheduleReconnect();
   }
+}
+
+function _scheduleReconnect() {
+  /* Exponential backoff: 10s, 20s, 40s, 80s … capped at 10 minutes */
+  const delay = Math.min(10000 * Math.pow(2, _maRetry), 600000);
+  _maRetry++;
+  console.log(`[MetaApi] Reconnecting in ${Math.round(delay/1000)}s (attempt ${_maRetry})...`);
+  setTimeout(async () => {
+    _maReady  = false;
+    _maConn   = null;
+    _maAccount = null;
+    await initMetaApi();
+  }, delay);
+}
+
+function _startWatchdog() {
+  if (_maWatchdog) clearInterval(_maWatchdog);
+  /* Every 2 minutes, ping MetaAPI — if it fails or last seen > 5min ago, reconnect */
+  _maWatchdog = setInterval(async () => {
+    try {
+      if (!_maConn) throw new Error('no connection');
+      await _maConn.getSymbolPrice(_maSymMap['EURUSD']); /* lightweight ping */
+      _maLastSeen = Date.now();
+      _maStatus   = 'connected';
+    } catch(e) {
+      const staleSec = _maLastSeen ? Math.round((Date.now() - _maLastSeen) / 1000) : '?';
+      console.warn(`[MetaApi] Watchdog: connection lost (last seen ${staleSec}s ago) — reconnecting...`);
+      _maStatus = 'disconnected';
+      _maReady  = false;
+      clearInterval(_maWatchdog);
+      _maWatchdog = null;
+      _scheduleReconnect();
+    }
+  }, 120000);
 }
 
 /* Populated dynamically after connect — overrides the static _maSymMap entries */
@@ -1992,6 +2036,13 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
 </head>
 <body>
 <h1>OANDA Cache Monitor</h1>
+<div class="card" style="margin-bottom:16px;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+  <span style="font-size:13px;color:rgba(255,255,255,0.4)">MetaAPI</span>
+  <span id="ma-dot" class="status-dot dot-idle"></span>
+  <span id="ma-status" style="font-size:13px;font-weight:700">—</span>
+  <span id="ma-lastseen" style="font-size:12px;color:rgba(255,255,255,0.35)"></span>
+  <span id="ma-retry" style="font-size:12px;color:#f87171"></span>
+</div>
 <button id="refresh-btn" onclick="triggerRefresh()">Force Full Refresh</button>
 <div class="card">
   <div class="row">
@@ -2019,10 +2070,21 @@ const TFS = ['1m','5m','15m','30m','1h','4h','1d','1w'];
 
 async function poll() {
   try {
-    const r = await fetch('/admin/cache-status', { headers: { 'x-admin-key': ADMIN_KEY } });
+    const r = await fetch('/admin/cache-status?key=' + ADMIN_KEY, { headers: { 'x-admin-key': ADMIN_KEY } });
     if (!r.ok) { document.body.innerHTML = '<p style="color:red;padding:24px">Unauthorized — add ?key=YOUR_ADMIN_SECRET to URL</p>'; return; }
     const d = await r.json();
     const p = d.progress;
+
+    /* MetaAPI status bar */
+    const ma = d.metaapi || {};
+    const maColors = { connected:'#22c55e', connecting:'#f59e0b', disconnected:'#ef4444', error:'#ef4444' };
+    const maColor = maColors[ma.status] || '#64748b';
+    document.getElementById('ma-dot').style.background = maColor;
+    document.getElementById('ma-dot').style.boxShadow  = ma.status === 'connected' ? '0 0 6px ' + maColor : 'none';
+    document.getElementById('ma-status').textContent   = ma.status || '—';
+    document.getElementById('ma-status').style.color   = maColor;
+    document.getElementById('ma-lastseen').textContent = ma.lastSeen ? 'Last seen: ' + new Date(ma.lastSeen).toLocaleTimeString() : '';
+    document.getElementById('ma-retry').textContent    = ma.retryCount > 0 ? 'Retry #' + ma.retryCount : '';
 
     document.getElementById('pct').textContent       = p.active ? p.pct + '%' : (d.loaded === d.total ? '100%' : Math.round(d.loaded/d.total*100)+'%');
     document.getElementById('sym-done').textContent  = p.active ? p.symDone : d.loaded;
@@ -2122,6 +2184,7 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
     if (hasAny) done.push(entry); else empty.push(sym);
   }
   res.json({
+    metaapi: { status: _maStatus, lastSeen: _maLastSeen ? new Date(_maLastSeen).toISOString() : null, retryCount: _maRetry },
     refreshing: _cacheRefreshing,
     total: syms.length,
     loaded: done.length,
