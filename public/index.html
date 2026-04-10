@@ -6536,11 +6536,9 @@ function toggleSmaCrossZone(){
   var bpPmx = Math.max.apply(null, caps.map(function(c){return c.h;}));
   var bpPmn = Math.min.apply(null, caps.map(function(c){return c.l;}));
 
-  if(typeof saveUndo === 'function') saveUndo();
-  console.log('[SMAcross] zoneStart='+zoneStart+' zoneEnd='+zoneEnd+' caps='+caps.length+' drawings='+(typeof drawings)+' window.drawings='+(typeof window.drawings));
-  var _dwgs = typeof drawings !== 'undefined' ? drawings : (window.drawings || null);
-  if(!_dwgs) { console.warn('[SMAcross] drawings array not found'); return; }
-  _dwgs.push({
+  if(window.saveUndo) window.saveUndo();
+  if(!window.drawings) window.drawings = [];
+  window.drawings.push({
     type:'barpattern', barpattern:true, pixelOnly:false,
     p1:{ price:caps[0].h,             bi:zoneStart, x:0, y:0 },
     p2:{ price:caps[caps.length-1].l, bi:zoneEnd,   x:0, y:0 },
@@ -7413,6 +7411,7 @@ function saveUndo(){
   if(undoStack.length>50) undoStack.shift(); /* cap at 50 steps */
   redoStack=[]; /* new action clears redo */
 }
+window.saveUndo = saveUndo;
 function doUndo(){
   if(!undoStack.length)return;
   redoStack.push(JSON.stringify(drawings));
