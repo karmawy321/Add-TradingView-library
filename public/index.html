@@ -3421,7 +3421,10 @@ function renderSniper(r) {
   card.innerHTML =
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">' +
       '<span style="font-size:13px;font-weight:700;color:' + dirColor + ';letter-spacing:.06em">' + dirLabel + '</span>' +
-      '<span style="font-size:9px;color:#4e5d78">' + (r.pair || '') + ' · ' + (r.timeframe || '') + '</span>' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:9px;color:#4e5d78">' + (r.pair || '') + ' · ' + (r.timeframe || '') + '</span>' +
+        '<button onclick="_closeSniperCard()" style="background:none;border:none;color:#6a7a90;font-size:15px;line-height:1;cursor:pointer;padding:0 2px" title="Close">\u00d7</button>' +
+      '</div>' +
     '</div>' +
     '<div style="display:flex;flex-direction:column">' +
       _snRow('ENTRY', r.entry, '#c9a84c') +
@@ -3454,6 +3457,13 @@ function _copySniperSignal() {
     var btn = document.querySelector('#sniperCard button');
     if (btn) { btn.textContent = 'Copied! \u2713'; setTimeout(function() { btn.textContent = 'Copy for Telegram \u2736'; }, 2000); }
   });
+}
+
+function _closeSniperCard() {
+  window._sniperSignal = null;
+  var card = document.getElementById('sniperCard');
+  if (card) card.style.display = 'none';
+  if (typeof renderChart === 'function') renderChart();
 }
 
 window._drawSniperOverlay = function(ctx, W, H) {
@@ -4637,9 +4647,9 @@ function renderChart() {
   }
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
-  if(smaCrossZoneOn) { drawSMA(200,'rgba(100,180,255,0.9)'); drawSMA(400,'rgba(255,160,80,0.9)'); drawSMA(900,'rgba(180,100,255,0.9)'); }
+  /* smaCrossZoneOn SMAs hidden — bar pattern drawing shows the result */
 
-  /* ── SMA Cross Zone overlay ── */
+  /* ── Fractal Cross overlay ── */
   if(smaCrossZoneOn && candles.length >= 900) {
     /* Calculate SMAs for full candle array */
     function calcSMA(period) {
@@ -4678,7 +4688,8 @@ function renderChart() {
       }
     }
 
-    /* Vertical lines at each cross point */
+    /* Vertical lines and mini panel hidden — bar pattern drawing is the visual */
+    if(false) { /* disabled */
     function drawCrossLine(bi, color, label) {
       var vx = worldToScreenX(bi);
       if(vx < PAD.l || vx > W - PAD.r) return;
