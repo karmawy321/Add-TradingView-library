@@ -6537,7 +6537,10 @@ function toggleSmaCrossZone(){
   var bpPmn = Math.min.apply(null, caps.map(function(c){return c.l;}));
 
   if(typeof saveUndo === 'function') saveUndo();
-  drawings.push({
+  console.log('[SMAcross] zoneStart='+zoneStart+' zoneEnd='+zoneEnd+' caps='+caps.length+' drawings='+(typeof drawings)+' window.drawings='+(typeof window.drawings));
+  var _dwgs = typeof drawings !== 'undefined' ? drawings : (window.drawings || null);
+  if(!_dwgs) { console.warn('[SMAcross] drawings array not found'); return; }
+  _dwgs.push({
     type:'barpattern', barpattern:true, pixelOnly:false,
     p1:{ price:caps[0].h,             bi:zoneStart, x:0, y:0 },
     p2:{ price:caps[caps.length-1].l, bi:zoneEnd,   x:0, y:0 },
