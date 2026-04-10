@@ -840,12 +840,13 @@ function _startWatchdog() {
     } catch(e) {
       const staleSec = _maLastSeen ? Math.round((Date.now() - _maLastSeen) / 1000) : '?';
       console.warn(`[MetaApi] Watchdog: connection lost (last seen ${staleSec}s ago) — reconnecting...`);
-      _maStatus = 'disconnected';
-      _maReady  = false;
-      clearInterval(_maWatchdog);
-      _maWatchdog = null;
+      _maStatus     = 'disconnected';
+      _maReady      = false;
       _maStreamConn = null;
       _streamStatus = {};
+      _streamStarted = false;
+      clearInterval(_maWatchdog);
+      _maWatchdog = null;
       _scheduleReconnect();
     }
   }, 120000);
@@ -1100,7 +1101,6 @@ async function fetchOandaHistory(internalSym, incremental) {
     }
     console.log(`[MetaApi] History ready for ${internalSym}`);
     _cpLog(`Done: ${internalSym}`);
-    startOandaTicker(internalSym, maSym); /* 2s poll — safety net alongside streaming */
     saveCacheToDisk(internalSym);
   } catch(e) {
     console.error('[MetaApi] fetchOandaHistory error:', e.message);
