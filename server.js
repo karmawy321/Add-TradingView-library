@@ -892,7 +892,7 @@ async function startOandaStream() {
     });
 
     await _maStreamConn.connect();
-    await new Promise(r => setTimeout(r, 3000)); /* settle */
+    await new Promise(r => setTimeout(r, 10000)); /* wait for streaming sync */
 
     /* Subscribe all symbols — log each result */
     const brokerSyms = Object.values(_maSymMap);
@@ -900,7 +900,7 @@ async function startOandaStream() {
     for (const brokerSym of brokerSyms) {
       _streamStatus[brokerSym] = 'pending';
       try {
-        await _maStreamConn.subscribeToMarketData(brokerSym, [{ type: 'quotes' }]);
+        await _maStreamConn.subscribeToMarketData(brokerSym);
         _streamStatus[brokerSym] = 'subscribed';
         console.log(`[Stream] ${brokerSym} ✓`);
       } catch(e) {
