@@ -860,38 +860,39 @@ async function startOandaStream() {
     console.log('[Stream] Starting streaming connection...');
     _maStreamConn = _maAccount.getStreamingConnection();
 
-    /* Price update listener */
-    _maStreamConn.addSynchronizationListener({
-      onSymbolPricesUpdated(_instanceIndex, prices) {
-        try {
-          for (const price of (prices || [])) {
-            const bid = price.bid, ask = price.ask;
-            if (!bid && !ask) continue;
-            const mid = ((bid || ask) + (ask || bid)) / 2;
-            const ts  = price.time ? new Date(price.time).getTime() : Date.now();
-            const internalSym = Object.keys(_maSymMap).find(k => _maSymMap[k] === price.symbol);
-            if (!internalSym) continue;
-            ensureOandaSym(internalSym);
-            TIMEFRAMES.forEach(tf => {
-              const periodMs = TF_MS[tf];
-              const arr      = oandaCandles[internalSym][tf];
-              const cur      = arr[arr.length - 1];
-              let bucket = Math.floor(ts / periodMs) * periodMs;
-              if (cur) {
-                const periodsElapsed = Math.floor((ts - cur.t) / periodMs);
-                bucket = cur.t + periodsElapsed * periodMs;
-              }
-              if (!cur || cur.t !== bucket) {
-                arr.push({ t: bucket, o: mid, h: mid, l: mid, c: mid, v: 0 });
-              } else {
-                cur.c = mid; cur.h = Math.max(cur.h, mid); cur.l = Math.min(cur.l, mid);
-              }
-            });
-            processTick(internalSym, mid, 0, ts);
-            _maLastSeen = Date.now();
+    /* Price update listener — SDK may call singular or plural depending on version */
+    function _handleStreamPrice(price) {
+      try {
+        const bid = price.bid, ask = price.ask;
+        if (!bid && !ask) return;
+        const mid = ((bid || ask) + (ask || bid)) / 2;
+        const ts  = price.time ? new Date(price.time).getTime() : Date.now();
+        const internalSym = Object.keys(_maSymMap).find(k => _maSymMap[k] === price.symbol);
+        if (!internalSym) return;
+        ensureOandaSym(internalSym);
+        TIMEFRAMES.forEach(tf => {
+          const periodMs = TF_MS[tf];
+          const arr      = oandaCandles[internalSym][tf];
+          const cur      = arr[arr.length - 1];
+          let bucket = Math.floor(ts / periodMs) * periodMs;
+          if (cur) {
+            const periodsElapsed = Math.floor((ts - cur.t) / periodMs);
+            bucket = cur.t + periodsElapsed * periodMs;
           }
-        } catch(e) { /* ignore per-tick errors */ }
-      }
+          if (!cur || cur.t !== bucket) {
+            arr.push({ t: bucket, o: mid, h: mid, l: mid, c: mid, v: 0 });
+          } else {
+            cur.c = mid; cur.h = Math.max(cur.h, mid); cur.l = Math.min(cur.l, mid);
+          }
+        });
+        processTick(internalSym, mid, 0, ts);
+        _maLastSeen = Date.now();
+      } catch(e) { /* ignore per-tick errors */ }
+    }
+
+    _maStreamConn.addSynchronizationListener({
+      onSymbolPriceUpdated(_i, price)       { _handleStreamPrice(price); },
+      onSymbolPricesUpdated(_i, prices)     { (prices || []).forEach(_handleStreamPrice); },
     });
 
     await _maStreamConn.connect();
