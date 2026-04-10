@@ -4638,8 +4638,8 @@ function renderChart() {
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
 
-  /* ── SMA Cross Zone overlay — drawing handled via drawings[] barpattern ── */
-  if(false && smaCrossZoneOn && candles.length >= 900) {
+  /* ── SMA Cross Zone overlay ── */
+  if(smaCrossZoneOn && candles.length >= 900) {
     /* Calculate SMAs for full candle array */
     function calcSMA(period) {
       var out = new Array(candles.length).fill(null);
@@ -6484,72 +6484,64 @@ function toggleSMA(period){
 }
 
 function toggleSmaCrossZone(){
-  var candles = chartCandles;
-  if(!candles || candles.length < 400) return;
+  smaCrossZoneOn = !smaCrossZoneOn;
+  var b = document.getElementById('smaCrossZoneBtn');
+  if(b){ b.style.opacity = smaCrossZoneOn ? '1' : '0.35'; b.style.color = smaCrossZoneOn ? '#c9a84c' : '#8a95a8'; b.style.borderColor = smaCrossZoneOn ? 'rgba(201,168,76,.4)' : 'rgba(255,255,255,.08)'; }
 
-  /* Calculate SMAs */
-  function calcSMAFull(period) {
-    var out = new Array(candles.length).fill(null);
-    for(var i = period-1; i < candles.length; i++) {
-      var s = 0; for(var k = 0; k < period; k++) s += candles[i-k].c;
-      out[i] = s / period;
+  /* On enable — also inject candles as a draggable bar pattern drawing */
+  if(smaCrossZoneOn && window.addDrawing) {
+    var candles = chartCandles;
+    if(!candles || candles.length < 400) { renderChart(); return; }
+
+    function _calcSMA(period) {
+      var out = new Array(candles.length).fill(null);
+      for(var i = period-1; i < candles.length; i++) {
+        var s = 0; for(var k = 0; k < period; k++) s += candles[i-k].c;
+        out[i] = s / period;
+      }
+      return out;
     }
-    return out;
-  }
-  var sma200 = calcSMAFull(200);
-  var sma400 = calcSMAFull(400);
-  var sma900 = candles.length >= 900 ? calcSMAFull(900) : null;
+    var sma200 = _calcSMA(200), sma400 = _calcSMA(400);
+    var sma900 = candles.length >= 900 ? _calcSMA(900) : null;
 
-  /* Find last cross of SMA200 x SMA400 */
-  var cross1 = -1;
-  for(var i = candles.length-1; i >= 400; i--) {
-    if(sma200[i-1]===null||sma400[i-1]===null) continue;
-    if((sma200[i-1]-sma400[i-1])*(sma200[i]-sma400[i]) < 0) { cross1 = i; break; }
-  }
+    var cross1 = -1;
+    for(var i = candles.length-1; i >= 400; i--) {
+      if(sma200[i-1]===null||sma400[i-1]===null) continue;
+      if((sma200[i-1]-sma400[i-1])*(sma200[i]-sma400[i]) < 0) { cross1 = i; break; }
+    }
+    var cross2 = -1;
+    if(sma900) {
+      for(var i = candles.length-1; i >= 900; i--) {
+        if(sma400[i-1]===null||sma900[i-1]===null) continue;
+        if((sma400[i-1]-sma900[i-1])*(sma400[i]-sma900[i]) < 0) { cross2 = i; break; }
+      }
+    }
 
-  /* Find last cross of SMA400 x SMA900 */
-  var cross2 = -1;
-  if(sma900) {
-    for(var i = candles.length-1; i >= 900; i--) {
-      if(sma400[i-1]===null||sma900[i-1]===null) continue;
-      if((sma400[i-1]-sma900[i-1])*(sma400[i]-sma900[i]) < 0) { cross2 = i; break; }
+    var zoneStart = -1, zoneEnd = -1;
+    if(cross1 >= 0 && cross2 >= 0) { zoneStart = Math.min(cross1,cross2); zoneEnd = Math.max(cross1,cross2); }
+    else if(cross1 >= 0) { zoneStart = Math.max(0, cross1-30); zoneEnd = cross1; }
+
+    if(zoneStart >= 0 && zoneEnd > zoneStart) {
+      var caps = candles.slice(zoneStart, zoneEnd+1);
+      if(caps.length >= 2) {
+        var bpPmx = Math.max.apply(null, caps.map(function(c){return c.h;}));
+        var bpPmn = Math.min.apply(null, caps.map(function(c){return c.l;}));
+        var ghostScale = Math.min(1, 40 / Math.max(1, caps.length));
+        window.addDrawing({
+          type:'barpattern', barpattern:true, pixelOnly:false,
+          p1:{ price:bpPmx, bi:zoneStart, x:0, y:0 },
+          p2:{ price:bpPmn, bi:zoneEnd,   x:0, y:0 },
+          candles:caps,
+          ghostBarOffset:0,
+          ghostAnchorBi: candles.length + 5,
+          ghostPriceOffset:(bpPmx-bpPmn)*2,
+          ghostScaleX: ghostScale,
+          ghostHeightPrice:(bpPmx-bpPmn)
+        });
+        return; /* addDrawing calls renderChart */
+      }
     }
   }
-
-  var zoneStart = -1, zoneEnd = -1;
-  if(cross1 >= 0 && cross2 >= 0) {
-    zoneStart = Math.min(cross1, cross2);
-    zoneEnd   = Math.max(cross1, cross2);
-  } else if(cross1 >= 0) {
-    zoneStart = Math.max(0, cross1 - 30);
-    zoneEnd   = cross1;
-  }
-
-  if(zoneStart < 0 || zoneEnd <= zoneStart) {
-    alert('Not enough data to find SMA cross. Try a longer timeframe or more candles.');
-    return;
-  }
-
-  var caps = candles.slice(zoneStart, zoneEnd + 1);
-  if(caps.length < 2) return;
-
-  var bpPmx = Math.max.apply(null, caps.map(function(c){return c.h;}));
-  var bpPmn = Math.min.apply(null, caps.map(function(c){return c.l;}));
-
-  if(window.saveUndo) window.saveUndo();
-  if(!window.drawings) window.drawings = [];
-  window.drawings.push({
-    type:'barpattern', barpattern:true, pixelOnly:false,
-    p1:{ price:caps[0].h,             bi:zoneStart, x:0, y:0 },
-    p2:{ price:caps[caps.length-1].l, bi:zoneEnd,   x:0, y:0 },
-    candles:caps,
-    ghostBarOffset:0,
-    ghostAnchorBi:zoneStart,
-    ghostPriceOffset:(bpPmx-bpPmn)*1.1,
-    ghostScaleX:1,
-    ghostHeightPrice:(bpPmx-bpPmn)
-  });
-
   renderChart();
 }
 
@@ -7412,6 +7404,7 @@ function saveUndo(){
   redoStack=[]; /* new action clears redo */
 }
 window.saveUndo = saveUndo;
+window.addDrawing = function(d){ saveUndo(); drawings.push(d); renderChart&&renderChart(); };
 function doUndo(){
   if(!undoStack.length)return;
   redoStack.push(JSON.stringify(drawings));
