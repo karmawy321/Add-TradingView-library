@@ -6165,7 +6165,7 @@ function loadChart(symbol,interval){
       fetchTwelveDataFallback(sym,currentInterval);
     });
 
-  chartSSE=new EventSource(BACKEND_URL+'/subscribe/'+sym);
+  chartSSE=new EventSource(BACKEND_URL+'/subscribe/'+sym+(currentDataSource==='oanda'?'?source=oanda':''));
   chartSSE.onmessage=function(e){
     try{
       var data=JSON.parse(e.data);
