@@ -6536,7 +6536,7 @@ function toggleSmaCrossZone(){
   var bpPmx = Math.max.apply(null, caps.map(function(c){return c.h;}));
   var bpPmn = Math.min.apply(null, caps.map(function(c){return c.l;}));
 
-  saveUndo();
+  if(typeof saveUndo === 'function') saveUndo();
   drawings.push({
     type:'barpattern', barpattern:true, pixelOnly:false,
     p1:{ price:caps[0].h,             bi:zoneStart, x:0, y:0 },
