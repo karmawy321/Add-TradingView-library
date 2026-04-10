@@ -420,7 +420,7 @@ async function getUserProfile(token) {
 /* ═══════════════════════════════════════════════════
    CANDLE BUILDER
    ═══════════════════════════════════════════════════ */
-const TF_MS = { '1m':60000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000,'1M':2592000000 };
+const TF_MS = { '1m':60000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000 };
 const TIMEFRAMES = Object.keys(TF_MS);
 const candles    = {};
 const sseClients = {};
@@ -804,7 +804,6 @@ async function initMetaApi() {
     _maLastSeen = Date.now();
     _maRetry    = 0;
     console.log('[MetaApi] OANDA connection ready');
-    _loadOandaSymbols().catch(e => console.error('[MetaApi] symbol load failed:', e.message));
     _startWatchdog();
   } catch(e) {
     _maStatus = 'error';
@@ -847,50 +846,7 @@ function _startWatchdog() {
   }, 120000);
 }
 
-/* Populated dynamically after connect — overrides the static _maSymMap entries */
-let _oandaSymbolCatalog = []; /* [{ symbol, brokerSym, name, type }] */
 
-async function _loadOandaSymbols() {
-  try {
-    const symbols = await _maConn.getSymbols();
-    /* symbols is an array of strings: ['GOLD.pro', 'EURUSD.pro', 'BTCUSD', ...] */
-    console.log(`[MetaApi] Broker has ${symbols.length} symbols`);
-
-    /* Build internal-key → broker-symbol map from the live list */
-    symbols.forEach(brokerSym => {
-      /* Derive a clean internal key: strip .pro/.PRO suffix, normalise */
-      const key = brokerSym.replace(/\.pro$/i, '').toUpperCase()
-                            .replace('GOLD',   'XAUUSD')
-                            .replace('SILVER', 'XAGUSD');
-      if (!_maSymMap[key]) _maSymMap[key] = brokerSym; /* don't overwrite hardcoded entries */
-    });
-
-    /* Build the catalog used by the search endpoint */
-    _oandaSymbolCatalog = symbols.map(brokerSym => {
-      const key  = brokerSym.replace(/\.pro$/i, '').toUpperCase()
-                             .replace('GOLD',   'XAUUSD')
-                             .replace('SILVER', 'XAGUSD');
-      /* Best-effort human name */
-      const knownNames = {
-        XAUUSD:'Gold / US Dollar', XAGUSD:'Silver / US Dollar',
-        EURUSD:'Euro / US Dollar', GBPUSD:'British Pound / US Dollar',
-        USDJPY:'US Dollar / Japanese Yen', USDCHF:'US Dollar / Swiss Franc',
-        AUDUSD:'Australian Dollar / US Dollar', NZDUSD:'New Zealand Dollar / US Dollar',
-        USDCAD:'US Dollar / Canadian Dollar', BTCUSD:'Bitcoin / US Dollar',
-        ETHUSD:'Ethereum / US Dollar', SOLUSD:'Solana / US Dollar',
-      };
-      const type = brokerSym.match(/BTC|ETH|SOL|ADA|LTC|XRP|DOT/) ? 'Digital Currency'
-                 : brokerSym.match(/GOLD|SILVER|OIL|GAS|PLAT/)     ? 'Commodity'
-                 : 'Physical Currency';
-      return { symbol: key, brokerSym, instrument_name: knownNames[key] || brokerSym, instrument_type: type, exchange: 'OANDA', source: 'oanda' };
-    });
-
-    console.log(`[MetaApi] Catalog built: ${_oandaSymbolCatalog.length} entries`);
-    console.log('[MetaApi] Sample symbols:', symbols.slice(0, 10));
-  } catch(e) {
-    console.error('[MetaApi] getSymbols failed:', e.message);
-  }
-}
 
 /* Separate candle store for OANDA data — same structure as candles{} */
 const oandaCandles = {};
@@ -1001,9 +957,8 @@ function maToCandle(c) {
 
 async function fetchOandaCandles(maSym, tf, startTime, limit) {
   if (!_maAccount) return [];
-  const maTF = _maTFMap[tf] || tf;
   try {
-    const raw = await _maAccount.getHistoricalCandles(maSym, maTF, startTime, limit);
+    const raw = await _maAccount.getHistoricalCandles(maSym, tf, startTime, limit);
     return (raw || []).map(maToCandle);
   } catch(e) {
     console.error('[MetaApi] fetchOandaCandles error:', e.message);
@@ -1011,14 +966,12 @@ async function fetchOandaCandles(maSym, tf, startTime, limit) {
   }
 }
 
-/* MetaAPI uses '1MN' for monthly candles — map internal TF keys that differ */
-const _maTFMap = { '1M': '1MN' };
 
 /* Target candle counts per TF for full history fetch:
-   1M  → 300  (~25 years)   1w  → 1100 (~21 years)
+   1w  → 1100 (~21 years)   1d  → 5000 (~13 years)
    4h  → 7800 (~5 years)    1h  → 17520 (~2 years)
-   1m  → 10080 (7 days)     others unchanged            */
-const _OANDA_FULL_LIMITS = { '1M': 300, '1w': 1100, '1d': 5000, '4h': 7800, '1h': 17520, '30m': 2000, '15m': 2000, '5m': 2000, '1m': 10080 };
+   1m  → 10080 (7 days)     others → 2000             */
+const _OANDA_FULL_LIMITS = { '1w': 1100, '1d': 5000, '4h': 7800, '1h': 17520, '30m': 2000, '15m': 2000, '5m': 2000, '1m': 10080 };
 
 const _OANDA_PAGE_SIZE = 1000; /* max candles per MetaAPI request */
 
