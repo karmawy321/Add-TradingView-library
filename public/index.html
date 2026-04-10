@@ -4677,39 +4677,68 @@ function renderChart() {
       }
     }
 
-    /* Draw zone between the two cross points */
+    /* Draw mini bar pattern above the chart */
+    var zoneStart = -1, zoneEnd = -1, isBull = false;
     if(cross200_400 >= 0 && cross400_900 >= 0) {
-      var zoneStart = Math.min(cross200_400, cross400_900);
-      var zoneEnd   = Math.max(cross200_400, cross400_900);
-      var bothBull  = cross200_400_bull && cross400_900_bull;
-      var bothBear  = !cross200_400_bull && !cross400_900_bull;
-      var zoneColor = bothBull ? 'rgba(38,166,154,0.12)' : bothBear ? 'rgba(239,83,80,0.12)' : 'rgba(201,168,76,0.10)';
-      var borderColor = bothBull ? 'rgba(38,166,154,0.5)' : bothBear ? 'rgba(239,83,80,0.5)' : 'rgba(201,168,76,0.4)';
-
-      var x1 = worldToScreenX(zoneStart);
-      var x2 = worldToScreenX(zoneEnd);
-      chartCtx.fillStyle = zoneColor;
-      chartCtx.fillRect(x1, PAD.t, x2 - x1, CH);
-
-      /* Border lines at cross points */
-      chartCtx.strokeStyle = borderColor; chartCtx.lineWidth = 1.5; chartCtx.setLineDash([4,3]);
-      chartCtx.beginPath(); chartCtx.moveTo(x1, PAD.t); chartCtx.lineTo(x1, PAD.t + CH); chartCtx.stroke();
-      chartCtx.beginPath(); chartCtx.moveTo(x2, PAD.t); chartCtx.lineTo(x2, PAD.t + CH); chartCtx.stroke();
-      chartCtx.setLineDash([]);
-
-      /* Label */
-      var barCount = zoneEnd - zoneStart;
-      var label = (bothBull ? '▲' : bothBear ? '▼' : '↔') + ' ' + barCount + ' bars';
-      chartCtx.fillStyle = borderColor; chartCtx.font = 'bold 10px DM Mono'; chartCtx.textAlign = 'center';
-      chartCtx.fillText(label, (x1+x2)/2, PAD.t + 14);
+      zoneStart = Math.min(cross200_400, cross400_900);
+      zoneEnd   = Math.max(cross200_400, cross400_900);
+      isBull    = cross200_400_bull;
     } else if(cross200_400 >= 0) {
-      /* Only one cross found — mark it */
-      var xc = worldToScreenX(cross200_400);
-      chartCtx.strokeStyle = 'rgba(201,168,76,0.6)'; chartCtx.lineWidth = 1.5; chartCtx.setLineDash([4,3]);
-      chartCtx.beginPath(); chartCtx.moveTo(xc, PAD.t); chartCtx.lineTo(xc, PAD.t+CH); chartCtx.stroke();
-      chartCtx.setLineDash([]);
-      chartCtx.fillStyle = 'rgba(201,168,76,0.8)'; chartCtx.font = 'bold 10px DM Mono'; chartCtx.textAlign = 'center';
-      chartCtx.fillText('200×400', xc, PAD.t+14);
+      zoneStart = Math.max(0, cross200_400 - 20);
+      zoneEnd   = cross200_400;
+      isBull    = cross200_400_bull;
+    }
+
+    if(zoneStart >= 0 && zoneEnd > zoneStart) {
+      var patCandles = candles.slice(zoneStart, zoneEnd + 1);
+      var patCount   = patCandles.length;
+      if(patCount > 0) {
+        /* Panel: top-right corner, above chart */
+        var PW = Math.min(200, patCount * 4 + 16);
+        var PH = 60;
+        var PX = W - PAD.r - PW - 4;
+        var PY = PAD.t + 2;
+
+        /* Background */
+        chartCtx.fillStyle = 'rgba(6,8,13,0.88)';
+        chartCtx.strokeStyle = isBull ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
+        chartCtx.lineWidth = 1;
+        chartCtx.setLineDash([]);
+        chartCtx.beginPath(); chartCtx.roundRect ? chartCtx.roundRect(PX,PY,PW,PH,3) : chartCtx.rect(PX,PY,PW,PH);
+        chartCtx.fill(); chartCtx.stroke();
+
+        /* Label */
+        chartCtx.fillStyle = isBull ? 'rgba(38,166,154,0.9)' : 'rgba(239,83,80,0.9)';
+        chartCtx.font = 'bold 8px DM Mono'; chartCtx.textAlign = 'left';
+        chartCtx.fillText('SMA CROSS · ' + patCount + ' bars', PX+5, PY+9);
+
+        /* Mini candles */
+        var patMn = Math.min.apply(null, patCandles.map(function(c){return c.l;}));
+        var patMx = Math.max.apply(null, patCandles.map(function(c){return c.h;}));
+        var patRange = patMx - patMn || patMn * 0.001 || 1;
+        var bW  = Math.max(1, Math.floor((PW - 10) / patCount));
+        var bW2 = Math.max(1, bW - 1);
+        var cH2 = PH - 14;
+        function patY(v) { return PY + 12 + (1 - (v - patMn) / patRange) * (cH2 - 2); }
+
+        patCandles.forEach(function(c, i) {
+          var bx = PX + 5 + i * bW;
+          var bull = c.c >= c.o;
+          var col  = bull ? 'rgba(38,166,154,0.85)' : 'rgba(239,83,80,0.85)';
+          chartCtx.strokeStyle = col; chartCtx.lineWidth = 1;
+          /* Wick */
+          chartCtx.beginPath();
+          chartCtx.moveTo(bx + bW2/2, patY(c.h));
+          chartCtx.lineTo(bx + bW2/2, patY(c.l));
+          chartCtx.stroke();
+          /* Body */
+          var by1 = patY(Math.max(c.o, c.c));
+          var by2 = patY(Math.min(c.o, c.c));
+          var bodyH = Math.max(1, by2 - by1);
+          chartCtx.fillStyle = col;
+          chartCtx.fillRect(bx, by1, bW2, bodyH);
+        });
+      }
     }
   }
 
