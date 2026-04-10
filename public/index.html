@@ -6533,8 +6533,8 @@ function toggleSmaCrossZone(){
           p2:{ price:bpPmn, bi:zoneEnd,   x:0, y:0 },
           candles:caps,
           ghostBarOffset:0,
-          ghostAnchorBi: candles.length + 5,
-          ghostPriceOffset:(bpPmx-bpPmn)*2,
+          ghostAnchorBi: zoneStart,
+          ghostPriceOffset:(bpPmx-bpPmn)*0.15,
           ghostScaleX: ghostScale,
           ghostHeightPrice:(bpPmx-bpPmn)
         });
