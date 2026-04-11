@@ -1862,13 +1862,14 @@ Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
 });
 
 /* ── Sniper pip/RR math helpers ── */
+const { sniperSignal: algoSniperSignal, checkSignalOutcome } = require('./sniper-engine');
+
 function getPipSize(price, pair) {
   const p = (pair || '').toUpperCase();
   if (p.includes('JPY')) return 0.01;
   if (p === 'XAUUSD' || p === 'GOLD') return 0.1;
   if (/^(US30|NAS100|SPX500|UK100|GER40)/.test(p)) return 1.0;
   if (/^(EUR|GBP|AUD|NZD|USD|CAD|CHF)/.test(p) && p.length === 6) return 0.0001;
-  // Crypto — dynamic by price magnitude
   if (price >= 1000)  return 1.0;
   if (price >= 100)   return 0.1;
   if (price >= 10)    return 0.01;
@@ -1899,79 +1900,451 @@ function calcSniperMath(sig) {
   });
 }
 
-function validateSniper(sig) {
+function validateSniper(sig, lastClose, priceMin, priceMax) {
   const long = (sig.direction || '').toLowerCase() === 'long';
-  if (long  && sig.sl  >= sig.entry) return false;
-  if (!long && sig.sl  <= sig.entry) return false;
-  if (long  && sig.tp1 <= sig.entry) return false;
-  if (!long && sig.tp1 >= sig.entry) return false;
-  if (long  && sig.tp2 <= sig.tp1)   return false;
-  if (!long && sig.tp2 >= sig.tp1)   return false;
-  return true;
+  /* Directional ordering */
+  if (long  && sig.sl  >= sig.entry) return 'SL must be below entry for long';
+  if (!long && sig.sl  <= sig.entry) return 'SL must be above entry for short';
+  if (long  && sig.tp1 <= sig.entry) return 'TP1 must be above entry for long';
+  if (!long && sig.tp1 >= sig.entry) return 'TP1 must be below entry for short';
+  if (long  && sig.tp2 <= sig.tp1)   return 'TP2 must be above TP1 for long';
+  if (!long && sig.tp2 >= sig.tp1)   return 'TP2 must be below TP1 for short';
+  /* Entry near last close (within 2%) */
+  if (lastClose > 0) {
+    const entryDrift = Math.abs(sig.entry - lastClose) / lastClose;
+    if (entryDrift > 0.02) return 'Entry too far from last close (' + (entryDrift * 100).toFixed(1) + '%)';
+  }
+  /* Minimum RR enforcement */
+  const slDist  = Math.abs(sig.entry - sig.sl);
+  const tp1Dist = Math.abs(sig.tp1 - sig.entry);
+  const tp2Dist = Math.abs(sig.tp2 - sig.entry);
+  if (slDist > 0) {
+    if (tp1Dist / slDist < 1.0) return 'TP1 RR below 1:1';
+    if (tp2Dist / slDist < 1.5) return 'TP2 RR below 1:1.5';
+  }
+  /* Price range check (within 5% of data extremes) */
+  if (priceMin > 0 && priceMax > 0) {
+    const margin = (priceMax - priceMin) * 0.1;
+    const rLow = priceMin - margin, rHigh = priceMax + margin;
+    if (sig.entry < rLow || sig.entry > rHigh) return 'Entry outside data range';
+    if (sig.sl < rLow || sig.sl > rHigh) return 'SL outside data range';
+  }
+  return null; /* null = valid */
 }
 
-// /sniper - Sniper trade signal (AI prices only, server calculates pips/RR/%)
+// /sniper - Algorithmic trade signal (pure math, no AI API call)
 app.post('/sniper', rateLimit(20, 60000), async (req, res) => {
-  const k = process.env.ANTHROPIC_API_KEY;
-  if (!k) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set.' });
-  const { candles, priceMin, priceMax, pair, timeframe, language: l, _token } = req.body;
+  const { candles, priceMin, priceMax, pair, timeframe, _token } = req.body;
   if (!candles || !candles.length) return res.status(400).json({ error: 'Missing candles data.' });
+  if (candles.length < 12) return res.status(400).json({ error: 'Need at least 12 candles.' });
   let _snipUserId = null;
   try { const _snipR = await verifyAndDeduct(_token, 5); _snipUserId = _snipR.userId; } catch(e) { return res.status(402).json({ error: e.message }); }
-  const candleText = candles.map(candleLine).join('\n');
-  const prompt = `You are an elite trade signal analyst. Analyze this OHLCV data for ${pair||'the asset'} on ${timeframe||'auto'} timeframe (${candles.length} candles, price range ${(priceMin||0).toFixed(6)} - ${(priceMax||0).toFixed(6)}). Reply in ${rl(l)}.
 
-OHLCV DATA (candle 1 = oldest, candle ${candles.length} = most recent):
-${candleText}
+  try {
+    /* ── Run the algorithmic engine ── */
+    const raw = algoSniperSignal(candles, pair, timeframe);
+    if (raw.error) return res.status(500).json({ error: raw.error });
 
-Generate ONE precise trade signal using SMC structure, key support/resistance, and Fibonacci confluence.
+    /* ── Validate ── */
+    const lastClose = +candles[candles.length - 1].c;
+    const validationErr = validateSniper(raw, lastClose, priceMin, priceMax);
+    if (validationErr) {
+      console.warn('[Sniper] Validation failed:', validationErr);
+      return res.status(500).json({ error: 'Signal validation failed: ' + validationErr });
+    }
 
-Respond with ONLY a valid JSON object, no markdown:
-{"pair":"str","timeframe":"str","direction":"long|short","entry":0.0,"sl":0.0,"tp1":0.0,"tp2":0.0,"confidence":75,"reasoning":"1-2 sentence SMC/structure reasoning for this setup"}
+    /* ── Add pip math ── */
+    const sig = calcSniperMath(raw);
+    res.json(sig);
 
-Rules:
-- entry must be near the last candle close price.
-- sl must be placed beyond a real swing high/low structure level.
-- tp1 must offer at least 1:1 reward vs sl distance.
-- tp2 must offer at least 1:1.5 reward vs sl distance.
-- For long: sl < entry < tp1 < tp2. For short: sl > entry > tp1 > tp2.
-- All prices must be realistic values within the data range.`;
+    /* ── Save to DB with context tags (async) ── */
+    if (_snipUserId && sbAdmin) {
+      sbAdmin.from('sniper_signals').insert({
+        user_id: _snipUserId,
+        pair: sig.pair || pair, timeframe: sig.timeframe || timeframe,
+        direction: sig.direction, entry: sig.entry, sl: sig.sl, tp1: sig.tp1, tp2: sig.tp2,
+        sl_pips: sig.sl_pips, tp1_pips: sig.tp1_pips, tp2_pips: sig.tp2_pips,
+        rr1: sig.rr1, rr2: sig.rr2, sl_pct: sig.sl_pct, tp1_pct: sig.tp1_pct, tp2_pct: sig.tp2_pct,
+        confidence: sig.confidence, reasoning: sig.reasoning, outcome: 'pending',
+        setup_type: sig.setup_type || null,
+        ctx_trend: sig.ctx_trend || null,
+        ctx_session: sig.ctx_session || null,
+        ctx_volatility: sig.ctx_volatility || null,
+      }).then(({ error: dbErr }) => { if (dbErr) console.error('[Sniper DB]', dbErr.message); });
+    }
+  } catch(e) {
+    console.error('[Sniper] Engine error:', e);
+    res.status(500).json({ error: 'Signal engine error' });
+  }
+});
 
-  const reqBody = JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 600, messages: [{ role: 'user', content: prompt }] });
-  const apiReq = https.request({
-    hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
-    headers: { 'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','Content-Length':Buffer.byteLength(reqBody) }
-  }, apiRes => {
-    let data = '';
-    apiRes.on('data', c => { data += c; });
-    apiRes.on('end', () => {
-      try {
-        const obj = JSON.parse(data);
-        if (obj.error) return res.status(500).json({ error: obj.error.message });
-        const text = obj.content && obj.content[0] && obj.content[0].text ? obj.content[0].text : '';
-        const jm = text.match(/\{[\s\S]*\}/);
-        if (!jm) return res.status(500).json({ error: 'No signal generated' });
-        const raw = JSON.parse(jm[0]);
-        if (!validateSniper(raw)) return res.status(500).json({ error: 'Invalid signal structure' });
-        const sig = calcSniperMath(raw);
-        res.json(sig);
-        /* Save to DB async after responding */
-        if (_snipUserId && sbAdmin) {
-          sbAdmin.from('sniper_signals').insert({
-            user_id: _snipUserId,
-            pair: sig.pair || pair, timeframe: sig.timeframe || timeframe,
-            direction: sig.direction, entry: sig.entry, sl: sig.sl, tp1: sig.tp1, tp2: sig.tp2,
-            sl_pips: sig.sl_pips, tp1_pips: sig.tp1_pips, tp2_pips: sig.tp2_pips,
-            rr1: sig.rr1, rr2: sig.rr2, sl_pct: sig.sl_pct, tp1_pct: sig.tp1_pct, tp2_pct: sig.tp2_pct,
-            confidence: sig.confidence, reasoning: sig.reasoning, outcome: 'pending'
-          }).then(({ error: dbErr }) => { if (dbErr) console.error('[Sniper DB]', dbErr.message); });
+/* ═══════════════════════════════════════════════════
+   SNIPER OUTCOME TRACKER
+   Checks pending signals against OANDA cached candles
+   to determine if TP1/TP2/SL was hit.
+   ═══════════════════════════════════════════════════ */
+
+const SNIPER_EXPIRY_DAYS = 7;
+
+async function checkSniperOutcomes() {
+  if (!sbAdmin) return;
+  console.log('🎯 [Sniper Check] Starting outcome check...');
+
+  const { data: pending, error: fetchErr } = await sbAdmin
+    .from('sniper_signals')
+    .select('*')
+    .eq('outcome', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(200);
+
+  if (fetchErr) { console.error('[Sniper Check] Fetch error:', fetchErr); return; }
+  if (!pending || pending.length === 0) { console.log('✅ [Sniper Check] No pending signals.'); return; }
+
+  console.log(`📊 [Sniper Check] Checking ${pending.length} pending signals...`);
+  let resolved = 0, expired = 0, skipped = 0, errors = 0;
+
+  for (const sig of pending) {
+    try {
+      const sym = (sig.pair || '').toUpperCase().replace('/', '');
+      const sigTime = new Date(sig.created_at).getTime();
+      const ageDays = (Date.now() - sigTime) / (24 * 3600 * 1000);
+
+      // Try to find candle data from OANDA cache
+      let afterCandles = null;
+      const tfKey = sig.timeframe || '1h';
+      // Try exact timeframe, then fallback to 1h, then 15m
+      for (const tryTf of [tfKey, '1h', '15m', '5m']) {
+        const cached = oandaCandles[sym] && oandaCandles[sym][tryTf];
+        if (cached && cached.length > 0) {
+          afterCandles = cached.filter(c => c.t > sigTime);
+          if (afterCandles.length > 0) break;
         }
-      } catch(e) { res.status(500).json({ error: 'Failed to parse signal' }); }
-    });
-  });
-  apiReq.on('error', e => res.status(500).json({ error: e.message }));
-  apiReq.write(reqBody);
-  apiReq.end();
+      }
+
+      if (!afterCandles || afterCandles.length === 0) {
+        // Expire if too old and no data
+        if (ageDays > SNIPER_EXPIRY_DAYS) {
+          await sbAdmin.from('sniper_signals').update({
+            outcome: 'expired', checked_at: new Date().toISOString()
+          }).eq('id', sig.id);
+          expired++;
+        } else { skipped++; }
+        continue;
+      }
+
+      // Check outcome using the engine
+      const result = checkSignalOutcome(sig, afterCandles);
+
+      if (result) {
+        await sbAdmin.from('sniper_signals').update({
+          outcome: result.outcome,
+          actual_price: result.actual_price,
+          bars_to_outcome: result.bars,
+          checked_at: new Date().toISOString()
+        }).eq('id', sig.id);
+        resolved++;
+        console.log(`  ✅ ${sym} ${sig.direction}: ${result.outcome} after ${result.bars} bars`);
+      } else if (ageDays > SNIPER_EXPIRY_DAYS) {
+        // Expired: no TP or SL hit within expiry window
+        const lastPrice = afterCandles[afterCandles.length - 1].c;
+        await sbAdmin.from('sniper_signals').update({
+          outcome: 'expired', actual_price: lastPrice,
+          bars_to_outcome: afterCandles.length,
+          checked_at: new Date().toISOString()
+        }).eq('id', sig.id);
+        expired++;
+      } else { skipped++; }
+
+      // Rate limit DB calls
+      await new Promise(r => setTimeout(r, 100));
+    } catch(e) {
+      console.error(`  ❌ [Sniper Check] Error for signal ${sig.id}:`, e.message);
+      errors++;
+    }
+  }
+
+  console.log(`🎯 [Sniper Check] Done: ${resolved} resolved, ${expired} expired, ${skipped} still pending, ${errors} errors`);
+}
+
+/* ── Manual trigger for sniper outcome check ── */
+app.post('/api/sniper/check-now', requireAdmin, async (req, res) => {
+  try {
+    await checkSniperOutcomes();
+    res.json({ success: true, message: 'Sniper outcome check completed' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════════════════════════════════════════════
+   SNIPER PERFORMANCE STATS API
+   ═══════════════════════════════════════════════════ */
+
+app.get('/api/sniper/stats', requireAdmin, async (req, res) => {
+  if (!sbAdmin) return res.status(500).json({ error: 'Database not configured' });
+  try {
+    const { data: all, error } = await sbAdmin
+      .from('sniper_signals')
+      .select('id, pair, timeframe, direction, entry, sl, tp1, tp2, sl_pips, tp1_pips, tp2_pips, rr1, rr2, confidence, reasoning, outcome, setup_type, ctx_trend, ctx_session, ctx_volatility, actual_price, bars_to_outcome, created_at');
+    if (error) throw error;
+
+    const resolved = all.filter(s => s.outcome && s.outcome !== 'pending');
+    const wins     = resolved.filter(s => s.outcome === 'tp1_hit' || s.outcome === 'tp2_hit');
+    const tp2Wins  = resolved.filter(s => s.outcome === 'tp2_hit');
+    const losses   = resolved.filter(s => s.outcome === 'sl_hit');
+    const expired  = resolved.filter(s => s.outcome === 'expired');
+    const totalDecided = wins.length + losses.length; /* exclude expired from win rate */
+
+    /* Overall stats */
+    const overall = {
+      total: all.length,
+      pending: all.filter(s => s.outcome === 'pending').length,
+      resolved: resolved.length,
+      wins: wins.length,
+      tp1_hits: resolved.filter(s => s.outcome === 'tp1_hit').length,
+      tp2_hits: tp2Wins.length,
+      sl_hits: losses.length,
+      expired: expired.length,
+      win_rate: totalDecided > 0 ? ((wins.length / totalDecided) * 100).toFixed(1) : '0',
+      tp2_rate: totalDecided > 0 ? ((tp2Wins.length / totalDecided) * 100).toFixed(1) : '0',
+      avg_bars: resolved.length > 0 ? (resolved.reduce((s, r) => s + (r.bars_to_outcome || 0), 0) / resolved.length).toFixed(1) : '0',
+    };
+
+    /* By context dimension */
+    function groupBy(arr, key) {
+      const map = {};
+      arr.forEach(s => {
+        const val = s[key] || 'unknown';
+        if (!map[val]) map[val] = { total: 0, wins: 0, losses: 0, expired: 0 };
+        map[val].total++;
+        if (s.outcome === 'tp1_hit' || s.outcome === 'tp2_hit') map[val].wins++;
+        else if (s.outcome === 'sl_hit') map[val].losses++;
+        else if (s.outcome === 'expired') map[val].expired++;
+      });
+      Object.keys(map).forEach(k => {
+        const decided = map[k].wins + map[k].losses;
+        map[k].win_rate = decided > 0 ? ((map[k].wins / decided) * 100).toFixed(1) : '0';
+      });
+      return map;
+    }
+
+    const by_context = {
+      trend:      groupBy(resolved, 'ctx_trend'),
+      session:    groupBy(resolved, 'ctx_session'),
+      volatility: groupBy(resolved, 'ctx_volatility'),
+      structure:  groupBy(resolved, 'setup_type'),
+      direction:  groupBy(resolved, 'direction'),
+    };
+    const by_pair = groupBy(resolved, 'pair');
+
+    /* Find best context combo */
+    let bestCombo = { label: 'Not enough data', win_rate: 0, sample: 0 };
+    if (resolved.length >= 5) {
+      const combos = {};
+      resolved.forEach(s => {
+        const key = `${s.ctx_trend || '?'}|${s.ctx_session || '?'}|${s.setup_type || '?'}`;
+        if (!combos[key]) combos[key] = { wins: 0, total: 0 };
+        combos[key].total++;
+        if (s.outcome === 'tp1_hit' || s.outcome === 'tp2_hit') combos[key].wins++;
+      });
+      let bestRate = 0;
+      Object.entries(combos).forEach(([key, v]) => {
+        if (v.total >= 3) { /* min 3 samples */
+          const rate = v.wins / v.total;
+          if (rate > bestRate) {
+            bestRate = rate;
+            const [trend, session, setup] = key.split('|');
+            bestCombo = { label: `${trend} + ${session} + ${setup}`, win_rate: (rate * 100).toFixed(1), sample: v.total, wins: v.wins };
+          }
+        }
+      });
+    }
+
+    /* Recent resolved signals */
+    const recent = resolved
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 30)
+      .map(s => ({
+        id: s.id, pair: s.pair, timeframe: s.timeframe, direction: s.direction,
+        entry: s.entry, sl: s.sl, tp1: s.tp1, tp2: s.tp2,
+        outcome: s.outcome, actual_price: s.actual_price,
+        bars_to_outcome: s.bars_to_outcome,
+        setup_type: s.setup_type, ctx_trend: s.ctx_trend,
+        ctx_session: s.ctx_session, ctx_volatility: s.ctx_volatility,
+        confidence: s.confidence, created_at: s.created_at,
+      }));
+
+    res.json({ overall, by_context, by_pair, best_combo: bestCombo, recent });
+  } catch(e) {
+    console.error('[Sniper Stats]', e);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+/* ═══════════════════════════════════════════════════
+   SNIPER ADMIN DASHBOARD
+   ═══════════════════════════════════════════════════ */
+
+app.get('/admin/sniper', requireAdmin, (_req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sniper Performance Dashboard</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0c12;color:#e0e0e0;font-family:'DM Mono',monospace;padding:24px}
+  h1{color:#c9a84c;margin-bottom:8px;font-size:22px}
+  .subtitle{color:rgba(255,255,255,.35);font-size:12px;margin-bottom:24px}
+  .card{background:#13161f;border:1px solid rgba(201,168,76,.15);border-radius:8px;padding:20px;margin-bottom:16px}
+  .row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .stat{flex:1;min-width:100px;text-align:center;background:#0d0f18;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:14px 8px}
+  .stat .val{font-size:28px;font-weight:700;color:#c9a84c}
+  .stat .lbl{font-size:10px;color:rgba(255,255,255,.4);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+  .stat.green .val{color:#22c55e}
+  .stat.red .val{color:#f87171}
+  .stat.blue .val{color:#3b82f6}
+  h2{color:rgba(201,168,76,.8);font-size:14px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(201,168,76,.1)}
+  .ctx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+  .ctx-card{background:#0d0f18;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:14px}
+  .ctx-card h3{font-size:11px;color:rgba(201,168,76,.6);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+  .ctx-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+  .ctx-row:last-child{border-bottom:none}
+  .ctx-label{font-size:12px;color:rgba(255,255,255,.6)}
+  .ctx-val{font-size:12px;font-weight:700}
+  .ctx-bar{height:4px;background:rgba(255,255,255,.06);border-radius:2px;flex:1;margin:0 10px;min-width:40px}
+  .ctx-bar-fill{height:100%;border-radius:2px;transition:width .4s}
+  .edge-box{background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.02));border:1px solid rgba(201,168,76,.3);border-radius:8px;padding:18px;margin-bottom:16px;text-align:center}
+  .edge-box .edge-label{font-size:10px;color:rgba(201,168,76,.6);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+  .edge-box .edge-value{font-size:16px;color:#c9a84c;font-weight:700}
+  .edge-box .edge-detail{font-size:11px;color:rgba(255,255,255,.4);margin-top:4px}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{text-align:left;color:rgba(201,168,76,.7);border-bottom:1px solid rgba(255,255,255,.08);padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,.04);color:rgba(255,255,255,.65)}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700}
+  .b-tp1{background:rgba(34,197,94,.15);color:#22c55e}
+  .b-tp2{background:rgba(34,197,94,.25);color:#4ade80}
+  .b-sl{background:rgba(248,113,113,.15);color:#f87171}
+  .b-exp{background:rgba(100,116,139,.15);color:#64748b}
+  .b-pend{background:rgba(201,168,76,.12);color:#c9a84c}
+  .b-long{color:#22c55e}
+  .b-short{color:#f87171}
+  #checkBtn{background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit;margin-left:16px}
+  #checkBtn:disabled{opacity:.4;cursor:not-allowed}
+  .loading{text-align:center;padding:40px;color:rgba(255,255,255,.3)}
+</style>
+</head>
+<body>
+<h1>🎯 Sniper Performance Dashboard</h1>
+<p class="subtitle">Algorithmic signal performance · Context-based edge discovery · <button id="checkBtn" onclick="runCheck()">Force Outcome Check</button></p>
+<div id="content"><div class="loading">Loading stats...</div></div>
+<script>
+const ADMIN_KEY = new URLSearchParams(location.search).get('key') || '';
+const H = { 'x-admin-key': ADMIN_KEY };
+
+function wrColor(rate) { rate = parseFloat(rate); return rate >= 60 ? '#22c55e' : rate >= 45 ? '#c9a84c' : '#f87171'; }
+function badgeClass(outcome) { return outcome === 'tp1_hit' ? 'b-tp1' : outcome === 'tp2_hit' ? 'b-tp2' : outcome === 'sl_hit' ? 'b-sl' : outcome === 'expired' ? 'b-exp' : 'b-pend'; }
+function badgeLabel(outcome) { return outcome === 'tp1_hit' ? 'TP1 ✓' : outcome === 'tp2_hit' ? 'TP2 ✓✓' : outcome === 'sl_hit' ? 'SL ✗' : outcome === 'expired' ? 'Expired' : 'Pending'; }
+
+function renderCtxCard(title, data) {
+  const entries = Object.entries(data).filter(([k]) => k !== 'unknown');
+  if (entries.length === 0) return '';
+  return '<div class="ctx-card"><h3>' + title + '</h3>' +
+    entries.map(([k, v]) => {
+      const wr = parseFloat(v.win_rate) || 0;
+      const c = wrColor(wr);
+      return '<div class="ctx-row">' +
+        '<span class="ctx-label">' + k + '</span>' +
+        '<div class="ctx-bar"><div class="ctx-bar-fill" style="width:' + wr + '%;background:' + c + '"></div></div>' +
+        '<span class="ctx-val" style="color:' + c + '">' + wr + '%</span>' +
+        '<span style="font-size:10px;color:rgba(255,255,255,.25);margin-left:6px">(' + v.total + ')</span>' +
+      '</div>';
+    }).join('') + '</div>';
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/sniper/stats?key=' + ADMIN_KEY, { headers: H });
+    if (!r.ok) { document.getElementById('content').innerHTML = '<p style="color:red;padding:24px">Unauthorized</p>'; return; }
+    const d = await r.json();
+    const o = d.overall;
+    const bc = d.best_combo;
+
+    let html = '<div class="row">' +
+      '<div class="stat"><div class="val">' + o.total + '</div><div class="lbl">Total Signals</div></div>' +
+      '<div class="stat green"><div class="val">' + o.win_rate + '%</div><div class="lbl">Win Rate (TP1+)</div></div>' +
+      '<div class="stat blue"><div class="val">' + o.tp2_rate + '%</div><div class="lbl">TP2 Hit Rate</div></div>' +
+      '<div class="stat"><div class="val">' + o.wins + '/' + o.sl_hits + '</div><div class="lbl">Wins / Losses</div></div>' +
+      '<div class="stat"><div class="val">' + o.pending + '</div><div class="lbl">Pending</div></div>' +
+      '<div class="stat"><div class="val">' + o.avg_bars + '</div><div class="lbl">Avg Bars to Outcome</div></div>' +
+    '</div>';
+
+    /* Edge discovery */
+    if (bc.sample > 0) {
+      html += '<div class="edge-box">' +
+        '<div class="edge-label">🏆 Best Context Combination</div>' +
+        '<div class="edge-value">' + bc.label + ': ' + bc.win_rate + '% win rate</div>' +
+        '<div class="edge-detail">' + bc.wins + ' wins in ' + bc.sample + ' signals</div>' +
+      '</div>';
+    }
+
+    /* Context breakdown */
+    html += '<div class="card"><h2>Context Breakdown — Edge Discovery</h2><div class="ctx-grid">' +
+      renderCtxCard('Trend', d.by_context.trend) +
+      renderCtxCard('Session', d.by_context.session) +
+      renderCtxCard('Volatility', d.by_context.volatility) +
+      renderCtxCard('Setup Type', d.by_context.structure) +
+      renderCtxCard('Direction', d.by_context.direction) +
+      renderCtxCard('By Pair', d.by_pair) +
+    '</div></div>';
+
+    /* Signal table */
+    html += '<div class="card"><h2>Recent Resolved Signals</h2>';
+    if (d.recent.length === 0) {
+      html += '<p style="color:rgba(255,255,255,.3);padding:16px;text-align:center">No resolved signals yet. Run some Sniper analyses and wait for the outcome checker.</p>';
+    } else {
+      html += '<div style="overflow-x:auto"><table><thead><tr>' +
+        '<th>Pair</th><th>Dir</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th>' +
+        '<th>Outcome</th><th>Bars</th><th>Setup</th><th>Trend</th><th>Session</th><th>Vol</th><th>Conf</th><th>Date</th>' +
+      '</tr></thead><tbody>' +
+      d.recent.map(s => '<tr>' +
+        '<td><b>' + (s.pair || '—') + '</b></td>' +
+        '<td class="' + (s.direction === 'long' ? 'b-long' : 'b-short') + '"><b>' + (s.direction || '—').toUpperCase() + '</b></td>' +
+        '<td>' + (s.entry || '—') + '</td>' +
+        '<td>' + (s.sl || '—') + '</td>' +
+        '<td>' + (s.tp1 || '—') + '</td>' +
+        '<td>' + (s.tp2 || '—') + '</td>' +
+        '<td><span class="badge ' + badgeClass(s.outcome) + '">' + badgeLabel(s.outcome) + '</span></td>' +
+        '<td>' + (s.bars_to_outcome || '—') + '</td>' +
+        '<td>' + (s.setup_type || '—') + '</td>' +
+        '<td>' + (s.ctx_trend || '—') + '</td>' +
+        '<td>' + (s.ctx_session || '—') + '</td>' +
+        '<td>' + (s.ctx_volatility || '—') + '</td>' +
+        '<td>' + (s.confidence || '—') + '%</td>' +
+        '<td>' + (s.created_at ? new Date(s.created_at).toLocaleDateString() : '—') + '</td>' +
+      '</tr>').join('') +
+      '</tbody></table></div>';
+    }
+    html += '</div>';
+
+    document.getElementById('content').innerHTML = html;
+  } catch(e) { document.getElementById('content').innerHTML = '<p style="color:red">Error: ' + e.message + '</p>'; }
+}
+
+async function runCheck() {
+  const btn = document.getElementById('checkBtn');
+  btn.disabled = true; btn.textContent = 'Checking...';
+  try {
+    await fetch('/api/sniper/check-now', { method: 'POST', headers: H });
+    await load();
+  } catch(e) { alert('Error: ' + e.message); }
+  btn.disabled = false; btn.textContent = 'Force Outcome Check';
+}
+
+load();
+</script>
+</body>
+</html>`);
 });
 
 /* ═══════════════════════════════════════════════════
@@ -2713,6 +3086,13 @@ app.listen(PORT, () => {
   cron.schedule('0 2 * * *', () => {
     console.log('\n⏰ [Scheduled] Running daily prediction check...');
     checkPredictions();
+    checkSniperOutcomes();
+  });
+  /* Sniper signals resolve faster — check every 6 hours */
+  cron.schedule('0 */6 * * *', () => {
+    console.log('\n🎯 [Scheduled] Running sniper outcome check...');
+    checkSniperOutcomes();
   });
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
+  console.log('🎯 Sniper outcome tracker: Every 6 hours');
 });
