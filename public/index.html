@@ -4246,7 +4246,25 @@ var chartCandles      = [];
 var currentSymbol     = '';
 var currentInterval   = '4h';
 var currentDataSource = 'twelvedata'; /* 'twelvedata' | 'oanda' */
-var _OANDA_SYMBOLS    = new Set(['XAUUSD','XAU/USD']); /* symbols that have OANDA data */
+var _OANDA_SYMBOLS    = new Set([
+  /* Metals / Commodities */
+  'XAUUSD','XAU/USD','XAGUSD','XAG/USD','OILWTI','OILBRNT','NATGAS','COPPER','PLATIN','PALLAD',
+  /* Forex majors */
+  'EURUSD','EUR/USD','GBPUSD','GBP/USD','USDJPY','USD/JPY','USDCHF','USD/CHF',
+  'AUDUSD','AUD/USD','NZDUSD','NZD/USD','USDCAD','USD/CAD',
+  /* Forex crosses */
+  'EURJPY','EUR/JPY','GBPJPY','GBP/JPY','EURGBP','EUR/GBP','EURAUD','EUR/AUD',
+  'EURCAD','EUR/CAD','EURCHF','EUR/CHF','EURNZD','EUR/NZD','GBPAUD','GBP/AUD',
+  'GBPCAD','GBP/CAD','GBPCHF','GBP/CHF','GBPNZD','GBP/NZD','AUDCAD','AUD/CAD',
+  'AUDCHF','AUD/CHF','AUDJPY','AUD/JPY','AUDNZD','AUD/NZD','CADCHF','CAD/CHF',
+  'CADJPY','CAD/JPY','CHFJPY','CHF/JPY','NZDJPY','NZD/JPY',
+  /* Indices */
+  'US500','US30','US100','DE30','GB100','JP225','AU200','EU50','FR40',
+  /* Equity CFDs */
+  'TSLA','NVDA','AAPL',
+  /* Crypto */
+  'BTCUSDT','ETHUSDT','SOLUSDT','ADAUSDT','LTCUSD',
+]);
 var _historyLoading   = false;
 var _historyDepleted  = false;
 var chartSSE        = null;
@@ -6292,10 +6310,18 @@ function loadChart(symbol,interval){
         autoBarPattern();
         if(typeof buildToolGrid==='function') buildToolGrid();
       } else {
-        fetchTwelveDataFallback(sym,currentInterval);
+        if (currentDataSource === 'oanda') {
+          showChartMsg('Market closed or no data available for ' + sym);
+        } else {
+          fetchTwelveDataFallback(sym, currentInterval);
+        }
       }
     }).catch(function(){
-      fetchTwelveDataFallback(sym,currentInterval);
+      if (currentDataSource === 'oanda') {
+        showChartMsg('Failed to load OANDA data for ' + sym);
+      } else {
+        fetchTwelveDataFallback(sym, currentInterval);
+      }
     });
 
   chartSSE=new EventSource(BACKEND_URL+'/subscribe/'+sym+(currentDataSource==='oanda'?'?source=oanda':''));
@@ -6441,10 +6467,18 @@ function onTfChange(){
         renderChart();
         autoBarPattern();
       } else {
-        fetchTwelveDataFallback(currentSymbol,currentInterval);
+        if (currentDataSource === 'oanda') {
+          showChartMsg('Market closed or no data for ' + currentSymbol);
+        } else {
+          fetchTwelveDataFallback(currentSymbol, currentInterval);
+        }
       }
     }).catch(function(){
-      fetchTwelveDataFallback(currentSymbol,currentInterval);
+      if (currentDataSource === 'oanda') {
+        showChartMsg('Failed to load OANDA data for ' + currentSymbol);
+      } else {
+        fetchTwelveDataFallback(currentSymbol, currentInterval);
+      }
     });
 }
 
@@ -6782,11 +6816,24 @@ function executeSearch() {
       resDiv.innerHTML = results.map(function(r){
         var sym = r.symbol;
         if(r.currency && sym.indexOf(r.currency) === -1 && r.instrument_type === 'Physical Currency') sym += r.currency;
-        var isOanda = r.source === 'oanda';
+        var isOanda   = r.source === 'oanda';
+        var isCrypto  = r.instrument_type === 'Digital Currency';
         var onclick = isOanda
           ? "selectPairWithSource('"+sym+"','oanda');closeSearchModal()"
           : "selectPair('"+sym+"');closeSearchModal()";
-        var exchStyle = isOanda ? 'color:#c9a84c;font-weight:700' : '';
+        /* Source badge */
+        var badge;
+        if (isCrypto) {
+          badge = '<span style="display:inline-flex;align-items:center;gap:3px;background:#F3BA2F;color:#1a1a1a;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;letter-spacing:0.4px">'
+                + '<svg width="9" height="9" viewBox="0 0 24 24" fill="#1a1a1a" style="flex-shrink:0"><path d="M12 0L7.5 4.5 12 9l4.5-4.5L12 0zM3 9l-3 3 3 3 3-3-3-3zm18 0l-3 3 3 3 3-3-3-3zM7.5 13.5 12 18l4.5-4.5L12 9l-4.5 4.5zM12 15l-3 3 3 3 3-3-3-3z"/></svg>'
+                + 'BINANCE</span>';
+        } else if (isOanda) {
+          badge = '<span style="display:inline-flex;align-items:center;gap:3px;background:#00274d;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;letter-spacing:0.4px">'
+                + '<span style="color:#00c896;font-size:12px;line-height:1">✓</span>OANDA</span>';
+        } else {
+          badge = '<span style="display:inline-flex;align-items:center;background:#1e1e1e;color:#fff;font-size:10px;padding:2px 7px;border-radius:3px">'
+                + '<span style="font-weight:700">twelve</span><span style="font-weight:400;color:rgba(255,255,255,0.55)">data</span></span>';
+        }
         return '<div class="s-res-item" onclick="'+onclick+'">'
           +'<div class="s-res-info" style="min-width:0">'
             +'<div class="s-res-symbol">'+sym+'</div>'
@@ -6794,7 +6841,7 @@ function executeSearch() {
           +'</div>'
           +'<div class="s-res-meta">'
             +'<span>'+(r.instrument_type||'').replace('Common Stock','Stock').replace('Physical Currency','Forex').replace('Digital Currency','Crypto').replace('Commodity','Commodity').replace('Index','Index')+'</span>'
-            +'<span class="s-res-exch" style="'+exchStyle+'">'+(r.exchange||'')+'</span>'
+            +badge
           +'</div>'
         +'</div>';
       }).join('');
