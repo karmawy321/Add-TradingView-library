@@ -1970,6 +1970,7 @@ app.post('/sniper', rateLimit(20, 60000), async (req, res) => {
         ctx_trend: sig.ctx_trend || null,
         ctx_session: sig.ctx_session || null,
         ctx_volatility: sig.ctx_volatility || null,
+        source: 'user',
       }).then(({ error: dbErr }) => { if (dbErr) console.error('[Sniper DB]', dbErr.message); });
     }
   } catch(e) {
@@ -2342,6 +2343,277 @@ async function runCheck() {
 }
 
 load();
+</script>
+</body>
+</html>`);
+});
+
+/* ═══════════════════════════════════════════════════
+   🔄 SNIPER SCANNER — Automated signal generation
+   Runs across all OANDA symbols on 1h/4h/1d timeframes.
+   Saves high-confidence signals to DB for outcome tracking.
+   ═══════════════════════════════════════════════════ */
+
+const SCANNER_TFS = ['1h', '4h', '1d'];
+const SCANNER_MIN_CANDLES = 20;
+const SCANNER_MIN_CONFIDENCE = 50; /* Wide open for data collection phase */
+const SCANNER_DEDUP_HOURS = 6; /* Don't repeat same pair+direction+tf within this window */
+
+let _scannerRunning = false;
+let _scannerLastRun = null;
+let _scannerStats = { lastRun: null, scanned: 0, signals: 0, skipped: 0, errors: 0, duration: 0 };
+
+async function runSniperScanner() {
+  if (!sbAdmin) return;
+  if (_scannerRunning) { console.log('[Scanner] Already running, skipping.'); return; }
+  _scannerRunning = true;
+  const startTime = Date.now();
+  console.log('\n🔄 [Scanner] Starting scan across all symbols...');
+
+  const symbols = Object.keys(oandaCandles);
+  let scanned = 0, saved = 0, skipped = 0, errors = 0;
+
+  /* Fetch recent scanner signals for de-duplication */
+  const dedupCutoff = new Date(Date.now() - SCANNER_DEDUP_HOURS * 3600 * 1000).toISOString();
+  let recentSignals = [];
+  try {
+    const { data } = await sbAdmin.from('sniper_signals')
+      .select('pair, timeframe, direction')
+      .eq('source', 'scanner')
+      .gte('created_at', dedupCutoff);
+    recentSignals = data || [];
+  } catch(e) { /* proceed without dedup */ }
+
+  const recentKeys = new Set(recentSignals.map(s => `${s.pair}|${s.timeframe}|${s.direction}`));
+
+  for (const sym of symbols) {
+    const symData = oandaCandles[sym];
+    if (!symData) continue;
+
+    for (const tf of SCANNER_TFS) {
+      const candles = symData[tf];
+      if (!candles || candles.length < SCANNER_MIN_CANDLES) continue;
+
+      scanned++;
+      try {
+        const raw = algoSniperSignal(candles, sym, tf);
+        if (raw.error) { skipped++; continue; }
+        if (raw.confidence < SCANNER_MIN_CONFIDENCE) { skipped++; continue; }
+
+        /* De-duplicate */
+        const dedupKey = `${raw.pair}|${raw.timeframe}|${raw.direction}`;
+        if (recentKeys.has(dedupKey)) { skipped++; continue; }
+
+        /* Validate */
+        const lastClose = +candles[candles.length - 1].c;
+        const priceMin = Math.min(...candles.map(c => +c.l));
+        const priceMax = Math.max(...candles.map(c => +c.h));
+        const validErr = validateSniper(raw, lastClose, priceMin, priceMax);
+        if (validErr) { skipped++; continue; }
+
+        /* Enrich with pips/RR */
+        const sig = calcSniperMath(raw);
+
+        /* Save */
+        const { error: dbErr } = await sbAdmin.from('sniper_signals').insert({
+          pair: sig.pair, timeframe: sig.timeframe,
+          direction: sig.direction, entry: sig.entry, sl: sig.sl, tp1: sig.tp1, tp2: sig.tp2,
+          sl_pips: sig.sl_pips, tp1_pips: sig.tp1_pips, tp2_pips: sig.tp2_pips,
+          rr1: sig.rr1, rr2: sig.rr2, sl_pct: sig.sl_pct, tp1_pct: sig.tp1_pct, tp2_pct: sig.tp2_pct,
+          confidence: sig.confidence, reasoning: sig.reasoning, outcome: 'pending',
+          setup_type: sig.setup_type || null,
+          ctx_trend: sig.ctx_trend || null,
+          ctx_session: sig.ctx_session || null,
+          ctx_volatility: sig.ctx_volatility || null,
+          source: 'scanner',
+        });
+
+        if (dbErr) { errors++; console.error(`  ❌ ${sym} ${tf}:`, dbErr.message); }
+        else { saved++; recentKeys.add(dedupKey); }
+
+      } catch(e) { errors++; }
+    }
+  }
+
+  const duration = Date.now() - startTime;
+  _scannerRunning = false;
+  _scannerLastRun = new Date().toISOString();
+  _scannerStats = { lastRun: _scannerLastRun, scanned, signals: saved, skipped, errors, duration };
+  console.log(`🔄 [Scanner] Done: ${scanned} scanned, ${saved} signals saved, ${skipped} skipped, ${errors} errors (${duration}ms)`);
+}
+
+/* ── Scanner API ── */
+app.post('/api/sniper/scan-now', requireAdmin, async (req, res) => {
+  try {
+    await runSniperScanner();
+    res.json({ success: true, stats: _scannerStats });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/sniper/scanner-status', requireAdmin, (req, res) => {
+  res.json({ running: _scannerRunning, stats: _scannerStats });
+});
+
+app.get('/api/sniper/live', requireAdmin, async (req, res) => {
+  if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
+  try {
+    const { data, error } = await sbAdmin.from('sniper_signals')
+      .select('*')
+      .eq('source', 'scanner')
+      .eq('outcome', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    res.json({ signals: data || [] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── Scanner Admin Dashboard ── */
+app.get('/admin/scanner', requireAdmin, (_req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sniper Scanner Dashboard</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0c12;color:#e0e0e0;font-family:'DM Mono',monospace;padding:24px}
+  h1{color:#c9a84c;margin-bottom:8px;font-size:22px}
+  .subtitle{color:rgba(255,255,255,.35);font-size:12px;margin-bottom:24px}
+  .card{background:#13161f;border:1px solid rgba(201,168,76,.15);border-radius:8px;padding:20px;margin-bottom:16px}
+  .row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .stat{flex:1;min-width:100px;text-align:center;background:#0d0f18;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:14px 8px}
+  .stat .val{font-size:28px;font-weight:700;color:#c9a84c}
+  .stat .lbl{font-size:10px;color:rgba(255,255,255,.4);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+  .stat.green .val{color:#22c55e}
+  .stat.blue .val{color:#3b82f6}
+  h2{color:rgba(201,168,76,.8);font-size:14px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(201,168,76,.1)}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{text-align:left;color:rgba(201,168,76,.7);border-bottom:1px solid rgba(255,255,255,.08);padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,.04);color:rgba(255,255,255,.65)}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700}
+  .b-long{background:rgba(34,197,94,.12);color:#22c55e}
+  .b-short{background:rgba(248,113,113,.12);color:#f87171}
+  .b-pend{background:rgba(201,168,76,.12);color:#c9a84c}
+  .conf-high{color:#22c55e} .conf-med{color:#c9a84c} .conf-low{color:#f87171}
+  .btn{background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit;margin-left:8px}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.secondary{background:rgba(201,168,76,.15);color:#c9a84c;border:1px solid rgba(201,168,76,.3)}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  .dot-on{background:#22c55e;box-shadow:0 0 6px #22c55e}
+  .dot-off{background:#64748b}
+  .loading{text-align:center;padding:40px;color:rgba(255,255,255,.3)}
+  .empty{text-align:center;padding:24px;color:rgba(255,255,255,.25)}
+  .pair-badge{font-weight:700;color:#c9a84c}
+</style>
+</head>
+<body>
+<h1>🔄 Sniper Scanner Dashboard</h1>
+<p class="subtitle">
+  Automated 24/7 signal scanner across all OANDA instruments
+  <button class="btn" id="scanBtn" onclick="runScan()">Run Scan Now</button>
+  <button class="btn secondary" id="checkBtn" onclick="runCheck()">Check Outcomes</button>
+</p>
+
+<div class="card">
+  <div class="row" id="statusRow">
+    <div class="stat"><div class="val" id="sTotal">—</div><div class="lbl">Scanned</div></div>
+    <div class="stat green"><div class="val" id="sSaved">—</div><div class="lbl">Signals Saved</div></div>
+    <div class="stat"><div class="val" id="sSkipped">—</div><div class="lbl">Skipped</div></div>
+    <div class="stat blue"><div class="val" id="sDuration">—</div><div class="lbl">Duration (ms)</div></div>
+    <div class="stat"><div class="val" id="sLast">—</div><div class="lbl">Last Scan</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Live Pending Signals (Scanner-Generated)</h2>
+  <div id="liveTable"><div class="loading">Loading...</div></div>
+</div>
+
+<script>
+const AK = new URLSearchParams(location.search).get('key') || '';
+const H = { 'x-admin-key': AK };
+
+function confClass(c) { c = parseInt(c)||0; return c >= 70 ? 'conf-high' : c >= 50 ? 'conf-med' : 'conf-low'; }
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/sniper/scanner-status?key=' + AK, { headers: H });
+    const d = await r.json();
+    const s = d.stats || {};
+    document.getElementById('sTotal').textContent = s.scanned || '—';
+    document.getElementById('sSaved').textContent = s.signals || '—';
+    document.getElementById('sSkipped').textContent = s.skipped || '—';
+    document.getElementById('sDuration').textContent = s.duration || '—';
+    document.getElementById('sLast').textContent = s.lastRun ? new Date(s.lastRun).toLocaleTimeString() : 'Never';
+  } catch(e) {}
+}
+
+async function loadLive() {
+  try {
+    const r = await fetch('/api/sniper/live?key=' + AK, { headers: H });
+    const d = await r.json();
+    const sigs = d.signals || [];
+    if (sigs.length === 0) {
+      document.getElementById('liveTable').innerHTML = '<div class="empty">No pending scanner signals. Run a scan to generate signals.</div>';
+      return;
+    }
+    let html = '<div style="overflow-x:auto"><table><thead><tr>' +
+      '<th>Pair</th><th>TF</th><th>Dir</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th>' +
+      '<th>RR</th><th>Conf</th><th>Setup</th><th>Trend</th><th>Session</th><th>Vol</th><th>Time</th>' +
+    '</tr></thead><tbody>';
+    sigs.forEach(s => {
+      const dir = (s.direction||'').toLowerCase();
+      html += '<tr>' +
+        '<td class="pair-badge">' + (s.pair||'—') + '</td>' +
+        '<td>' + (s.timeframe||'—') + '</td>' +
+        '<td><span class="badge b-' + dir + '">' + dir.toUpperCase() + '</span></td>' +
+        '<td>' + (s.entry||'—') + '</td>' +
+        '<td>' + (s.sl||'—') + '</td>' +
+        '<td>' + (s.tp1||'—') + '</td>' +
+        '<td>' + (s.tp2||'—') + '</td>' +
+        '<td>' + (s.rr1||'—') + ' / ' + (s.rr2||'—') + '</td>' +
+        '<td class="' + confClass(s.confidence) + '"><b>' + (s.confidence||'—') + '%</b></td>' +
+        '<td>' + (s.setup_type||'—') + '</td>' +
+        '<td>' + (s.ctx_trend||'—') + '</td>' +
+        '<td>' + (s.ctx_session||'—') + '</td>' +
+        '<td>' + (s.ctx_volatility||'—') + '</td>' +
+        '<td>' + (s.created_at ? new Date(s.created_at).toLocaleString() : '—') + '</td>' +
+      '</tr>';
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('liveTable').innerHTML = html;
+  } catch(e) {
+    document.getElementById('liveTable').innerHTML = '<div class="empty">Error loading signals: ' + e.message + '</div>';
+  }
+}
+
+async function runScan() {
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true; btn.textContent = 'Scanning...';
+  try {
+    await fetch('/api/sniper/scan-now', { method: 'POST', headers: H });
+    await loadStatus();
+    await loadLive();
+  } catch(e) { alert('Error: ' + e.message); }
+  btn.disabled = false; btn.textContent = 'Run Scan Now';
+}
+
+async function runCheck() {
+  const btn = document.getElementById('checkBtn');
+  btn.disabled = true; btn.textContent = 'Checking...';
+  try {
+    await fetch('/api/sniper/check-now', { method: 'POST', headers: H });
+    await loadLive();
+  } catch(e) { alert('Error: ' + e.message); }
+  btn.disabled = false; btn.textContent = 'Check Outcomes';
+}
+
+loadStatus();
+loadLive();
+setInterval(() => { loadStatus(); loadLive(); }, 60000);
 </script>
 </body>
 </html>`);
@@ -3093,6 +3365,14 @@ app.listen(PORT, () => {
     console.log('\n🎯 [Scheduled] Running sniper outcome check...');
     checkSniperOutcomes();
   });
+  /* Scanner — runs every 30 minutes */
+  cron.schedule('*/30 * * * *', () => {
+    if (Object.keys(oandaCandles).length > 0) {
+      console.log('\n🔄 [Scheduled] Running sniper scanner...');
+      runSniperScanner();
+    }
+  });
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
+  console.log('🔄 Sniper scanner: Every 30 minutes');
 });
