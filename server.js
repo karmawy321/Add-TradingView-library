@@ -777,7 +777,8 @@ const _maSymMap = {
   'ADAUSDT':  'ADAUSD',
   'LTCUSD':   'LTCUSD',
 };
-const _oandaLoaded = {};
+const _oandaLoaded    = {};
+const _oandaLastFetch = {}; /* sym → timestamp of last background fetch trigger */
 
 let _maAccount  = null;
 let _maConn       = null;
@@ -1214,8 +1215,12 @@ app.use(express.static(path.join(__dirname, 'public')));
    ═══════════════════════════════════════════════════ */
 function sendPage(file, res) {
   const p = path.join(__dirname, 'public', file);
-  if (fs.existsSync(p)) res.sendFile(p);
-  else res.status(404).send('Page not found: ' + file);
+  if (fs.existsSync(p)) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(p);
+  } else res.status(404).send('Page not found: ' + file);
 }
 
 app.get('/',        (req, res) => sendPage('index.html',   res));
@@ -1256,25 +1261,20 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
 
   /* source=oanda → serve from OANDA candle store if available */
   const _oandaKey = sym.replace('/', ''); /* XAU/USD → XAUUSD */
-  if (req.query.source === 'oanda' && _maReady && _maSymMap[_oandaKey] && !_oandaLoaded[_oandaKey]) {
-    _oandaLoaded[_oandaKey] = true;
-    fetchOandaHistory(_oandaKey); /* background fetch */
-  }
-  const _oandaArr = oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]);
-  const oandaReady = _oandaArr && _oandaArr.length > 0;
 
-  /* If OANDA data exists but last candle is stale (>1h old), refresh in background */
-  if (oandaReady && _oandaArr.length > 0) {
-    const lastTs = _oandaArr[_oandaArr.length - 1].t;
-    if (Date.now() - lastTs > 3600000) { /* stale */
-      _oandaLoaded[_oandaKey] = false; /* allow re-fetch */
+  if (req.query.source === 'oanda' && _maReady && _maSymMap[_oandaKey]) {
+    const now       = Date.now();
+    const lastFetch = _oandaLastFetch[_oandaKey] || 0;
+    const cooldown  = _oandaLoaded[_oandaKey] ? 600000 : 0; /* 10min if loaded, instant if new */
+    if (now - lastFetch > cooldown) {
+      _oandaLoaded[_oandaKey]    = true;
+      _oandaLastFetch[_oandaKey] = now;
+      fetchOandaHistory(_oandaKey, !!oandaCandles[_oandaKey]); /* incremental if has data */
     }
   }
 
-  if (req.query.source === 'oanda' && _maReady && _maSymMap[_oandaKey] && !_oandaLoaded[_oandaKey]) {
-    _oandaLoaded[_oandaKey] = true;
-    fetchOandaHistory(_oandaKey);
-  }
+  const _oandaArr = oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]);
+  const oandaReady = _oandaArr && _oandaArr.length > 0;
 
   if (req.query.source === 'oanda' && !oandaReady) {
     return res.json({ candles: [], loading: true });
