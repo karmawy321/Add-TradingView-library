@@ -1514,6 +1514,12 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           { symbol:'CADJPY',  instrument_name:'Canadian Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'CHFJPY',  instrument_name:'Swiss Franc / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'NZDJPY',  instrument_name:'New Zealand Dollar / Japanese Yen', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+          /* Crypto */
+          { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
+          { symbol:'ETHUSDT', instrument_name:'Ethereum / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
+          { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',          instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
+          { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
+          { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
           /* Equity CFDs */
           { symbol:'TSLA',    instrument_name:'Tesla Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
           { symbol:'NVDA',    instrument_name:'NVIDIA Corp',                 instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
