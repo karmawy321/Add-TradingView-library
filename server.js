@@ -3609,8 +3609,8 @@ app.listen(PORT, () => {
       runSniperScanner();
     }
   });
-  /* SMA crossover scanner — runs every 2 minutes */
-  cron.schedule('*/2 * * * *', () => {
+  /* SMA crossover scanner — runs every 10 minutes */
+  cron.schedule('*/10 * * * *', () => {
     if (Object.keys(oandaCandles).length > 0) {
       runCrossoverScanner();
     }
@@ -3618,5 +3618,5 @@ app.listen(PORT, () => {
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
   console.log('🔄 Sniper scanner: Every 30 minutes');
-  console.log('📈 SMA crossover scanner: Every 2 minutes');
+  console.log('📈 SMA crossover scanner: Every 10 minutes');
 });
