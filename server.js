@@ -2622,6 +2622,241 @@ setInterval(() => { loadStatus(); loadLive(); }, 60000);
 });
 
 /* ═══════════════════════════════════════════════════
+   📈 SMA200/400 CROSSOVER SCANNER
+   ═══════════════════════════════════════════════════ */
+
+const CROSSOVER_CANDLES = 1000;
+let _crossoverRunning = false;
+let _crossoverLastRun = null;
+let _crossoverStats   = null;
+
+function computeSMA(closes, period) {
+  const result = new Array(closes.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < closes.length; i++) {
+    sum += closes[i];
+    if (i >= period) sum -= closes[i - period];
+    if (i >= period - 1) result[i] = sum / period;
+  }
+  return result;
+}
+
+function detectSMACrossovers(candles, pair) {
+  const slice = candles.slice(-CROSSOVER_CANDLES);
+  if (slice.length < 400) return [];
+
+  const closes = slice.map(c => parseFloat(c.c));
+  const sma200 = computeSMA(closes, 200);
+  const sma400 = computeSMA(closes, 400);
+
+  const crosses = [];
+  for (let i = 400; i < slice.length; i++) {
+    const prev200 = sma200[i - 1], prev400 = sma400[i - 1];
+    const curr200 = sma200[i],     curr400 = sma400[i];
+    if (prev200 === null || prev400 === null) continue;
+
+    const prevAbove = prev200 > prev400;
+    const currAbove = curr200 > curr400;
+    if (prevAbove !== currAbove) {
+      crosses.push({
+        pair,
+        timeframe: '1m',
+        direction: currAbove ? 'golden_cross' : 'death_cross',
+        cross_price: parseFloat(slice[i].c),
+        sma200: parseFloat(curr200.toFixed(6)),
+        sma400: parseFloat(curr400.toFixed(6)),
+        cross_time: new Date(slice[i].t).toISOString(),
+      });
+    }
+  }
+  return crosses;
+}
+
+async function runCrossoverScanner() {
+  if (!sbAdmin) return;
+  if (_crossoverRunning) { console.log('[CrossoverScanner] Already running, skipping.'); return; }
+  _crossoverRunning = true;
+  const startTime = Date.now();
+  console.log('\n📈 [CrossoverScanner] Starting SMA200/400 scan...');
+
+  const symbols = Object.keys(oandaCandles);
+  let scanned = 0, saved = 0, skipped = 0, errors = 0;
+
+  /* Pre-load existing cross_times for dedup (last 1000 minutes window) */
+  const cutoff = new Date(Date.now() - CROSSOVER_CANDLES * 60 * 1000).toISOString();
+  let existingKeys = new Set();
+  try {
+    const { data } = await sbAdmin.from('sma_crossovers')
+      .select('pair, cross_time')
+      .gte('cross_time', cutoff);
+    (data || []).forEach(r => existingKeys.add(`${r.pair}|${r.cross_time}`));
+  } catch(e) { /* proceed without dedup */ }
+
+  for (const sym of symbols) {
+    const m1 = (oandaCandles[sym] || {})['1m'];
+    if (!m1 || m1.length < 400) { skipped++; continue; }
+    scanned++;
+    try {
+      const crosses = detectSMACrossovers(m1, sym);
+      for (const cross of crosses) {
+        const key = `${cross.pair}|${cross.cross_time}`;
+        if (existingKeys.has(key)) continue;
+        const { error: dbErr } = await sbAdmin.from('sma_crossovers').insert(cross);
+        if (dbErr) { errors++; console.error(`  ❌ ${sym}:`, dbErr.message); }
+        else { saved++; existingKeys.add(key); }
+      }
+    } catch(e) { errors++; }
+  }
+
+  const duration = Date.now() - startTime;
+  _crossoverRunning = false;
+  _crossoverLastRun = new Date().toISOString();
+  _crossoverStats = { lastRun: _crossoverLastRun, scanned, saved, skipped, errors, duration };
+  console.log(`📈 [CrossoverScanner] Done: ${scanned} scanned, ${saved} new crosses, ${skipped} skipped, ${errors} errors (${duration}ms)`);
+}
+
+/* ── Crossover API ── */
+app.post('/api/crossovers/scan-now', requireAdmin, async (_req, res) => {
+  try { runCrossoverScanner(); res.json({ success: true, message: 'Scan started' }); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/crossovers/status', requireAdmin, (_req, res) => {
+  res.json({ running: _crossoverRunning, stats: _crossoverStats });
+});
+
+app.get('/api/crossovers/live', requireAdmin, async (_req, res) => {
+  if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
+  try {
+    const { data, error } = await sbAdmin.from('sma_crossovers')
+      .select('*')
+      .order('cross_time', { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    res.json({ crosses: data || [] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── Crossover Admin Dashboard ── */
+app.get('/admin/crossovers', requireAdmin, (_req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SMA Crossover Dashboard</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',sans-serif;padding:24px}
+  h1{font-size:22px;margin-bottom:4px}
+  .sub{color:#888;font-size:13px;margin-bottom:24px}
+  .cards{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+  .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px 24px;min-width:140px}
+  .card .val{font-size:28px;font-weight:700;margin:4px 0}
+  .card .lbl{font-size:12px;color:#888;text-transform:uppercase}
+  .actions{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+  button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:9px 18px;cursor:pointer;font-size:14px;font-weight:600}
+  button:hover{background:#1d4ed8} button:disabled{opacity:.5;cursor:not-allowed}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:#1a1a1a;color:#888;font-weight:600;text-transform:uppercase;font-size:11px;padding:10px 12px;text-align:left;border-bottom:1px solid #2a2a2a;white-space:nowrap}
+  td{padding:9px 12px;border-bottom:1px solid #1e1e1e;vertical-align:middle}
+  tr:hover td{background:#161616}
+  .badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase}
+  .golden{background:#78350f;color:#fde68a}
+  .death{background:#450a0a;color:#fca5a5}
+  .pair{font-weight:700;color:#60a5fa}
+  .status{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#aaa}
+  .empty{padding:32px;text-align:center;color:#555}
+  @media(max-width:700px){.cards{flex-direction:column}}
+</style>
+</head>
+<body>
+<h1>📈 SMA200/400 Crossover Dashboard</h1>
+<p class="sub">1m timeframe — newest 1000 candles — all OANDA symbols</p>
+<div class="status" id="status">Loading...</div>
+<div class="actions">
+  <button onclick="runScan(this)">Run Scan Now</button>
+</div>
+<div class="cards" id="cards"></div>
+<div id="crossTable"></div>
+<script>
+const AK = '${process.env.ADMIN_KEY || 'mysecretkey123'}';
+const H  = { 'x-admin-key': AK };
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/crossovers/status?key=' + AK, { headers: H });
+    const d = await r.json();
+    const s = d.stats;
+    if (!s) { document.getElementById('status').textContent = 'No scan run yet.'; return; }
+    document.getElementById('status').innerHTML =
+      'Last scan: <b>' + new Date(s.lastRun).toLocaleString() + '</b> &nbsp;|&nbsp; ' +
+      'Scanned: <b>' + s.scanned + '</b> &nbsp;|&nbsp; ' +
+      'New crosses saved: <b>' + s.saved + '</b> &nbsp;|&nbsp; ' +
+      'Skipped: <b>' + s.skipped + '</b> &nbsp;|&nbsp; ' +
+      'Errors: <b>' + s.errors + '</b> &nbsp;|&nbsp; ' +
+      'Duration: <b>' + s.duration + 'ms</b>' +
+      (d.running ? ' &nbsp;<span style="color:#facc15">⏳ Running...</span>' : '');
+  } catch(e) { document.getElementById('status').textContent = 'Error loading status.'; }
+}
+
+async function loadCrosses() {
+  try {
+    const r = await fetch('/api/crossovers/live?key=' + AK, { headers: H });
+    const d = await r.json();
+    const crosses = d.crosses || [];
+
+    const golden = crosses.filter(c => c.direction === 'golden_cross').length;
+    const death  = crosses.filter(c => c.direction === 'death_cross').length;
+    document.getElementById('cards').innerHTML =
+      '<div class="card"><div class="val">' + crosses.length + '</div><div class="lbl">Total Crosses</div></div>' +
+      '<div class="card"><div class="val" style="color:#fde68a">' + golden + '</div><div class="lbl">Golden Cross</div></div>' +
+      '<div class="card"><div class="val" style="color:#fca5a5">' + death  + '</div><div class="lbl">Death Cross</div></div>';
+
+    if (!crosses.length) {
+      document.getElementById('crossTable').innerHTML = '<div class="empty">No crossovers found yet. Run a scan.</div>';
+      return;
+    }
+    let html = '<div style="overflow-x:auto"><table><thead><tr>' +
+      '<th>Pair</th><th>Direction</th><th>Cross Price</th><th>SMA200</th><th>SMA400</th><th>Cross Time</th>' +
+    '</tr></thead><tbody>';
+    crosses.forEach(c => {
+      const isGolden = c.direction === 'golden_cross';
+      html += '<tr>' +
+        '<td class="pair">' + (c.pair||'—') + '</td>' +
+        '<td><span class="badge ' + (isGolden ? 'golden' : 'death') + '">' + (isGolden ? '🟡 Golden Cross' : '🔴 Death Cross') + '</span></td>' +
+        '<td>' + (c.cross_price||'—') + '</td>' +
+        '<td>' + (c.sma200||'—') + '</td>' +
+        '<td>' + (c.sma400||'—') + '</td>' +
+        '<td>' + (c.cross_time ? new Date(c.cross_time).toLocaleString() : '—') + '</td>' +
+      '</tr>';
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('crossTable').innerHTML = html;
+  } catch(e) { document.getElementById('crossTable').innerHTML = '<div class="empty">Error: ' + e.message + '</div>'; }
+}
+
+async function runScan(btn) {
+  btn.disabled = true; btn.textContent = 'Scanning...';
+  try {
+    await fetch('/api/crossovers/scan-now', { method: 'POST', headers: H });
+    await new Promise(r => setTimeout(r, 3000));
+    await loadStatus();
+    await loadCrosses();
+  } catch(e) { alert('Error: ' + e.message); }
+  btn.disabled = false; btn.textContent = 'Run Scan Now';
+}
+
+loadStatus();
+loadCrosses();
+setInterval(() => { loadStatus(); loadCrosses(); }, 60000);
+</script>
+</body>
+</html>`);
+});
+
+/* ═══════════════════════════════════════════════════
    🆕 PREDICTION TRACKING API ROUTES
    ═══════════════════════════════════════════════════ */
 
@@ -3374,7 +3609,14 @@ app.listen(PORT, () => {
       runSniperScanner();
     }
   });
+  /* SMA crossover scanner — runs every 2 minutes */
+  cron.schedule('*/2 * * * *', () => {
+    if (Object.keys(oandaCandles).length > 0) {
+      runCrossoverScanner();
+    }
+  });
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
   console.log('🔄 Sniper scanner: Every 30 minutes');
+  console.log('📈 SMA crossover scanner: Every 2 minutes');
 });
