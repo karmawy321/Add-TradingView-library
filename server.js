@@ -2305,7 +2305,7 @@ async function load() {
       html += '<p style="color:rgba(255,255,255,.3);padding:16px;text-align:center">No resolved signals yet. Run some Sniper analyses and wait for the outcome checker.</p>';
     } else {
       html += '<div style="overflow-x:auto"><table><thead><tr>' +
-        '<th>Pair</th><th>Dir</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th>' +
+        '<th>Pair</th><th>Dir</th><th>Entry</th><th>SL</th><th>SL Pips</th><th>TP1</th><th>TP2</th>' +
         '<th>Outcome</th><th>Bars</th><th>Setup</th><th>Trend</th><th>Session</th><th>Vol</th><th>Conf</th><th>Date</th>' +
       '</tr></thead><tbody>' +
       d.recent.map(s => '<tr>' +
@@ -2313,6 +2313,7 @@ async function load() {
         '<td class="' + (s.direction === 'long' ? 'b-long' : 'b-short') + '"><b>' + (s.direction || '—').toUpperCase() + '</b></td>' +
         '<td>' + (s.entry || '—') + '</td>' +
         '<td>' + (s.sl || '—') + '</td>' +
+        '<td>' + (s.sl_pips || '—') + '</td>' +
         '<td>' + (s.tp1 || '—') + '</td>' +
         '<td>' + (s.tp2 || '—') + '</td>' +
         '<td><span class="badge ' + badgeClass(s.outcome) + '">' + badgeLabel(s.outcome) + '</span></td>' +
@@ -2561,7 +2562,7 @@ async function loadLive() {
       return;
     }
     let html = '<div style="overflow-x:auto"><table><thead><tr>' +
-      '<th>Pair</th><th>TF</th><th>Dir</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th>' +
+      '<th>Pair</th><th>TF</th><th>Dir</th><th>Entry</th><th>SL</th><th>SL Pips</th><th>TP1</th><th>TP2</th>' +
       '<th>RR</th><th>Conf</th><th>Setup</th><th>Trend</th><th>Session</th><th>Vol</th><th>Time</th>' +
     '</tr></thead><tbody>';
     sigs.forEach(s => {
@@ -2572,6 +2573,7 @@ async function loadLive() {
         '<td><span class="badge b-' + dir + '">' + dir.toUpperCase() + '</span></td>' +
         '<td>' + (s.entry||'—') + '</td>' +
         '<td>' + (s.sl||'—') + '</td>' +
+        '<td>' + (s.sl_pips||'—') + '</td>' +
         '<td>' + (s.tp1||'—') + '</td>' +
         '<td>' + (s.tp2||'—') + '</td>' +
         '<td>' + (s.rr1||'—') + ' / ' + (s.rr2||'—') + '</td>' +
