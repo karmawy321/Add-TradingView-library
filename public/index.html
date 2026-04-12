@@ -3434,6 +3434,19 @@ function renderSniper(r) {
       _snRow('RR', (r.rr1 || '') + ' / ' + (r.rr2 || ''), 'var(--gold)') +
       _snRow('CONF', conf + '%', confColor) +
     '</div>' +
+    (r.patterns && r.patterns.length > 0 ?
+      '<div style="margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,.04);display:flex;flex-wrap:wrap;gap:3px">' +
+      r.patterns.slice(0, 4).map(function(p) {
+        var bg  = p.type==='bullish' ? (p.confirmed?'rgba(39,174,96,.22)':'rgba(39,174,96,.08)')
+                : p.type==='bearish' ? (p.confirmed?'rgba(231,76,60,.22)':'rgba(231,76,60,.08)')
+                : 'rgba(78,93,120,.18)';
+        var bdr = p.type==='bullish'?'rgba(39,174,96,.5)':p.type==='bearish'?'rgba(231,76,60,.5)':'rgba(78,93,120,.4)';
+        var clr = p.type==='bullish'?'#27ae60':p.type==='bearish'?'#e74c3c':'#4e5d78';
+        var dot = p.confirmed ? '\u25cf ' : '\u25cb ';
+        return '<span style="font-size:7.5px;padding:2px 5px;border-radius:2px;background:'+bg+';border:1px solid '+bdr+';color:'+clr+';white-space:nowrap">'+dot+p.name+'</span>';
+      }).join('') +
+      '</div>'
+    : '') +
     '<div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);font-size:8px;color:#4e5d78;line-height:1.55">' + (r.reasoning || '') + '</div>' +
     '<button onclick="_copySniperSignal()" style="margin-top:9px;width:100%;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);color:#c9a84c;font-family:\'DM Mono\',monospace;font-size:9px;padding:5px 0;cursor:pointer;border-radius:2px;letter-spacing:.04em">Copy for Telegram \u2736</button>';
   card.style.display = 'block';
@@ -3515,6 +3528,32 @@ window._drawSniperOverlay = function(ctx, W, H) {
   ctx.font = 'bold 13px DM Mono'; ctx.textAlign = 'left';
   ctx.fillStyle = (sig.direction || '').toLowerCase() === 'long' ? '#27ae60' : '#e74c3c';
   ctx.fillText((sig.direction || '').toLowerCase() === 'long' ? '\u25B2' : '\u25BC', xL + 6, yEntry - 5);
+  /* Pattern necklines & trendlines */
+  if (sig.patterns && sig.patterns.length > 0) {
+    ctx.font = 'bold 8px DM Mono'; ctx.textAlign = 'left';
+    sig.patterns.forEach(function(p) {
+      var linePrice = p.neckline != null ? p.neckline
+                    : p.supportLine != null ? p.supportLine
+                    : null;
+      var line2Price = p.resistanceLine != null ? p.resistanceLine : null;
+      var lineColor = p.type==='bullish' ? 'rgba(39,174,96,.55)'
+                    : p.type==='bearish' ? 'rgba(231,76,60,.55)'
+                    : 'rgba(130,100,200,.55)';
+      var shortName = p.name.replace('Inverse ','Inv ').replace(' & ','/').replace('Broadening / ','');
+      function drawPatternLine(price, label) {
+        var yP = py(price);
+        if (yP < PAD.t - 10 || yP > PAD.t + CH + 10) return; // off-screen, skip
+        ctx.strokeStyle = lineColor; ctx.lineWidth = 1; ctx.setLineDash([3, 6]);
+        ctx.beginPath(); ctx.moveTo(xL, yP); ctx.lineTo(xR, yP); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = lineColor;
+        ctx.fillText(label, xL + 4, yP - 3);
+      }
+      if (linePrice != null)  drawPatternLine(linePrice,  shortName + (p.neckline != null ? ' neck' : ' S'));
+      if (line2Price != null) drawPatternLine(line2Price, shortName + ' R');
+    });
+    ctx.setLineDash([]);
+  }
   ctx.restore();
 };
 

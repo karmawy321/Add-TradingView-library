@@ -1,14 +1,17 @@
 /* ═══════════════════════════════════════════════════════════════
    SNIPER ENGINE — Pure algorithmic trade signal generator
    No AI. No API calls. Pure math.
-   
-   Methods: SMC structure, S/R levels, Fibonacci confluence
-   Output: { direction, entry, sl, tp1, tp2, confidence, reasoning, ... }
+
+   Methods: SMC structure, S/R levels, Fibonacci confluence,
+            chart pattern recognition (H&S, double top/bottom,
+            triangles, broadening, candlestick patterns)
+   Output: { direction, entry, sl, tp1, tp2, confidence, reasoning,
+             patterns, ... }
    ═══════════════════════════════════════════════════════════════ */
 
 'use strict';
 
-/* ── 1. SWING DETECTION ── 
+/* ── 1. SWING DETECTION ──
    A swing high is a candle whose high is higher than `left` candles before
    and `right` candles after. Vice versa for swing low. */
 
@@ -126,11 +129,6 @@ function findKeyLevels(candles, swings, tolerancePct = 0.003) {
   swings.highs.forEach(s => prices.push({ price: s.price, type: 'resistance' }));
   swings.lows.forEach(s => prices.push({ price: s.price, type: 'support' }));
 
-  // Also add round-number levels within data range
-  const allPrices = candles.map(c => +c.h).concat(candles.map(c => +c.l));
-  const dataMin = Math.min(...allPrices);
-  const dataMax = Math.max(...allPrices);
-
   // Cluster nearby prices
   const levels = [];
   for (const p of prices) {
@@ -216,6 +214,58 @@ function getTrend(candles) {
 }
 
 
+/* ── 7b. LINEAR REGRESSION & TREND SLOPE ──
+   Least-squares linear fit. Used by triangle/broadening detection
+   and as a supplement to SMA-based trend. */
+
+function linearRegression(xArr, yArr) {
+  const n = xArr.length;
+  if (n < 2) return { slope: 0, intercept: yArr[0] || 0, r2: 0 };
+
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX  += xArr[i];
+    sumY  += yArr[i];
+    sumXY += xArr[i] * yArr[i];
+    sumX2 += xArr[i] * xArr[i];
+  }
+
+  const denom = n * sumX2 - sumX * sumX;
+  if (denom === 0) return { slope: 0, intercept: sumY / n, r2: 0 };
+
+  const slope     = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+
+  // R² — goodness of fit
+  const meanY = sumY / n;
+  let ssTot = 0, ssRes = 0;
+  for (let i = 0; i < n; i++) {
+    ssTot += (yArr[i] - meanY) ** 2;
+    ssRes += (yArr[i] - (slope * xArr[i] + intercept)) ** 2;
+  }
+
+  return { slope, intercept, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0 };
+}
+
+function getTrendSlope(candles, period = 50) {
+  const n = Math.min(period, candles.length);
+  const recent = candles.slice(-n);
+  const x = recent.map((_, i) => i);
+  const y = recent.map(c => c.c);
+  const reg = linearRegression(x, y);
+
+  // Normalize slope relative to price so it's comparable across assets
+  const avgPrice = y.reduce((a, b) => a + b, 0) / n;
+  const normSlope = avgPrice > 0 ? reg.slope / avgPrice : 0;
+
+  return {
+    direction: normSlope > 0.0003 ? 'uptrend' : normSlope < -0.0003 ? 'downtrend' : 'ranging',
+    slope: +normSlope.toFixed(6),
+    r2:    +reg.r2.toFixed(3),
+  };
+}
+
+
 /* ── 8. ATR (Average True Range) ── */
 
 function calcATR(candles, period = 14) {
@@ -298,7 +348,7 @@ function classifySetup(structure, swings, candles) {
 
 /* ── 11. CONFIDENCE SCORE ── */
 
-function computeConfidence(confluence, structure, ctx) {
+function computeConfidence(confluence, structure, ctx, patterns = []) {
   let conf = 30; // base
 
   // Confluence factors (0-30 pts)
@@ -320,13 +370,21 @@ function computeConfidence(confluence, structure, ctx) {
   else if (ctx.volatility === 'high') conf += 3;
   // extreme = no bonus
 
+  // Pattern confirmation/conflict (up to +15 / -10 pts)
+  const signalDir = structure === 'bullish' ? 'bullish' : 'bearish';
+  for (const p of patterns) {
+    if (p.type === signalDir && p.confirmed)       conf += 15;
+    else if (p.type === signalDir)                 conf += 8;
+    else if (p.type !== 'neutral' && p.type !== signalDir && p.confirmed) conf -= 10;
+  }
+
   return Math.min(95, Math.max(15, conf));
 }
 
 
 /* ── 12. TEMPLATE-BASED REASONING ── */
 
-function generateReasoning(direction, structure, setupType, confluence, ctx, entry, sl, ob) {
+function generateReasoning(direction, structure, setupType, confluence, ctx, entry, sl, ob, patterns = []) {
   const dir = direction.toUpperCase();
   const structDesc = structure === 'bullish' ? 'HH/HL' : structure === 'bearish' ? 'LH/LL' : 'range';
 
@@ -343,7 +401,19 @@ function generateReasoning(direction, structure, setupType, confluence, ctx, ent
   parts.push(`SL beyond swing ${direction === 'long' ? 'low' : 'high'}`);
 
   if (setupType !== 'unknown') {
-    parts.push(`setup: ${setupType.replace('_', ' ')}`);
+    parts.push(`setup: ${setupType.replace(/_/g, ' ')}`);
+  }
+
+  // Confirmed and forming chart patterns
+  const confirmedPatterns = patterns.filter(p => p.confirmed && p.type !== 'neutral');
+  const formingPatterns   = patterns.filter(p => !p.confirmed &&
+    (p.type === (direction === 'long' ? 'bullish' : 'bearish') || p.type === 'neutral'));
+
+  if (confirmedPatterns.length > 0) {
+    parts.push(`confirmed: ${confirmedPatterns.map(p => p.name).join(', ')}`);
+  }
+  if (formingPatterns.length > 0) {
+    parts.push(`forming: ${formingPatterns.map(p => p.name).join(', ')}`);
   }
 
   if (ctx.trend !== structure && ctx.trend !== 'ranging') {
@@ -351,6 +421,385 @@ function generateReasoning(direction, structure, setupType, confluence, ctx, ent
   }
 
   return parts.join('. ') + '.';
+}
+
+
+/* ── 13. HEAD & SHOULDERS / INVERSE H&S ──
+   H&S (bearish): 3 swing highs where the middle (head) is highest,
+   and the two outer peaks (shoulders) are at similar heights.
+   Inverse H&S (bullish): mirror image using swing lows. */
+
+function detectHeadAndShoulders(candles, swings) {
+  const results = [];
+  const { highs, lows } = swings;
+  const lastClose = candles[candles.length - 1].c;
+  const SHOULDER_TOL = 0.04; // shoulders within 4% of each other
+
+  // ── Bearish H&S ──
+  if (highs.length >= 3) {
+    const startIdx = Math.max(0, highs.length - 5);
+    for (let i = startIdx; i <= highs.length - 3; i++) {
+      const ls = highs[i], head = highs[i + 1], rs = highs[i + 2];
+
+      // Head must be higher than both shoulders
+      if (head.price <= ls.price || head.price <= rs.price) continue;
+
+      // Shoulders must be at similar heights
+      const shoulderDiff = Math.abs(ls.price - rs.price) / Math.max(ls.price, rs.price);
+      if (shoulderDiff > SHOULDER_TOL) continue;
+
+      // Find troughs between peaks to define neckline
+      const trough1 = lows.filter(l => l.index > ls.index && l.index < head.index);
+      const trough2 = lows.filter(l => l.index > head.index && l.index < rs.index);
+      if (trough1.length === 0 || trough2.length === 0) continue;
+
+      const t1 = trough1[trough1.length - 1];
+      const t2 = trough2[trough2.length - 1];
+
+      // Linear neckline projected to current bar
+      const neckSlope = (t2.price - t1.price) / Math.max(t2.index - t1.index, 1);
+      const neckNow   = t1.price + neckSlope * (candles.length - 1 - t1.index);
+
+      const avgNeck        = (t1.price + t2.price) / 2;
+      const headAboveNeck  = head.price - avgNeck;
+      const priceTarget    = neckNow - headAboveNeck;
+      const confirmed      = lastClose < neckNow;
+
+      results.push({
+        name: 'Head & Shoulders',
+        type: 'bearish',
+        confirmed,
+        neckline:    neckNow,
+        priceTarget,
+        confidence:  confirmed ? 0.80 : 0.50,
+      });
+      break; // most recent only
+    }
+  }
+
+  // ── Bullish Inverse H&S ──
+  if (lows.length >= 3) {
+    const startIdx = Math.max(0, lows.length - 5);
+    for (let i = startIdx; i <= lows.length - 3; i++) {
+      const ls = lows[i], head = lows[i + 1], rs = lows[i + 2];
+
+      // Head must be lower than both shoulders
+      if (head.price >= ls.price || head.price >= rs.price) continue;
+
+      const shoulderDiff = Math.abs(ls.price - rs.price) / Math.max(ls.price, rs.price);
+      if (shoulderDiff > SHOULDER_TOL) continue;
+
+      // Peaks between troughs define neckline
+      const peak1 = highs.filter(h => h.index > ls.index && h.index < head.index);
+      const peak2 = highs.filter(h => h.index > head.index && h.index < rs.index);
+      if (peak1.length === 0 || peak2.length === 0) continue;
+
+      const p1 = peak1[peak1.length - 1];
+      const p2 = peak2[peak2.length - 1];
+
+      const neckSlope   = (p2.price - p1.price) / Math.max(p2.index - p1.index, 1);
+      const neckNow     = p1.price + neckSlope * (candles.length - 1 - p1.index);
+      const avgNeck     = (p1.price + p2.price) / 2;
+      const headBelowNeck = avgNeck - head.price;
+      const priceTarget   = neckNow + headBelowNeck;
+      const confirmed     = lastClose > neckNow;
+
+      results.push({
+        name: 'Inverse Head & Shoulders',
+        type: 'bullish',
+        confirmed,
+        neckline:    neckNow,
+        priceTarget,
+        confidence:  confirmed ? 0.80 : 0.50,
+      });
+      break;
+    }
+  }
+
+  return results;
+}
+
+
+/* ── 14. DOUBLE TOP / DOUBLE BOTTOM ──
+   Two peaks (or troughs) at nearly the same price level
+   with a clear trough (or peak) between them. */
+
+function detectDoubleTopBottom(candles, swings) {
+  const results = [];
+  const { highs, lows } = swings;
+  const lastClose = candles[candles.length - 1].c;
+  const PEAK_TOL = 0.02; // peaks within 2% of each other
+
+  // ── Double Top (bearish) ──
+  if (highs.length >= 2) {
+    const startIdx = Math.max(0, highs.length - 4);
+    for (let i = startIdx; i <= highs.length - 2; i++) {
+      const top1 = highs[i], top2 = highs[i + 1];
+
+      const diff = Math.abs(top1.price - top2.price) / Math.max(top1.price, top2.price);
+      if (diff > PEAK_TOL) continue;
+
+      // Must be a trough between them
+      const troughs = lows.filter(l => l.index > top1.index && l.index < top2.index);
+      if (troughs.length === 0) continue;
+
+      const neckline    = Math.min(...troughs.map(t => t.price));
+      const height      = ((top1.price + top2.price) / 2) - neckline;
+      const priceTarget = neckline - height;
+      const confirmed   = lastClose < neckline;
+
+      results.push({
+        name: 'Double Top',
+        type: 'bearish',
+        confirmed,
+        neckline,
+        priceTarget,
+        confidence: confirmed ? 0.75 : 0.45,
+      });
+      break;
+    }
+  }
+
+  // ── Double Bottom (bullish) ──
+  if (lows.length >= 2) {
+    const startIdx = Math.max(0, lows.length - 4);
+    for (let i = startIdx; i <= lows.length - 2; i++) {
+      const bot1 = lows[i], bot2 = lows[i + 1];
+
+      const diff = Math.abs(bot1.price - bot2.price) / Math.max(bot1.price, bot2.price);
+      if (diff > PEAK_TOL) continue;
+
+      const peaks = highs.filter(h => h.index > bot1.index && h.index < bot2.index);
+      if (peaks.length === 0) continue;
+
+      const neckline    = Math.max(...peaks.map(p => p.price));
+      const height      = neckline - ((bot1.price + bot2.price) / 2);
+      const priceTarget = neckline + height;
+      const confirmed   = lastClose > neckline;
+
+      results.push({
+        name: 'Double Bottom',
+        type: 'bullish',
+        confirmed,
+        neckline,
+        priceTarget,
+        confidence: confirmed ? 0.75 : 0.45,
+      });
+      break;
+    }
+  }
+
+  return results;
+}
+
+
+/* ── 15. TRIANGLE PATTERNS ──
+   Uses linear regression on swing highs and lows to detect:
+   - Ascending triangle:  flat resistance + rising support  → bullish bias
+   - Descending triangle: flat support   + falling resistance → bearish bias
+   - Symmetrical triangle: converging highs + lows → neutral (breakout pending)
+   Slope tolerance is price-relative so it works for all assets. */
+
+function detectTriangle(candles, swings) {
+  const { highs, lows } = swings;
+  if (highs.length < 3 || lows.length < 3) return [];
+
+  const recentHighs = highs.slice(-4);
+  const recentLows  = lows.slice(-4);
+
+  const highReg = linearRegression(
+    recentHighs.map(h => h.index),
+    recentHighs.map(h => h.price)
+  );
+  const lowReg = linearRegression(
+    recentLows.map(l => l.index),
+    recentLows.map(l => l.price)
+  );
+
+  // Require a decent linear fit on both trendlines
+  if (highReg.r2 < 0.5 || lowReg.r2 < 0.5) return [];
+
+  // Price-relative slope tolerance (0.02% per candle = "flat")
+  const avgPrice = [
+    ...recentHighs.map(h => h.price),
+    ...recentLows.map(l => l.price),
+  ].reduce((a, b) => a + b, 0) / (recentHighs.length + recentLows.length);
+
+  const slopeTol   = avgPrice * 0.0002;
+  const highFall   = highReg.slope < -slopeTol;
+  const highFlat   = Math.abs(highReg.slope) <= slopeTol;
+  const highRise   = highReg.slope > slopeTol;
+  const lowFall    = lowReg.slope < -slopeTol;
+  const lowFlat    = Math.abs(lowReg.slope) <= slopeTol;
+  const lowRise    = lowReg.slope > slopeTol;
+
+  let triangleType = null, biasType = null;
+  if      (highFall && lowRise)  { triangleType = 'Symmetrical Triangle';  biasType = 'neutral';  }
+  else if (highFlat && lowRise)  { triangleType = 'Ascending Triangle';    biasType = 'bullish';  }
+  else if (highFall && lowFlat)  { triangleType = 'Descending Triangle';   biasType = 'bearish';  }
+
+  if (!triangleType) return [];
+
+  const lastIndex  = candles.length - 1;
+  const lastClose  = candles[lastIndex].c;
+  const highNow    = highReg.slope * lastIndex + highReg.intercept;
+  const lowNow     = lowReg.slope  * lastIndex + lowReg.intercept;
+
+  // Price must be inside the triangle to count
+  if (lastClose > highNow || lastClose < lowNow) return [];
+
+  // Bars until the two trendlines converge
+  const slopeDiff = highReg.slope - lowReg.slope;
+  const barsToApex = slopeDiff !== 0
+    ? Math.max(0, Math.round((lowReg.intercept - highReg.intercept) / slopeDiff - lastIndex))
+    : 0;
+
+  return [{
+    name: triangleType,
+    type: biasType,
+    confirmed:      false, // confirmed only on breakout
+    resistanceLine: highNow,
+    supportLine:    lowNow,
+    barsToApex,
+    confidence:     0.55,
+  }];
+}
+
+
+/* ── 16. BROADENING / MEGAPHONE PATTERN ──
+   Expanding highs AND expanding lows simultaneously.
+   Signals high volatility and indecision — often precedes a strong move. */
+
+function detectBroadening(candles, swings) {
+  const { highs, lows } = swings;
+  if (highs.length < 3 || lows.length < 3) return [];
+
+  const recentHighs = highs.slice(-4);
+  const recentLows  = lows.slice(-4);
+
+  const highReg = linearRegression(
+    recentHighs.map(h => h.index),
+    recentHighs.map(h => h.price)
+  );
+  const lowReg = linearRegression(
+    recentLows.map(l => l.index),
+    recentLows.map(l => l.price)
+  );
+
+  if (highReg.r2 < 0.5 || lowReg.r2 < 0.5) return [];
+
+  const avgPrice = [
+    ...recentHighs.map(h => h.price),
+    ...recentLows.map(l => l.price),
+  ].reduce((a, b) => a + b, 0) / (recentHighs.length + recentLows.length);
+
+  const slopeTol = avgPrice * 0.0002;
+
+  // Broadening: highs rising AND lows falling
+  if (!(highReg.slope > slopeTol && lowReg.slope < -slopeTol)) return [];
+
+  const lastIndex = candles.length - 1;
+  const highNow   = highReg.slope * lastIndex + highReg.intercept;
+  const lowNow    = lowReg.slope  * lastIndex + lowReg.intercept;
+
+  return [{
+    name:           'Broadening / Megaphone',
+    type:           'neutral', // can break either direction
+    confirmed:      false,
+    resistanceLine: highNow,
+    supportLine:    lowNow,
+    confidence:     0.45,
+  }];
+}
+
+
+/* ── 17. CANDLESTICK PATTERNS ──
+   Single and multi-candle patterns on the last 1-3 bars.
+   All checks use body/wick ratios — fully price-agnostic. */
+
+function detectCandlestickPatterns(candles) {
+  const results = [];
+  const len = candles.length;
+  if (len < 3) return results;
+
+  const c  = candles[len - 1]; // current
+  const p  = candles[len - 2]; // previous
+  const pp = candles[len - 3]; // two bars ago
+
+  const body      = Math.abs(c.c - c.o);
+  const range     = c.h - c.l;
+  const upperWick = c.h - Math.max(c.o, c.c);
+  const lowerWick = Math.min(c.o, c.c) - c.l;
+
+  if (range === 0) return results; // avoid divide by zero
+
+  // ── Doji: tiny body relative to range ──
+  if (body / range < 0.1) {
+    results.push({ name: 'Doji', type: 'neutral', confirmed: true, confidence: 0.55 });
+  }
+
+  // ── Hammer (bullish): small body near top of range, long lower wick, at a recent low ──
+  const recentLow10  = Math.min(...candles.slice(-10).map(x => x.l));
+  const recentHigh10 = Math.max(...candles.slice(-10).map(x => x.h));
+  const isAtLow  = c.l <= recentLow10  * 1.005; // within 0.5% of 10-bar low
+  const isAtHigh = c.h >= recentHigh10 * 0.995; // within 0.5% of 10-bar high
+
+  if (lowerWick > body * 2 && upperWick < body && body > 0 && isAtLow) {
+    results.push({ name: 'Hammer', type: 'bullish', confirmed: true, confidence: 0.65 });
+  }
+
+  // ── Shooting Star (bearish): long upper wick, small body near low of range, at a recent high ──
+  if (upperWick > body * 2 && lowerWick < body && body > 0 && isAtHigh) {
+    results.push({ name: 'Shooting Star', type: 'bearish', confirmed: true, confidence: 0.65 });
+  }
+
+  // ── Bullish Engulfing: previous bearish candle fully engulfed by current bullish candle ──
+  const prevBearish = p.c < p.o;
+  const currBullish = c.c > c.o;
+  if (prevBearish && currBullish && c.o <= p.c && c.c >= p.o) {
+    results.push({ name: 'Bullish Engulfing', type: 'bullish', confirmed: true, confidence: 0.70 });
+  }
+
+  // ── Bearish Engulfing: previous bullish candle fully engulfed by current bearish candle ──
+  const prevBullish = p.c > p.o;
+  const currBearish = c.c < c.o;
+  if (prevBullish && currBearish && c.o >= p.c && c.c <= p.o) {
+    results.push({ name: 'Bearish Engulfing', type: 'bearish', confirmed: true, confidence: 0.70 });
+  }
+
+  // ── Morning Star (3-bar bullish reversal): large bearish → small body gap → large bullish ──
+  const ppBearish   = pp.c < pp.o;
+  const pSmallBody  = Math.abs(p.c - p.o) < Math.abs(pp.c - pp.o) * 0.3;
+  const cBullish3   = c.c > c.o;
+  const cCloseAboveMid = c.c > (pp.o + pp.c) / 2;
+  if (ppBearish && pSmallBody && cBullish3 && cCloseAboveMid) {
+    results.push({ name: 'Morning Star', type: 'bullish', confirmed: true, confidence: 0.75 });
+  }
+
+  // ── Evening Star (3-bar bearish reversal): large bullish → small body → large bearish ──
+  const ppBullish   = pp.c > pp.o;
+  const pSmallBody2 = Math.abs(p.c - p.o) < Math.abs(pp.c - pp.o) * 0.3;
+  const cBearish3   = c.c < c.o;
+  const cCloseBelowMid = c.c < (pp.o + pp.c) / 2;
+  if (ppBullish && pSmallBody2 && cBearish3 && cCloseBelowMid) {
+    results.push({ name: 'Evening Star', type: 'bearish', confirmed: true, confidence: 0.75 });
+  }
+
+  return results;
+}
+
+
+/* ── 18. MASTER PATTERN DETECTOR ──
+   Runs all pattern checks and returns a unified array. */
+
+function detectPatterns(candles, swings) {
+  const patterns = [];
+  patterns.push(...detectHeadAndShoulders(candles, swings));
+  patterns.push(...detectDoubleTopBottom(candles, swings));
+  patterns.push(...detectTriangle(candles, swings));
+  patterns.push(...detectBroadening(candles, swings));
+  patterns.push(...detectCandlestickPatterns(candles));
+  return patterns;
 }
 
 
@@ -376,6 +825,10 @@ function sniperSignal(candles, pair, timeframe) {
     return { error: 'Insufficient swing structure detected' };
   }
 
+  // ─── PATTERN DETECTION ───
+  const patterns   = detectPatterns(parsed, swings);
+  const trendSlope = getTrendSlope(parsed);
+
   // Direction — follow structure, with trend as tiebreaker
   let direction;
   if (structure === 'bullish') direction = 'long';
@@ -389,8 +842,6 @@ function sniperSignal(candles, pair, timeframe) {
   const lastClose = parsed[len - 1].c;
   const allHighs  = parsed.map(c => c.h);
   const allLows   = parsed.map(c => c.l);
-  const dataMax   = Math.max(...allHighs);
-  const dataMin   = Math.min(...allLows);
   const atr       = ctx.atr || calcATR(parsed);
 
   // Swing points
@@ -494,11 +945,23 @@ function sniperSignal(candles, pair, timeframe) {
 
   // ─── CONFLUENCE & CONFIDENCE ───
   const confluence = findConfluence(entry, fibs, ob, keyLevels);
-  const setupType  = classifySetup(structure, swings, parsed);
-  const confidence = computeConfidence(confluence, structure, ctx);
+
+  // Setup type — base classification then pattern override
+  let setupType = classifySetup(structure, swings, parsed);
+  const hasConfirmedReversal = patterns.some(p =>
+    p.confirmed &&
+    ['Head & Shoulders', 'Inverse Head & Shoulders', 'Double Top', 'Double Bottom'].includes(p.name)
+  );
+  if (hasConfirmedReversal) {
+    setupType = 'reversal';
+  } else if (patterns.some(p => p.name.includes('Triangle') || p.name.includes('Broadening'))) {
+    if (setupType !== 'breakout') setupType = 'breakout_pending';
+  }
+
+  const confidence = computeConfidence(confluence, structure, ctx, patterns);
 
   // ─── REASONING ───
-  const reasoning = generateReasoning(direction, structure, setupType, confluence, ctx, entry, sl, ob);
+  const reasoning = generateReasoning(direction, structure, setupType, confluence, ctx, entry, sl, ob, patterns);
 
   // ─── PRECISION ── match asset price precision
   const decimals = getDecimals(lastClose);
@@ -514,6 +977,14 @@ function sniperSignal(candles, pair, timeframe) {
     tp2:        +tp2.toFixed(decimals),
     confidence,
     reasoning,
+    patterns:   patterns.map(p => ({
+      name:        p.name,
+      type:        p.type,
+      confirmed:   p.confirmed,
+      priceTarget: p.priceTarget != null ? +p.priceTarget.toFixed(decimals) : null,
+      neckline:    p.neckline    != null ? +p.neckline.toFixed(decimals)    : null,
+      confidence:  p.confidence,
+    })),
     // Context tags
     ctx_trend:      ctx.trend,
     ctx_session:    ctx.session,
@@ -521,12 +992,13 @@ function sniperSignal(candles, pair, timeframe) {
     // Analysis metadata (for transparency)
     _analysis: {
       structure,
-      swingHigh: recentSwingHigh,
-      swingLow:  recentSwingLow,
+      swingHigh:  recentSwingHigh,
+      swingLow:   recentSwingLow,
       orderBlock: ob,
       fibLevels:  fibs,
       keyLevels:  keyLevels.slice(0, 5),
-      confluence: confluence,
+      confluence,
+      trendSlope,
       atr:        +atr.toFixed(decimals),
       atrPct:     ctx.atrPct,
     }
@@ -616,7 +1088,14 @@ function checkSignalOutcome(signal, candlesAfter) {
 module.exports = {
   sniperSignal,
   checkSignalOutcome,
-  // Expose internals for testing
+  // Pattern detection (exposed for testing / direct use)
+  detectPatterns,
+  detectHeadAndShoulders,
+  detectDoubleTopBottom,
+  detectTriangle,
+  detectBroadening,
+  detectCandlestickPatterns,
+  // Internals (exposed for testing)
   detectSwings,
   getStructure,
   calcFibLevels,
@@ -626,4 +1105,6 @@ module.exports = {
   classifySetup,
   calcATR,
   calcSMA,
+  linearRegression,
+  getTrendSlope,
 };
