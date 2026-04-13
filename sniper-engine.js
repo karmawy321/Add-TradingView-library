@@ -416,9 +416,11 @@ function generateReasoning(direction, structure, setupType, confluence, ctx, ent
     parts.push(`forming: ${formingPatterns.map(p => p.name).join(', ')}`);
   }
 
-  if (ctx.trend !== structure && ctx.trend !== 'ranging') {
-    parts.push(`⚠ counter-trend`);
-  }
+  const trendAligned =
+    (ctx.trend === 'uptrend'   && structure === 'bullish') ||
+    (ctx.trend === 'downtrend' && structure === 'bearish') ||
+    ctx.trend === 'ranging';
+  if (!trendAligned) parts.push(`⚠ counter-trend`);
 
   return parts.join('. ') + '.';
 }
