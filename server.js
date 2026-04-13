@@ -1536,9 +1536,11 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           { symbol:'FR40',    instrument_name:'France CAC 40',               instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
         ];
         const q = query.toUpperCase().replace('/','');
-        const oandaMatches = _maReady
-          ? _oandaCatalog.filter(o => o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q))
-          : [];
+        const oandaMatches = _oandaCatalog.filter(o => {
+          const matchesQuery = o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
+          const hasData = _maReady || (oandaCandles[o.symbol] && Object.keys(oandaCandles[o.symbol]).length > 0);
+          return matchesQuery && hasData;
+        });
         res.json({ data: [...oandaMatches, ...filtered] });
       } catch (e) {
         res.json({ data: [] });
