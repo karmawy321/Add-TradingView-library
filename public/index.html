@@ -2887,7 +2887,8 @@ var TOOL_TIERS = {
   liq:     'mentor',
   journal: 'mentor',
   proj:    'pro',
-  sniper:  'starter'
+  sniper:  'starter',
+  backtest: 'mentor'
 };
 
 /* User tier: 'free' | 'pro' | 'mentor' — set via auth later */
@@ -3384,7 +3385,7 @@ initSupabase();
 
 /* ══ CREDIT COSTS per tool ══ */
 var TOOL_COSTS = {
-  analyze:15, fib:12, smc:16, vol:12, mtf:20, age:15, liq:20, proj:25, journal:20, bar:12, ww:12, sniper:5
+  analyze:15, fib:12, smc:16, vol:12, mtf:20, age:15, liq:20, proj:25, journal:20, bar:12, ww:12, sniper:5, backtest:40
 };
 
 /* Icons match the tool-result-section headers */
@@ -3399,7 +3400,8 @@ var TOOLS = [
   { id:'age',     label:'Fractal Age',    sub:'Cycle timing · Urgency',    icon:'⧗', endpoint:'/fractal-age', cost:15, tier:'mentor' },
   { id:'liq',     label:'Liquidity Map',  sub:'Stop clusters · Sweeps',    icon:'◎', endpoint:'/liquidity',   cost:20, tier:'mentor' },
   { id:'journal', label:'Trade Journal',  sub:'AI graded · Coaching',      icon:'✦', endpoint:'/journal',     cost:20, tier:'mentor' },
-  { id:'sniper',  label:'Sniper',         sub:'Entry · SL · TP · Pips',    icon:'⊗', endpoint:'/sniper',      cost:5,  tier:'starter' }
+  { id:'sniper',  label:'Sniper',         sub:'Entry · SL · TP · Pips',    icon:'⊗', endpoint:'/sniper',      cost:5,  tier:'starter' },
+  { id:'backtest',label:'Backtest',        sub:'Walk-forward · Sharpe · MC', icon:'◈', endpoint:'/backtest',    cost:40, tier:'mentor'  }
 ];
 
 /* ══ SNIPER SIGNAL ══ */
@@ -3556,6 +3558,157 @@ window._drawSniperOverlay = function(ctx, W, H) {
   }
   ctx.restore();
 };
+
+/* ══ BACKTEST RESULTS PANEL ══ */
+
+function drawEquityCurve(canvas, curve, startEquity) {
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!curve || curve.length < 2) return;
+  var minV = Math.min.apply(null, curve), maxV = Math.max.apply(null, curve);
+  var range = maxV - minV || 1;
+  var pad = { l:2, r:2, t:10, b:6 };
+  var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+  var isProfit = curve[curve.length - 1] >= startEquity;
+  function px(i) { return pad.l + (i / (curve.length - 1)) * cW; }
+  function py(v) { return pad.t + cH - ((v - minV) / range) * cH; }
+  ctx.fillStyle = '#080c18'; ctx.fillRect(0, 0, W, H);
+  /* Start-equity reference line */
+  if (startEquity >= minV && startEquity <= maxV) {
+    ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l, py(startEquity)); ctx.lineTo(W - pad.r, py(startEquity)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  /* Filled area */
+  ctx.beginPath();
+  ctx.moveTo(px(0), py(curve[0]));
+  for (var i = 1; i < curve.length; i++) ctx.lineTo(px(i), py(curve[i]));
+  ctx.lineTo(px(curve.length - 1), H - pad.b);
+  ctx.lineTo(px(0), H - pad.b);
+  ctx.closePath();
+  var grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, isProfit ? 'rgba(39,174,96,.4)' : 'rgba(231,76,60,.4)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad; ctx.fill();
+  /* Line */
+  ctx.beginPath();
+  ctx.moveTo(px(0), py(curve[0]));
+  for (var j = 1; j < curve.length; j++) ctx.lineTo(px(j), py(curve[j]));
+  ctx.strokeStyle = isProfit ? '#27ae60' : '#e74c3c'; ctx.lineWidth = 1.5; ctx.stroke();
+  /* Start / end labels */
+  ctx.font = '8px DM Mono'; ctx.textAlign = 'left'; ctx.fillStyle = '#4e5d78';
+  ctx.fillText('$' + Math.round(curve[0]).toLocaleString(), pad.l + 3, py(curve[0]) - 3);
+  ctx.textAlign = 'right'; ctx.fillStyle = isProfit ? '#27ae60' : '#e74c3c';
+  ctx.fillText('$' + Math.round(curve[curve.length - 1]).toLocaleString(), W - pad.r - 3, py(curve[curve.length - 1]) - 3);
+}
+
+function renderBacktest(r) {
+  var bt = document.getElementById('btResult');
+  if (!bt) {
+    bt = document.createElement('div');
+    bt.id = 'btResult';
+    bt.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:500;max-height:65vh;overflow-y:auto;' +
+      'background:#060a14;border-top:1px solid rgba(201,168,76,.35);box-shadow:0 -12px 40px rgba(0,0,0,.85)';
+    document.body.appendChild(bt);
+  }
+  if (!r || !r.metrics) {
+    bt.innerHTML = '<div style="padding:16px 20px;font-family:\'DM Mono\',monospace;font-size:11px;color:#4e5d78">' +
+      'No trades generated. Try loading more candles or lowering the confidence threshold.</div>' +
+      '<button onclick="document.getElementById(\'btResult\').style.display=\'none\'" ' +
+      'style="position:absolute;top:8px;right:14px;background:none;border:none;color:#6a7a90;font-size:20px;cursor:pointer;line-height:1">×</button>';
+    bt.style.display = 'block'; return;
+  }
+  var m = r.metrics, mc = r.monteCarlo;
+  var isProfit = m.finalEquity >= m.startEquity;
+  var wnC = m.winRate >= 0.55 ? '#27ae60' : m.winRate >= 0.45 ? '#e67e22' : '#e74c3c';
+  var pfC = m.profitFactor >= 1.5 ? '#27ae60' : m.profitFactor >= 1.0 ? '#e67e22' : '#e74c3c';
+  var shC = m.sharpe >= 1.0 ? '#27ae60' : m.sharpe >= 0 ? '#e67e22' : '#e74c3c';
+  var ddC = m.maxDrawdown > 0.15 ? '#e74c3c' : m.maxDrawdown > 0.08 ? '#e67e22' : '#27ae60';
+  function stat(label, val, color) {
+    return '<div style="flex:1;min-width:90px;padding:8px 12px;border-right:1px solid rgba(255,255,255,.05)">' +
+      '<div style="font-size:8px;color:#4e5d78;margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em">' + label + '</div>' +
+      '<div style="font-size:14px;font-weight:700;color:' + (color || '#dde4ee') + '">' + val + '</div></div>';
+  }
+  /* Period in days */
+  var periodDays = (r.trades.length > 0 && r.trades[r.trades.length-1].exitTime && r.trades[0].entryTime)
+    ? Math.round((r.trades[r.trades.length-1].exitTime - r.trades[0].entryTime) / 86400000) : '?';
+  /* Trade log rows (max 50) */
+  var tradeRows = (r.trades || []).slice(0, 50).map(function(t, i) {
+    var pC = t.pnlR >= 0 ? '#27ae60' : '#e74c3c';
+    var oC = t.outcome === 'sl_hit' ? '#e74c3c' : t.outcome === 'open' ? '#c9a84c' : '#27ae60';
+    var pats = (t.patterns || []).slice(0, 2).join(', ') || '\u2014';
+    return '<tr style="border-bottom:1px solid rgba(255,255,255,.03)">' +
+      '<td style="padding:5px 8px;color:#4e5d78">' + (i + 1) + '</td>' +
+      '<td style="padding:5px 8px;color:' + (t.direction==='long'?'#27ae60':'#e74c3c') + '">' + (t.direction==='long'?'\u25b2 L':'\u25bc S') + '</td>' +
+      '<td style="padding:5px 8px">' + t.confidence + '%</td>' +
+      '<td style="padding:5px 8px;color:#8a95a8;font-size:9px">' + (t.setup_type||'\u2014').replace(/_/g,' ') + '</td>' +
+      '<td style="padding:5px 8px;font-size:9px;color:#6a7a90;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (t.patterns||[]).join(', ') + '">' + pats + '</td>' +
+      '<td style="padding:5px 8px;color:' + oC + '">' + t.outcome.replace(/_/g,' ') + '</td>' +
+      '<td style="padding:5px 8px;color:' + pC + ';font-weight:700">' + (t.pnlR >= 0 ? '+' : '') + t.pnlR + 'R</td>' +
+      '<td style="padding:5px 8px;color:#4e5d78">' + t.barsHeld + '</td></tr>';
+  }).join('');
+
+  bt.innerHTML =
+    /* Header */
+    '<div style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;font-family:\'DM Mono\',monospace">' +
+      '<span style="font-size:12px;font-weight:700;color:#c9a84c;letter-spacing:.06em">BACKTEST RESULTS</span>' +
+      '<div style="display:flex;gap:16px;align-items:center">' +
+        '<span style="font-size:9px;color:#4e5d78">' + m.closedTrades + ' closed trades \u00b7 ' + periodDays + 'd period \u00b7 1% risk/trade</span>' +
+        '<button onclick="document.getElementById(\'btResult\').style.display=\'none\'" style="background:none;border:none;color:#6a7a90;font-size:20px;cursor:pointer;padding:0 4px;line-height:1">\u00d7</button>' +
+      '</div>' +
+    '</div>' +
+    /* Metrics bar */
+    '<div style="display:flex;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,.06);font-family:\'DM Mono\',monospace">' +
+      stat('Win Rate',     (m.winRate * 100).toFixed(1) + '%',                       wnC) +
+      stat('Profit Factor', m.profitFactor,                                           pfC) +
+      stat('Sharpe',        m.sharpe,                                                 shC) +
+      stat('Max Drawdown',  (m.maxDrawdown * 100).toFixed(1) + '%',                  ddC) +
+      stat('Net PnL',       (m.netPnlR >= 0 ? '+' : '') + m.netPnlR + 'R',          isProfit ? '#27ae60' : '#e74c3c') +
+      stat('Final Equity',  '$' + m.finalEquity.toLocaleString(),                    isProfit ? '#27ae60' : '#e74c3c') +
+      stat('Avg Bars',      m.avgBarsHeld,                                            '#dde4ee') +
+      stat('Trades',        m.closedTrades,                                           '#dde4ee') +
+    '</div>' +
+    /* Equity curve canvas */
+    '<canvas id="btCanvas" style="width:100%;height:90px;display:block"></canvas>' +
+    /* Monte Carlo */
+    (mc ? '<div style="padding:7px 16px;font-size:9px;color:#4e5d78;border-bottom:1px solid rgba(255,255,255,.04);display:flex;gap:16px;flex-wrap:wrap;font-family:\'DM Mono\',monospace">' +
+      '<span>Monte Carlo \u00b7 1000 shuffles \u2014</span>' +
+      '<span>5th%: <span style="color:#e74c3c">$' + mc.p5.toLocaleString() + '</span></span>' +
+      '<span>50th%: <span style="color:#c9a84c">$' + mc.p50.toLocaleString() + '</span></span>' +
+      '<span>95th%: <span style="color:#27ae60">$' + mc.p95.toLocaleString() + '</span></span>' +
+    '</div>' : '') +
+    /* Pattern edge */
+    (m.patternWinRate !== null ? '<div style="padding:7px 16px;font-size:9px;border-bottom:1px solid rgba(255,255,255,.04);color:#4e5d78;font-family:\'DM Mono\',monospace">' +
+      'Pattern edge \u2014 With confirmed pattern: <span style="color:#c9a84c">' + (m.patternWinRate * 100).toFixed(1) + '%</span> win rate' +
+      ' \u00b7 Without: <span style="color:#c9a84c">' + (m.noPatternWinRate * 100).toFixed(1) + '%</span>' +
+    '</div>' : '') +
+    /* Trade log */
+    '<div style="overflow-x:auto;font-family:\'DM Mono\',monospace">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:10px">' +
+        '<thead><tr style="background:rgba(255,255,255,.03);color:#4e5d78;text-align:left">' +
+          '<th style="padding:6px 8px">#</th><th style="padding:6px 8px">Dir</th>' +
+          '<th style="padding:6px 8px">Conf</th><th style="padding:6px 8px">Setup</th>' +
+          '<th style="padding:6px 8px">Patterns</th><th style="padding:6px 8px">Outcome</th>' +
+          '<th style="padding:6px 8px">PnL</th><th style="padding:6px 8px">Bars</th>' +
+        '</tr></thead>' +
+        '<tbody>' + tradeRows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    (r.trades.length > 50 ? '<div style="padding:8px 16px;font-size:9px;color:#4e5d78;font-family:\'DM Mono\',monospace">Showing first 50 of ' + r.trades.length + ' trades</div>' : '');
+
+  bt.style.display = 'block';
+
+  /* Draw equity curve after layout settles */
+  requestAnimationFrame(function() {
+    var canvas = document.getElementById('btCanvas');
+    if (canvas) {
+      canvas.width  = canvas.offsetWidth  || 800;
+      canvas.height = canvas.offsetHeight || 90;
+      drawEquityCurve(canvas, r.equityCurve, m.startEquity);
+    }
+  });
+}
 
 function buildToolGrid() {
   var grid = document.getElementById('aiToolGrid') || document.getElementById('toolGrid');
@@ -7010,6 +7163,14 @@ function executeTool(tool,imgData,candlePayload){
       return;
     }
     drawToolResultOnChart(tool.id,result);
+    if(tool.id==='backtest'&&typeof renderBacktest==='function'){
+      renderBacktest(result);
+      if(btn)btn.removeAttribute('disabled');resetCard('\u2713','#27ae60');
+      if(_statusEl){_statusEl.className='ud-sec-status ud-done';_statusEl.innerHTML='\u2713 Done';}
+      if(_runBtn)_runBtn.disabled=false;
+      setTimeout(function(){resetCard('','');if(_statusEl){_statusEl.style.display='none';_statusEl.innerHTML='<div class="ud-spin"></div>';}},4000);
+      return;
+    }
     if(tool.id==='fib'&&typeof renderFibonacci==='function')renderFibonacci(result);
     else if(tool.id==='smc'&&typeof renderSMC==='function')renderSMC(result);
     else if(tool.id==='proj'&&typeof renderProjection==='function')renderProjection(result);
@@ -7046,6 +7207,14 @@ function executeTool(tool,imgData,candlePayload){
 }
 
 function runSingleTool(tool){
+  /* Backtest uses ALL loaded candles, not just the visible slice */
+  if(tool.id === 'backtest'){
+    if(!chartCandles || chartCandles.length < 170){
+      showErr('Load a chart first \u2014 need at least 170 candles for backtest.');return;
+    }
+    executeTool(tool, null, {candles: chartCandles, options: {minConfidence: 50}});
+    return;
+  }
   if(chartCandles && chartCandles.length >= 2){
     captureAndStore();
     var _sBars = Math.max(20, Math.floor(chartCandles.length / chartView.zoom));

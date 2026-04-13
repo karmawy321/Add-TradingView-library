@@ -1863,6 +1863,7 @@ Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
 
 /* ── Sniper pip/RR math helpers ── */
 const { sniperSignal: algoSniperSignal, checkSignalOutcome } = require('./sniper-engine');
+const { runBacktest } = require('./backtest-engine');
 
 function getPipSize(price, pair) {
   const p = (pair || '').toUpperCase();
@@ -1976,6 +1977,27 @@ app.post('/sniper', rateLimit(20, 60000), async (req, res) => {
   } catch(e) {
     console.error('[Sniper] Engine error:', e);
     res.status(500).json({ error: 'Signal engine error' });
+  }
+});
+
+// /backtest - Walk-forward backtest using the sniper engine (no AI, pure math)
+app.post('/backtest', rateLimit(5, 60000), async (req, res) => {
+  const { candles, options, _token } = req.body;
+  if (!candles || candles.length < 170) {
+    return res.status(400).json({ error: 'Need at least 170 candles for backtest.' });
+  }
+  try {
+    await verifyAndDeduct(_token, 40);
+  } catch(e) {
+    return res.status(402).json({ error: e.message });
+  }
+  try {
+    const result = runBacktest(candles, options || {});
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json(result);
+  } catch(e) {
+    console.error('[Backtest] Engine error:', e);
+    res.status(500).json({ error: 'Backtest engine error' });
   }
 });
 
