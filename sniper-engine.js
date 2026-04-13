@@ -152,13 +152,20 @@ function findKeyLevels(candles, swings, tolerancePct = 0.003) {
 /* ── 6. CONFLUENCE FINDER ──
    Score how many factors align at a given price zone. */
 
-function findConfluence(entry, fibs, orderBlock, keyLevels, tolerancePct = 0.005) {
+function findConfluence(entry, fibs, orderBlock, keyLevels, atr, tolerancePct = 0.005) {
+  // ATR-based tolerance: prevents all Fibonacci levels firing on tight swing ranges.
+  // Cap at 30% of ATR so "near a level" means something relative to actual volatility.
+  // Falls back to price-relative tolerance when ATR is unavailable.
+  const absTol = atr
+    ? Math.min(entry * tolerancePct, atr * 0.30)
+    : entry * tolerancePct;
+
   let score = 0;
   const factors = [];
 
-  // Check Fibonacci levels near entry
+  // Check Fibonacci levels near entry — only count the closest match per level
   for (const [level, price] of Object.entries(fibs)) {
-    if (Math.abs(price - entry) / Math.max(entry, 0.0001) < tolerancePct) {
+    if (Math.abs(price - entry) < absTol) {
       score += level === '0.618' ? 3 : level === '0.500' ? 2 : 1;
       factors.push(`Fib ${level}`);
     }
@@ -169,7 +176,7 @@ function findConfluence(entry, fibs, orderBlock, keyLevels, tolerancePct = 0.005
     if (entry >= orderBlock.low && entry <= orderBlock.high) {
       score += 3;
       factors.push(`${orderBlock.type} OB`);
-    } else if (Math.abs(entry - orderBlock.high) / Math.max(entry, 0.0001) < tolerancePct * 2) {
+    } else if (Math.abs(entry - orderBlock.high) < absTol * 2) {
       score += 1;
       factors.push(`near ${orderBlock.type} OB`);
     }
@@ -177,10 +184,10 @@ function findConfluence(entry, fibs, orderBlock, keyLevels, tolerancePct = 0.005
 
   // Check S/R levels near entry
   for (const lvl of keyLevels.slice(0, 5)) {
-    if (Math.abs(lvl.price - entry) / Math.max(entry, 0.0001) < tolerancePct) {
+    if (Math.abs(lvl.price - entry) < absTol) {
       score += 2;
       factors.push(`S/R (${lvl.touches} touches)`);
-      break; // Only count once
+      break;
     }
   }
 
@@ -1041,7 +1048,7 @@ function sniperSignal(candles, pair, timeframe) {
   }
 
   // ─── CONFLUENCE & CONFIDENCE ───
-  const confluence = findConfluence(entry, fibs, ob, keyLevels);
+  const confluence = findConfluence(entry, fibs, ob, keyLevels, atr);
 
   // Setup type — base classification then pattern override
   let setupType = classifySetup(structure, swings, parsed);
