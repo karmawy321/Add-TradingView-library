@@ -583,6 +583,84 @@ function fetchTDSingle(tdSym, tdInterval, extraParams) {
   });
 }
 
+/* ── TwelveData Crypto Cache — fetch + store into oandaCandles ── */
+
+function _tdDateStr(ts) {
+  // Format timestamp → TwelveData end_date param: "YYYY-MM-DD HH:MM:SS"
+  return new Date(ts).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+async function fetchTDCryptoHistory(sym, tdSym, incremental) {
+  if (!TD_KEY) return;
+  if (!oandaCandles[sym]) oandaCandles[sym] = {};
+  TD_CRYPTO_TFS.forEach(tf => { if (!oandaCandles[sym][tf]) oandaCandles[sym][tf] = []; });
+
+  for (const tf of TD_CRYPTO_TFS) {
+    const arr    = oandaCandles[sym][tf];
+    const tdIval = TD_TF[tf];
+    const target = TD_CRYPTO_LIMITS[tf] || 5000;
+
+    try {
+      if (incremental && arr.length > 0) {
+        // Only fetch new candles since last cached candle
+        const lastT  = arr[arr.length - 1].t;
+        const needed = Math.min(TD_CRYPTO_PAGE, Math.ceil((Date.now() - lastT) / TF_MS[tf]) + 5);
+        if (needed <= 0) continue;
+        const fresh = (await fetchTDSingle(tdSym, tdIval, { outputsize: String(needed) }))
+          .filter(c => c.t > lastT);
+        fresh.forEach(c => arr.push(c));
+        if (fresh.length) console.log(`[TD Crypto] ${sym} ${tf}: +${fresh.length} new`);
+      } else {
+        // Paginated full fetch — walk backwards until target reached
+        let collected = [];
+        let endDate   = null; // null = start from latest
+
+        while (collected.length < target) {
+          const pageSize = Math.min(TD_CRYPTO_PAGE, target - collected.length);
+          const extra    = endDate
+            ? { outputsize: String(pageSize), end_date: endDate }
+            : { outputsize: String(pageSize) };
+
+          const batch = await fetchTDSingle(tdSym, tdIval, extra);
+          if (!batch.length) break;
+
+          collected = [...batch, ...collected]; // prepend older candles
+          // Move end_date to just before the oldest candle in this batch
+          endDate = _tdDateStr(batch[0].t - TF_MS[tf]);
+
+          console.log(`[TD Crypto] ${sym} ${tf}: fetched ${collected.length}/${target}`);
+          if (batch.length < pageSize) break; // no more history available
+
+          await new Promise(r => setTimeout(r, 400)); // cooldown between pages
+        }
+
+        if (collected.length) {
+          oandaCandles[sym][tf] = collected;
+          console.log(`[TD Crypto] ${sym} ${tf}: ${collected.length} candles total`);
+        }
+      }
+      await new Promise(r => setTimeout(r, 400)); // cooldown between TFs
+    } catch(e) {
+      console.error(`[TD Crypto] Error ${sym} ${tf}:`, e.message);
+    }
+  }
+  saveCacheToDisk(sym);
+}
+
+let _tdCryptoRefreshing = false;
+async function refreshTDCryptoCache(incremental = false) {
+  if (!TD_KEY || _tdCryptoRefreshing) return;
+  _tdCryptoRefreshing = true;
+  console.log(`[TD Crypto] ${incremental ? 'Incremental' : 'Full'} refresh (${TD_CRYPTO_SYMBOLS.length} symbols)...`);
+  for (const { symbol, td } of TD_CRYPTO_SYMBOLS) {
+    try { await fetchTDCryptoHistory(symbol, td, incremental); }
+    catch(e) { console.error(`[TD Crypto] ${symbol}:`, e.message); }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  _tdCryptoRefreshing = false;
+  console.log('[TD Crypto] Cache refresh complete');
+}
+
 const _intradayLoaded = {}; /* tracks which symbols have had intraday (1m+1h) fetched */
 
 function storeTF(symbol, tf, arr) {
@@ -780,6 +858,23 @@ const _maSymMap = {
 const _oandaLoaded    = {};
 const _oandaLastFetch = {}; /* sym → timestamp of last background fetch trigger */
 
+/* ── TwelveData Crypto Cache ──
+   Symbols not covered by OANDA, fetched via TwelveData REST and stored
+   in oandaCandles so they flow through the scanner + sniper automatically. */
+const TD_CRYPTO_SYMBOLS = [
+  { symbol: 'BNBUSDT',   td: 'BNB/USD',  name: 'BNB / US Dollar'         },
+  { symbol: 'XRPUSDT',   td: 'XRP/USD',  name: 'XRP / US Dollar'         },
+  { symbol: 'DOGEUSDT',  td: 'DOGE/USD', name: 'Dogecoin / US Dollar'     },
+  { symbol: 'DOTUSDT',   td: 'DOT/USD',  name: 'Polkadot / US Dollar'     },
+  { symbol: 'LINKUSDT',  td: 'LINK/USD', name: 'Chainlink / US Dollar'    },
+  { symbol: 'AVAXUSDT',  td: 'AVAX/USD', name: 'Avalanche / US Dollar'    },
+  { symbol: 'MATICUSDT', td: 'MATIC/USD',name: 'Polygon / US Dollar'      },
+  { symbol: 'ATOMUSDT',  td: 'ATOM/USD', name: 'Cosmos / US Dollar'       },
+];
+const TD_CRYPTO_TFS     = ['1m', '1h', '4h', '1d'];
+const TD_CRYPTO_LIMITS  = { '1m': 10080, '1h': 17520, '4h': 7800, '1d': 5000 }; // match OANDA depth
+const TD_CRYPTO_PAGE    = 5000; // max candles per TwelveData call
+
 let _maAccount  = null;
 let _maConn       = null;
 let _maStreamConn = null;                /* streaming connection for live prices */
@@ -953,7 +1048,11 @@ function saveCacheToDisk(sym) {
 
 function loadCacheFromDisk() {
   let n = 0;
-  for (const sym of Object.keys(_maSymMap)) {
+  const allSyms = [
+    ...Object.keys(_maSymMap),
+    ...TD_CRYPTO_SYMBOLS.map(s => s.symbol),
+  ];
+  for (const sym of allSyms) {
     const file = path.join(OANDA_CACHE_DIR, sym + '.json');
     try {
       if (!fs.existsSync(file)) continue;
@@ -1514,12 +1613,21 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           { symbol:'CADJPY',  instrument_name:'Canadian Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'CHFJPY',  instrument_name:'Swiss Franc / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'NZDJPY',  instrument_name:'New Zealand Dollar / Japanese Yen', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          /* Crypto */
-          { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
-          { symbol:'ETHUSDT', instrument_name:'Ethereum / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
-          { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',          instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
-          { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
-          { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA', source:'oanda' },
+          /* Crypto — OANDA (broker-grade) */
+          { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+          { symbol:'ETHUSDT', instrument_name:'Ethereum / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+          { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',          instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+          { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+          { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+          /* Crypto — TwelveData cached */
+          { symbol:'BNBUSDT',   instrument_name:'BNB / US Dollar',           instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
+          { symbol:'XRPUSDT',   instrument_name:'XRP / US Dollar',           instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
+          { symbol:'DOGEUSDT',  instrument_name:'Dogecoin / US Dollar',      instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
+          { symbol:'DOTUSDT',   instrument_name:'Polkadot / US Dollar',      instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
+          { symbol:'LINKUSDT',  instrument_name:'Chainlink / US Dollar',     instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
+          { symbol:'AVAXUSDT',  instrument_name:'Avalanche / US Dollar',     instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
+          { symbol:'MATICUSDT', instrument_name:'Polygon / US Dollar',       instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
+          { symbol:'ATOMUSDT',  instrument_name:'Cosmos / US Dollar',        instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
           /* Equity CFDs */
           { symbol:'TSLA',    instrument_name:'Tesla Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
           { symbol:'NVDA',    instrument_name:'NVIDIA Corp',                 instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
@@ -3690,6 +3798,9 @@ app.listen(PORT, () => {
   /* OANDA — load disk cache immediately, then full refresh after MetaApi ready */
   loadCacheFromDisk();
 
+  /* TwelveData crypto — load from disk, then fetch fresh in background */
+  setTimeout(() => refreshTDCryptoCache(false), 5000);
+
   if (METAAPI_TOKEN) {
     setTimeout(() => {
       console.log('[MetaApi] Initializing OANDA connection...');
@@ -3728,8 +3839,15 @@ app.listen(PORT, () => {
       runCrossoverScanner();
     }
   });
+  /* TwelveData crypto — incremental refresh every 12 hours */
+  cron.schedule('0 */12 * * *', () => {
+    console.log('\n📊 [Scheduled] Refreshing TwelveData crypto cache...');
+    refreshTDCryptoCache(true);
+  });
+
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
   console.log('🔄 Sniper scanner: Every 30 minutes');
   console.log('📈 SMA crossover scanner: Every 10 minutes');
+  console.log('📊 TwelveData crypto cache: Every 12 hours');
 });
