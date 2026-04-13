@@ -3176,6 +3176,8 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
   h2{color:rgba(201,168,76,0.8);font-size:14px;margin-bottom:12px}
   #refresh-btn{background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px}
   #refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
+  #td-refresh-btn{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px}
+  #td-refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -3202,10 +3204,24 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
   <div class="log-box" id="log"></div>
 </div>
 <div class="card">
-  <h2>Symbols Status</h2>
+  <h2>OANDA Symbols Status</h2>
   <table>
     <thead><tr><th>Symbol</th><th>1m</th><th>5m</th><th>15m</th><th>30m</th><th>1h</th><th>4h</th><th>1d</th><th>1w</th><th>Last Candle</th><th>Status</th></tr></thead>
     <tbody id="sym-table"></tbody>
+  </table>
+</div>
+<div class="card" style="border-color:rgba(37,99,235,0.3)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <h2 style="color:rgba(96,165,250,0.85);margin:0">TwelveData Crypto Cache</h2>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="td-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
+      <span id="td-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Refreshing…</span>
+      <button id="td-refresh-btn" onclick="triggerTDRefresh()">Force TD Crypto Refresh</button>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th></tr></thead>
+    <tbody id="td-table"></tbody>
   </table>
 </div>
 <script>
@@ -3278,6 +3294,39 @@ async function poll() {
     }).join('');
 
     document.getElementById('refresh-btn').disabled = p.active || d.refreshing;
+
+    /* TD Crypto section */
+    const td = d.tdCrypto || {};
+    const TD_TFS = ['1m','1h','4h','1d'];
+    const tdLoaded = td.loaded || 0;
+    const tdTotal  = td.total  || 0;
+    document.getElementById('td-stats').textContent = tdLoaded + ' / ' + tdTotal + ' symbols loaded';
+    const tdActiveInfo = document.getElementById('td-active-info');
+    if (d.tdCryptoRefreshing) { tdActiveInfo.style.display = 'inline-flex'; }
+    else { tdActiveInfo.style.display = 'none'; }
+    document.getElementById('td-refresh-btn').disabled = !!d.tdCryptoRefreshing;
+
+    const tdAllSyms = [...(td.symbols || []), ...(td.notStarted || []).map(s => ({ sym: s, tfs: {} }))];
+    document.getElementById('td-table').innerHTML = tdAllSyms.map(entry => {
+      const sym = entry.sym || entry;
+      const tfs = entry.tfs || {};
+      const cells = TD_TFS.map(tf => {
+        const info = tfs[tf];
+        if (!info || !info.candles) return '<td style="color:rgba(255,255,255,0.2)">—</td>';
+        return '<td>' + info.candles.toLocaleString() + '</td>';
+      }).join('');
+      const lastCandle = (() => {
+        let latest = null;
+        TD_TFS.forEach(tf => { if (tfs[tf]?.lastCandle) { const dt = new Date(tfs[tf].lastCandle); if (!latest || dt > latest) latest = dt; } });
+        return latest ? latest.toLocaleTimeString() : '—';
+      })();
+      const hasTfs = Object.keys(tfs).length > 0;
+      const badge = hasTfs
+        ? '<span class="badge" style="background:rgba(37,99,235,0.15);color:#60a5fa">loaded</span>'
+        : '<span class="badge badge-empty">pending</span>';
+      return '<tr><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td></tr>';
+    }).join('') || '<tr><td colspan="7" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No TD crypto data yet</td></tr>';
+
   } catch(e) { console.error(e); }
 }
 
@@ -3285,6 +3334,13 @@ async function triggerRefresh() {
   const btn = document.getElementById('refresh-btn');
   btn.disabled = true;
   await fetch('/admin/cache-refresh', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  poll();
+}
+
+async function triggerTDRefresh() {
+  const btn = document.getElementById('td-refresh-btn');
+  btn.disabled = true;
+  await fetch('/admin/td-crypto-refresh', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
   poll();
 }
 
@@ -3300,6 +3356,11 @@ app.post('/admin/cache-refresh', requireAdmin, (_req, res) => {
   res.json({ ok: true, message: 'Refresh started' });
 });
 
+app.post('/admin/td-crypto-refresh', requireAdmin, (_req, res) => {
+  refreshTDCryptoCache(false).catch(e => console.error('[TDCrypto] Manual refresh error:', e.message));
+  res.json({ ok: true, message: 'TD Crypto full refresh started' });
+});
+
 app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
   try {
     await checkPredictions();
@@ -3311,22 +3372,27 @@ app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
 });
 
 app.get('/admin/cache-status', requireAdmin, (_req, res) => {
-  const syms = Object.keys(_maSymMap);
-  const done = [], empty = [];
-  for (const sym of syms) {
-    const d = oandaCandles[sym];
-    if (!d) { empty.push(sym); continue; }
-    const tfInfo = {};
-    let hasAny = false;
-    for (const tf of TIMEFRAMES) {
-      const len = (d[tf] || []).length;
-      const lastT = len ? d[tf][len - 1].t : null;
-      tfInfo[tf] = { candles: len, lastCandle: lastT ? new Date(lastT).toISOString() : null };
-      if (len > 0) hasAny = true;
+  const buildSymList = (syms, tfsToCheck) => {
+    const done = [], empty = [];
+    for (const sym of syms) {
+      const d = oandaCandles[sym];
+      if (!d) { empty.push(sym); continue; }
+      const tfInfo = {};
+      let hasAny = false;
+      for (const tf of tfsToCheck) {
+        const len = (d[tf] || []).length;
+        const lastT = len ? d[tf][len - 1].t : null;
+        tfInfo[tf] = { candles: len, lastCandle: lastT ? new Date(lastT).toISOString() : null };
+        if (len > 0) hasAny = true;
+      }
+      if (hasAny) done.push({ sym, tfs: tfInfo }); else empty.push(sym);
     }
-    const entry = { sym, tfs: tfInfo };
-    if (hasAny) done.push(entry); else empty.push(sym);
-  }
+    return { done, empty };
+  };
+
+  const oanda = buildSymList(Object.keys(_maSymMap), TIMEFRAMES);
+  const tdCrypto = buildSymList(TD_CRYPTO_SYMBOLS.map(s => s.symbol), TD_CRYPTO_TFS);
+
   res.json({
     metaapi: { status: _maStatus, lastSeen: _maLastSeen ? new Date(_maLastSeen).toISOString() : null, retryCount: _maRetry },
     stream: {
@@ -3335,13 +3401,20 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
       pending:    Object.values(_streamStatus).filter(v => v === 'pending').length,
       details:    _streamStatus,
     },
-    refreshing: _cacheRefreshing,
-    total: syms.length,
-    loaded: done.length,
-    empty: empty.length,
+    refreshing:        _cacheRefreshing,
+    tdCryptoRefreshing: _tdCryptoRefreshing,
+    total:   Object.keys(_maSymMap).length,
+    loaded:  oanda.done.length,
+    empty:   oanda.empty.length,
     progress: _cacheProgress,
-    symbols: done,
-    notStarted: empty,
+    symbols:    oanda.done,
+    notStarted: oanda.empty,
+    tdCrypto: {
+      total:      TD_CRYPTO_SYMBOLS.length,
+      loaded:     tdCrypto.done.length,
+      symbols:    tdCrypto.done,
+      notStarted: tdCrypto.empty,
+    },
   });
 });
 
