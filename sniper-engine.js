@@ -355,21 +355,24 @@ function classifySetup(structure, swings, candles) {
 
 /* ── 11. CONFIDENCE SCORE ── */
 
-function computeConfidence(confluence, structure, ctx, patterns = []) {
+function computeConfidence(confluence, structure, ctx, patterns = [], direction = null) {
   let conf = 30; // base
 
   // Confluence factors (0-30 pts)
   conf += Math.min(30, confluence.score * 6);
 
-  // Clear structure (0-20 pts)
+  // Clear structure (0-15 pts)
   if (structure === 'bullish' || structure === 'bearish') conf += 15;
   else conf += 5;
 
-  // Trend alignment (0-15 pts)
-  if (ctx.trend === 'uptrend' && structure === 'bullish') conf += 15;
-  else if (ctx.trend === 'downtrend' && structure === 'bearish') conf += 15;
+  // Trend alignment (0-15 pts) — use actual direction, not structure
+  // When structure is ranging, direction follows trend — still gets full credit if aligned
+  const dir = direction || (structure === 'bullish' ? 'long' : structure === 'bearish' ? 'short' : null);
+  const trendMatch = (ctx.trend === 'uptrend' && dir === 'long') ||
+                     (ctx.trend === 'downtrend' && dir === 'short');
+  if (trendMatch)              conf += 15;
   else if (ctx.trend === 'ranging') conf += 5;
-  else conf += 0; // counter-trend = no bonus
+  // else: counter-trend = no bonus
 
   // Volatility (0-10 pts — medium is best for structured signals)
   if (ctx.volatility === 'medium') conf += 10;
@@ -377,11 +380,11 @@ function computeConfidence(confluence, structure, ctx, patterns = []) {
   else if (ctx.volatility === 'high') conf += 3;
   // extreme = no bonus
 
-  // Pattern confirmation/conflict (up to +15 / -10 pts)
-  const signalDir = structure === 'bullish' ? 'bullish' : 'bearish';
+  // Pattern confirmation/conflict — use actual direction, not structure
+  const signalDir = dir === 'long' ? 'bullish' : 'bearish';
   for (const p of patterns) {
-    if (p.type === signalDir && p.confirmed)       conf += 15;
-    else if (p.type === signalDir)                 conf += 8;
+    if (p.type === signalDir && p.confirmed)                              conf += 15;
+    else if (p.type === signalDir)                                        conf += 8;
     else if (p.type !== 'neutral' && p.type !== signalDir && p.confirmed) conf -= 10;
   }
 
@@ -424,8 +427,8 @@ function generateReasoning(direction, structure, setupType, confluence, ctx, ent
   }
 
   const trendAligned =
-    (ctx.trend === 'uptrend'   && structure === 'bullish') ||
-    (ctx.trend === 'downtrend' && structure === 'bearish') ||
+    (ctx.trend === 'uptrend'   && direction === 'long')  ||
+    (ctx.trend === 'downtrend' && direction === 'short') ||
     ctx.trend === 'ranging';
   if (!trendAligned) parts.push(`⚠ counter-trend`);
 
@@ -1064,7 +1067,7 @@ function sniperSignal(candles, pair, timeframe) {
     if (setupType !== 'breakout') setupType = 'breakout_pending';
   }
 
-  const confidence = computeConfidence(confluence, structure, ctx, patterns);
+  const confidence = computeConfidence(confluence, structure, ctx, patterns, direction);
 
   // ─── REASONING ───
   const reasoning = generateReasoning(direction, structure, setupType, confluence, ctx, entry, sl, ob, patterns);
