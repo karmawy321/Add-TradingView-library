@@ -1865,6 +1865,81 @@ Respond with ONLY a valid JSON object, no markdown. Use exactly these fields:
 const { sniperSignal: algoSniperSignal, checkSignalOutcome } = require('./sniper-engine');
 const { runBacktest } = require('./backtest-engine');
 
+/* ── CONDITION WEIGHT FEEDBACK LOOP ──
+   After each outcome check, win rates are aggregated by context bucket.
+   applyConditionWeight() adjusts confidence up/down based on how this
+   exact condition has historically performed on this platform's signals. */
+
+let conditionWeights = {};
+const CW_MIN_SAMPLE  = 10; // min resolved signals to trust a bucket
+
+async function refreshConditionWeights() {
+  if (!sbAdmin) return;
+  try {
+    const { data, error } = await sbAdmin
+      .from('sniper_signals')
+      .select('ctx_trend, ctx_session, ctx_volatility, setup_type, direction, pair, outcome')
+      .in('outcome', ['tp1_hit', 'tp2_hit', 'sl_hit']);
+    if (error || !data || data.length === 0) return;
+
+    const buckets = {};
+    const bump = (key, win) => {
+      if (!key || key.includes('null') || key.includes('undefined')) return;
+      if (!buckets[key]) buckets[key] = { wins: 0, total: 0 };
+      buckets[key].total++;
+      if (win) buckets[key].wins++;
+    };
+
+    for (const s of data) {
+      const win = s.outcome === 'tp1_hit' || s.outcome === 'tp2_hit';
+      const { ctx_trend: t, ctx_session: se, ctx_volatility: v, setup_type: st, direction: d, pair: p } = s;
+      bump(`${t}|${se}|${v}|${st}`, win);
+      bump(`${t}|${se}|${st}`, win);
+      bump(`${se}|${st}`, win);
+      bump(`${t}|${st}`, win);
+      bump(se, win);
+      bump(d, win);
+      bump(p, win);
+    }
+
+    for (const key of Object.keys(buckets)) {
+      const b = buckets[key];
+      b.win_rate = b.total > 0 ? +(b.wins / b.total).toFixed(3) : 0;
+    }
+
+    conditionWeights = buckets;
+    console.log(`[ConditionWeights] Refreshed: ${Object.keys(buckets).length} buckets from ${data.length} resolved signals`);
+  } catch(e) {
+    console.error('[ConditionWeights] Refresh error:', e.message);
+  }
+}
+
+function _cwAdj(wr) {
+  if (wr >= 0.60) return +10;
+  if (wr >= 0.50) return  +5;
+  if (wr >= 0.40) return   0;
+  if (wr >= 0.30) return  -5;
+  return                  -10;
+}
+
+function applyConditionWeight(sig) {
+  if (!sig || Object.keys(conditionWeights).length === 0) return sig;
+  const { ctx_trend: t, ctx_session: se, ctx_volatility: v, setup_type: st, direction: d, pair: p } = sig;
+  const keys = [
+    `${t}|${se}|${v}|${st}`, `${t}|${se}|${st}`, `${se}|${st}`, `${t}|${st}`, se, d, p
+  ].filter(k => k && !k.includes('null') && !k.includes('undefined'));
+
+  for (const key of keys) {
+    const b = conditionWeights[key];
+    if (!b || b.total < CW_MIN_SAMPLE) continue;
+    const adj = _cwAdj(b.win_rate);
+    sig.confidence = Math.min(95, Math.max(15, sig.confidence + adj));
+    sig.condition_edge = { key, win_rate: +(b.win_rate * 100).toFixed(1), sample: b.total, adj };
+    return sig;
+  }
+  return sig;
+}
+
 function getPipSize(price, pair) {
   const p = (pair || '').toUpperCase();
   if (p.includes('JPY')) return 0.01;
@@ -1954,8 +2029,8 @@ app.post('/sniper', rateLimit(20, 60000), async (req, res) => {
       return res.status(500).json({ error: 'Signal validation failed: ' + validationErr });
     }
 
-    /* ── Add pip math ── */
-    const sig = calcSniperMath(raw);
+    /* ── Add pip math + condition feedback adjustment ── */
+    const sig = applyConditionWeight(calcSniperMath(raw));
     res.json(sig);
 
     /* ── Save to DB with context tags (async) ── */
@@ -2087,6 +2162,7 @@ async function checkSniperOutcomes() {
   }
 
   console.log(`🎯 [Sniper Check] Done: ${resolved} resolved, ${expired} expired, ${skipped} still pending, ${errors} errors`);
+  if (resolved > 0 || expired > 0) refreshConditionWeights();
 }
 
 /* ── Manual trigger for sniper outcome check ── */
@@ -2095,6 +2171,16 @@ app.post('/api/sniper/check-now', requireAdmin, async (req, res) => {
     await checkSniperOutcomes();
     res.json({ success: true, message: 'Sniper outcome check completed' });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── Condition weights — current feedback loop state ── */
+app.get('/api/condition-weights', requireAdmin, (req, res) => {
+  const total = Object.keys(conditionWeights).length;
+  const qualified = Object.entries(conditionWeights)
+    .filter(([, b]) => b.total >= CW_MIN_SAMPLE)
+    .sort(([, a], [, b]) => b.total - a.total)
+    .map(([key, b]) => ({ key, win_rate: +(b.win_rate * 100).toFixed(1), wins: b.wins, total: b.total, adj: _cwAdj(b.win_rate) }));
+  res.json({ total_buckets: total, qualified_buckets: qualified.length, min_sample: CW_MIN_SAMPLE, buckets: qualified });
 });
 
 /* ═══════════════════════════════════════════════════
@@ -2434,8 +2520,8 @@ async function runSniperScanner() {
         const validErr = validateSniper(raw, lastClose, priceMin, priceMax);
         if (validErr) { skipped++; continue; }
 
-        /* Enrich with pips/RR */
-        const sig = calcSniperMath(raw);
+        /* Enrich with pips/RR + condition feedback adjustment */
+        const sig = applyConditionWeight(calcSniperMath(raw));
 
         /* Save */
         const { error: dbErr } = await sbAdmin.from('sniper_signals').insert({
@@ -3595,6 +3681,9 @@ app.listen(PORT, () => {
   console.log('Supabase:',      !!sbAdmin);
 
   /* TD_DISABLED — prefetch skipped. Re-enable by restoring PREFETCH loop */
+
+  /* Condition weights — load from historical signal outcomes */
+  refreshConditionWeights();
 
   /* OANDA — load disk cache immediately, then full refresh after MetaApi ready */
   loadCacheFromDisk();
