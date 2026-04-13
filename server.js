@@ -661,6 +661,20 @@ async function refreshTDCryptoCache(incremental = false) {
   console.log('[TD Crypto] Cache refresh complete');
 }
 
+let _tdForexRefreshing = false;
+async function refreshTDForexCache(incremental = false) {
+  if (!TD_KEY || _tdForexRefreshing) return;
+  _tdForexRefreshing = true;
+  console.log(`[TD Forex] ${incremental ? 'Incremental' : 'Full'} refresh (${TD_FOREX_SYMBOLS.length} symbols)...`);
+  for (const { symbol, td } of TD_FOREX_SYMBOLS) {
+    try { await fetchTDCryptoHistory(symbol, td, incremental); }
+    catch(e) { console.error(`[TD Forex] ${symbol}:`, e.message); }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  _tdForexRefreshing = false;
+  console.log('[TD Forex] Cache refresh complete');
+}
+
 const _intradayLoaded = {}; /* tracks which symbols have had intraday (1m+1h) fetched */
 
 function storeTF(symbol, tf, arr) {
@@ -858,6 +872,15 @@ const _maSymMap = {
 const _oandaLoaded    = {};
 const _oandaLastFetch = {}; /* sym → timestamp of last background fetch trigger */
 
+/* Classify a symbol by its data source for signal tagging */
+const _tdCryptoSet = new Set();   // populated after TD_CRYPTO_SYMBOLS is defined (below)
+const _tdForexSet  = new Set();   // populated after TD_FOREX_SYMBOLS is defined (below)
+function getDataSource(sym) {
+  if (_tdForexSet.has(sym))  return 'td_forex';
+  if (_tdCryptoSet.has(sym)) return 'td_crypto';
+  return 'oanda';
+}
+
 /* ── TwelveData Crypto Cache ──
    Symbols not covered by OANDA, fetched via TwelveData REST and stored
    in oandaCandles so they flow through the scanner + sniper automatically. */
@@ -874,6 +897,24 @@ const TD_CRYPTO_SYMBOLS = [
 const TD_CRYPTO_TFS     = ['1m', '1h', '4h', '1d'];
 const TD_CRYPTO_LIMITS  = { '1m': 10080, '1h': 17520, '4h': 7800, '1d': 5000 }; // match OANDA depth
 const TD_CRYPTO_PAGE    = 5000; // max candles per TwelveData call
+
+const TD_FOREX_SYMBOLS = [
+  { symbol: 'EURUSD', td: 'EUR/USD', name: 'Euro / US Dollar'            },
+  { symbol: 'GBPUSD', td: 'GBP/USD', name: 'British Pound / US Dollar'   },
+  { symbol: 'USDJPY', td: 'USD/JPY', name: 'US Dollar / Japanese Yen'    },
+  { symbol: 'USDCHF', td: 'USD/CHF', name: 'US Dollar / Swiss Franc'     },
+  { symbol: 'AUDUSD', td: 'AUD/USD', name: 'Australian Dollar / USD'     },
+  { symbol: 'USDCAD', td: 'USD/CAD', name: 'US Dollar / Canadian Dollar' },
+  { symbol: 'NZDUSD', td: 'NZD/USD', name: 'New Zealand Dollar / USD'    },
+  { symbol: 'EURJPY', td: 'EUR/JPY', name: 'Euro / Japanese Yen'         },
+  { symbol: 'GBPJPY', td: 'GBP/JPY', name: 'British Pound / Yen'         },
+  { symbol: 'EURGBP', td: 'EUR/GBP', name: 'Euro / British Pound'        },
+  { symbol: 'USDBRL', td: 'USD/BRL', name: 'US Dollar / Brazilian Real'  },
+];
+
+/* Populate source-classification sets now that both arrays are defined */
+TD_CRYPTO_SYMBOLS.forEach(s => _tdCryptoSet.add(s.symbol));
+TD_FOREX_SYMBOLS.forEach(s  => _tdForexSet.add(s.symbol));
 
 let _maAccount  = null;
 let _maConn       = null;
@@ -1048,10 +1089,11 @@ function saveCacheToDisk(sym) {
 
 function loadCacheFromDisk() {
   let n = 0;
-  const allSyms = [
+  const allSyms = [...new Set([
     ...Object.keys(_maSymMap),
     ...TD_CRYPTO_SYMBOLS.map(s => s.symbol),
-  ];
+    ...TD_FOREX_SYMBOLS.map(s => s.symbol),
+  ])];
   for (const sym of allSyms) {
     const file = path.join(OANDA_CACHE_DIR, sym + '.json');
     try {
@@ -1619,6 +1661,8 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',          instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
           { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
           { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+          /* Forex exotic — TwelveData cached */
+          { symbol:'USDBRL', instrument_name:'US Dollar / Brazilian Real', instrument_type:'Physical Currency', exchange:'TwelveData', source:'oanda' },
           /* Crypto — TwelveData cached */
           { symbol:'BNBUSDT',   instrument_name:'BNB / US Dollar',           instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
           { symbol:'XRPUSDT',   instrument_name:'XRP / US Dollar',           instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
@@ -1988,7 +2032,7 @@ async function refreshConditionWeights() {
   try {
     const { data, error } = await sbAdmin
       .from('sniper_signals')
-      .select('ctx_trend, ctx_session, ctx_volatility, setup_type, direction, pair, outcome')
+      .select('ctx_trend, ctx_session, ctx_volatility, setup_type, direction, pair, outcome, source')
       .in('outcome', ['tp1_hit', 'tp2_hit', 'sl_hit']);
     if (error || !data || data.length === 0) return;
 
@@ -2002,7 +2046,9 @@ async function refreshConditionWeights() {
 
     for (const s of data) {
       const win = s.outcome === 'tp1_hit' || s.outcome === 'tp2_hit';
-      const { ctx_trend: t, ctx_session: se, ctx_volatility: v, setup_type: st, direction: d, pair: p } = s;
+      const { ctx_trend: t, ctx_session: se, ctx_volatility: v, setup_type: st, direction: d, pair: p, source: src } = s;
+      /* Extract data source label from source field (scanner_oanda → oanda, scanner_td_forex → td_forex) */
+      const ds = src ? src.replace('scanner_', '') : null;
       bump(`${t}|${se}|${v}|${st}`, win);
       bump(`${t}|${se}|${st}`, win);
       bump(`${se}|${st}`, win);
@@ -2010,6 +2056,7 @@ async function refreshConditionWeights() {
       bump(se, win);
       bump(d, win);
       bump(p, win);
+      if (ds) bump(ds, win); /* data source as its own bucket: 'oanda', 'td_forex', 'td_crypto' */
     }
 
     for (const key of Object.keys(buckets)) {
@@ -2302,7 +2349,7 @@ app.get('/api/sniper/stats', requireAdmin, async (req, res) => {
   try {
     const { data: all, error } = await sbAdmin
       .from('sniper_signals')
-      .select('id, pair, timeframe, direction, entry, sl, tp1, tp2, sl_pips, tp1_pips, tp2_pips, rr1, rr2, confidence, reasoning, outcome, setup_type, ctx_trend, ctx_session, ctx_volatility, actual_price, bars_to_outcome, created_at');
+      .select('id, pair, timeframe, direction, entry, sl, tp1, tp2, sl_pips, tp1_pips, tp2_pips, rr1, rr2, confidence, reasoning, outcome, setup_type, ctx_trend, ctx_session, ctx_volatility, actual_price, bars_to_outcome, created_at, source');
     if (error) throw error;
 
     const resolved = all.filter(s => s.outcome && s.outcome !== 'pending');
@@ -2345,14 +2392,21 @@ app.get('/api/sniper/stats', requireAdmin, async (req, res) => {
       return map;
     }
 
+    /* Normalize source labels for groupBy (scanner_oanda → oanda, etc.) */
+    const resolvedTagged = resolved.map(s => ({
+      ...s,
+      data_source: s.source ? s.source.replace('scanner_', '') : 'unknown',
+    }));
+
     const by_context = {
-      trend:      groupBy(resolved, 'ctx_trend'),
-      session:    groupBy(resolved, 'ctx_session'),
-      volatility: groupBy(resolved, 'ctx_volatility'),
-      structure:  groupBy(resolved, 'setup_type'),
-      direction:  groupBy(resolved, 'direction'),
+      trend:      groupBy(resolvedTagged, 'ctx_trend'),
+      session:    groupBy(resolvedTagged, 'ctx_session'),
+      volatility: groupBy(resolvedTagged, 'ctx_volatility'),
+      structure:  groupBy(resolvedTagged, 'setup_type'),
+      direction:  groupBy(resolvedTagged, 'direction'),
     };
-    const by_pair = groupBy(resolved, 'pair');
+    const by_pair   = groupBy(resolvedTagged, 'pair');
+    const by_source = groupBy(resolvedTagged, 'data_source');
 
     /* Find best context combo */
     let bestCombo = { label: 'Not enough data', win_rate: 0, sample: 0 };
@@ -2391,7 +2445,7 @@ app.get('/api/sniper/stats', requireAdmin, async (req, res) => {
         confidence: s.confidence, created_at: s.created_at,
       }));
 
-    res.json({ overall, by_context, by_pair, best_combo: bestCombo, recent });
+    res.json({ overall, by_context, by_pair, by_source, best_combo: bestCombo, recent });
   } catch(e) {
     console.error('[Sniper Stats]', e);
     res.status(500).json({ error: 'Failed to fetch stats' });
@@ -2507,6 +2561,24 @@ async function load() {
       '</div>';
     }
 
+    /* Source breakdown */
+    if (d.by_source && Object.keys(d.by_source).length > 0) {
+      const srcColors = { oanda: '#c9a84c', td_forex: '#4ade80', td_crypto: '#60a5fa', unknown: '#64748b' };
+      const srcLabels = { oanda: 'OANDA (MetaAPI)', td_forex: 'TD Forex', td_crypto: 'TD Crypto', unknown: 'Legacy' };
+      html += '<div class="card" style="border-color:rgba(255,255,255,.08)"><h2>Performance by Data Source</h2><div style="display:flex;gap:12px;flex-wrap:wrap">' +
+        Object.entries(d.by_source).map(([k, v]) => {
+          const c = srcColors[k] || '#64748b';
+          const label = srcLabels[k] || k;
+          const wr = parseFloat(v.win_rate) || 0;
+          return '<div style="flex:1;min-width:160px;background:#0d0f18;border:1px solid ' + c + '22;border-radius:6px;padding:14px;text-align:center">' +
+            '<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">' + label + '</div>' +
+            '<div style="font-size:26px;font-weight:700;color:' + c + '">' + wr + '%</div>' +
+            '<div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:4px">' + v.wins + 'W / ' + v.losses + 'L &nbsp;·&nbsp; ' + v.total + ' resolved</div>' +
+          '</div>';
+        }).join('') +
+      '</div></div>';
+    }
+
     /* Context breakdown */
     html += '<div class="card"><h2>Context Breakdown — Edge Discovery</h2><div class="ctx-grid">' +
       renderCtxCard('Trend', d.by_context.trend) +
@@ -2598,7 +2670,7 @@ async function runSniperScanner() {
   try {
     const { data } = await sbAdmin.from('sniper_signals')
       .select('pair, timeframe, direction')
-      .eq('source', 'scanner')
+      .like('source', 'scanner%')
       .gte('created_at', dedupCutoff);
     recentSignals = data || [];
   } catch(e) { /* proceed without dedup */ }
@@ -2644,7 +2716,7 @@ async function runSniperScanner() {
           ctx_trend: sig.ctx_trend || null,
           ctx_session: sig.ctx_session || null,
           ctx_volatility: sig.ctx_volatility || null,
-          source: 'scanner',
+          source: 'scanner_' + getDataSource(sym),
         });
 
         if (dbErr) { errors++; console.error(`  ❌ ${sym} ${tf}:`, dbErr.message); }
@@ -2678,7 +2750,7 @@ app.get('/api/sniper/live', requireAdmin, async (req, res) => {
   try {
     const { data, error } = await sbAdmin.from('sniper_signals')
       .select('*')
-      .eq('source', 'scanner')
+      .like('source', 'scanner%')
       .eq('outcome', 'pending')
       .order('created_at', { ascending: false })
       .limit(50);
@@ -2716,6 +2788,10 @@ app.get('/admin/scanner', requireAdmin, (_req, res) => {
   .b-long{background:rgba(34,197,94,.12);color:#22c55e}
   .b-short{background:rgba(248,113,113,.12);color:#f87171}
   .b-pend{background:rgba(201,168,76,.12);color:#c9a84c}
+  .src-oanda{background:rgba(201,168,76,.1);color:#c9a84c}
+  .src-td_forex{background:rgba(22,163,74,.1);color:#4ade80}
+  .src-td_crypto{background:rgba(37,99,235,.1);color:#60a5fa}
+  .src-unknown{background:rgba(100,116,139,.1);color:#64748b}
   .conf-high{color:#22c55e} .conf-med{color:#c9a84c} .conf-low{color:#f87171}
   .btn{background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit;margin-left:8px}
   .btn:disabled{opacity:.4;cursor:not-allowed}
@@ -2731,7 +2807,7 @@ app.get('/admin/scanner', requireAdmin, (_req, res) => {
 <body>
 <h1>🔄 Sniper Scanner Dashboard</h1>
 <p class="subtitle">
-  Automated 24/7 signal scanner across all OANDA instruments
+  Automated 24/7 signal scanner — OANDA + TwelveData Crypto + TwelveData Forex
   <button class="btn" id="scanBtn" onclick="runScan()">Run Scan Now</button>
   <button class="btn secondary" id="checkBtn" onclick="runCheck()">Check Outcomes</button>
 </p>
@@ -2780,15 +2856,18 @@ async function loadLive() {
       return;
     }
     let html = '<div style="overflow-x:auto"><table><thead><tr>' +
-      '<th>Pair</th><th>TF</th><th>Dir</th><th>Entry</th><th>SL</th><th>SL Pips</th><th>TP1</th><th>TP2</th>' +
+      '<th>Pair</th><th>TF</th><th>Dir</th><th>Source</th><th>Entry</th><th>SL</th><th>SL Pips</th><th>TP1</th><th>TP2</th>' +
       '<th>RR</th><th>Conf</th><th>Setup</th><th>Trend</th><th>Session</th><th>Vol</th><th>Time</th>' +
     '</tr></thead><tbody>';
     sigs.forEach(s => {
       const dir = (s.direction||'').toLowerCase();
+      const ds  = s.source ? s.source.replace('scanner_','') : 'unknown';
+      const dsLabel = ds === 'td_forex' ? 'TD Forex' : ds === 'td_crypto' ? 'TD Crypto' : ds === 'oanda' ? 'OANDA' : ds;
       html += '<tr>' +
         '<td class="pair-badge">' + (s.pair||'—') + '</td>' +
         '<td>' + (s.timeframe||'—') + '</td>' +
         '<td><span class="badge b-' + dir + '">' + dir.toUpperCase() + '</span></td>' +
+        '<td><span class="badge src-' + ds + '">' + dsLabel + '</span></td>' +
         '<td>' + (s.entry||'—') + '</td>' +
         '<td>' + (s.sl||'—') + '</td>' +
         '<td>' + (s.sl_pips||'—') + '</td>' +
@@ -3178,6 +3257,8 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
   #refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
   #td-refresh-btn{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px}
   #td-refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
+  #td-forex-refresh-btn{background:linear-gradient(135deg,#1a3d2e,#16a34a);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px}
+  #td-forex-refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -3222,6 +3303,20 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
   <table>
     <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th></tr></thead>
     <tbody id="td-table"></tbody>
+  </table>
+</div>
+<div class="card" style="border-color:rgba(22,163,74,0.3)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <h2 style="color:rgba(74,222,128,0.85);margin:0">TwelveData Forex Cache</h2>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="td-forex-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
+      <span id="td-forex-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Refreshing…</span>
+      <button id="td-forex-refresh-btn" onclick="triggerTDForexRefresh()">Force TD Forex Refresh</button>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th></tr></thead>
+    <tbody id="td-forex-table"></tbody>
   </table>
 </div>
 <script>
@@ -3306,26 +3401,39 @@ async function poll() {
     else { tdActiveInfo.style.display = 'none'; }
     document.getElementById('td-refresh-btn').disabled = !!d.tdCryptoRefreshing;
 
+    function renderTDTable(section, tableId, accentColor, refreshingFlag, statsId, activeInfoId, refreshBtnId) {
+      const loaded = section.loaded || 0;
+      const total  = section.total  || 0;
+      document.getElementById(statsId).textContent = loaded + ' / ' + total + ' symbols loaded';
+      const activeEl = document.getElementById(activeInfoId);
+      if (refreshingFlag) { activeEl.style.display = 'inline-flex'; } else { activeEl.style.display = 'none'; }
+      document.getElementById(refreshBtnId).disabled = !!refreshingFlag;
+
+      const allRows = [...(section.symbols || []), ...(section.notStarted || []).map(s => ({ sym: s, tfs: {} }))];
+      document.getElementById(tableId).innerHTML = allRows.map(entry => {
+        const sym = entry.sym || entry;
+        const tfs = entry.tfs || {};
+        const cells = TD_TFS.map(tf => {
+          const info = tfs[tf];
+          if (!info || !info.candles) return '<td style="color:rgba(255,255,255,0.2)">—</td>';
+          return '<td>' + info.candles.toLocaleString() + '</td>';
+        }).join('');
+        const lastCandle = (() => {
+          let latest = null;
+          TD_TFS.forEach(tf => { if (tfs[tf]?.lastCandle) { const dt = new Date(tfs[tf].lastCandle); if (!latest || dt > latest) latest = dt; } });
+          return latest ? latest.toLocaleTimeString() : '—';
+        })();
+        const hasTfs = Object.keys(tfs).length > 0;
+        const badge = hasTfs
+          ? '<span class="badge" style="background:' + accentColor + '22;color:' + accentColor + '">loaded</span>'
+          : '<span class="badge badge-empty">pending</span>';
+        return '<tr><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td></tr>';
+      }).join('') || '<tr><td colspan="7" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No data yet</td></tr>';
+    }
+
     const tdAllSyms = [...(td.symbols || []), ...(td.notStarted || []).map(s => ({ sym: s, tfs: {} }))];
-    document.getElementById('td-table').innerHTML = tdAllSyms.map(entry => {
-      const sym = entry.sym || entry;
-      const tfs = entry.tfs || {};
-      const cells = TD_TFS.map(tf => {
-        const info = tfs[tf];
-        if (!info || !info.candles) return '<td style="color:rgba(255,255,255,0.2)">—</td>';
-        return '<td>' + info.candles.toLocaleString() + '</td>';
-      }).join('');
-      const lastCandle = (() => {
-        let latest = null;
-        TD_TFS.forEach(tf => { if (tfs[tf]?.lastCandle) { const dt = new Date(tfs[tf].lastCandle); if (!latest || dt > latest) latest = dt; } });
-        return latest ? latest.toLocaleTimeString() : '—';
-      })();
-      const hasTfs = Object.keys(tfs).length > 0;
-      const badge = hasTfs
-        ? '<span class="badge" style="background:rgba(37,99,235,0.15);color:#60a5fa">loaded</span>'
-        : '<span class="badge badge-empty">pending</span>';
-      return '<tr><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td></tr>';
-    }).join('') || '<tr><td colspan="7" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No TD crypto data yet</td></tr>';
+    renderTDTable(d.tdCrypto || {}, 'td-table',       '#60a5fa', d.tdCryptoRefreshing, 'td-stats',       'td-active-info',       'td-refresh-btn');
+    renderTDTable(d.tdForex  || {}, 'td-forex-table', '#4ade80', d.tdForexRefreshing,  'td-forex-stats', 'td-forex-active-info', 'td-forex-refresh-btn');
 
   } catch(e) { console.error(e); }
 }
@@ -3344,6 +3452,13 @@ async function triggerTDRefresh() {
   poll();
 }
 
+async function triggerTDForexRefresh() {
+  const btn = document.getElementById('td-forex-refresh-btn');
+  btn.disabled = true;
+  await fetch('/admin/td-forex-refresh', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  poll();
+}
+
 poll();
 setInterval(poll, 2000);
 </script>
@@ -3359,6 +3474,11 @@ app.post('/admin/cache-refresh', requireAdmin, (_req, res) => {
 app.post('/admin/td-crypto-refresh', requireAdmin, (_req, res) => {
   refreshTDCryptoCache(false).catch(e => console.error('[TDCrypto] Manual refresh error:', e.message));
   res.json({ ok: true, message: 'TD Crypto full refresh started' });
+});
+
+app.post('/admin/td-forex-refresh', requireAdmin, (_req, res) => {
+  refreshTDForexCache(false).catch(e => console.error('[TDForex] Manual refresh error:', e.message));
+  res.json({ ok: true, message: 'TD Forex full refresh started' });
 });
 
 app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
@@ -3390,8 +3510,9 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
     return { done, empty };
   };
 
-  const oanda = buildSymList(Object.keys(_maSymMap), TIMEFRAMES);
+  const oanda    = buildSymList(Object.keys(_maSymMap), TIMEFRAMES);
   const tdCrypto = buildSymList(TD_CRYPTO_SYMBOLS.map(s => s.symbol), TD_CRYPTO_TFS);
+  const tdForex  = buildSymList(TD_FOREX_SYMBOLS.map(s => s.symbol),  TD_CRYPTO_TFS);
 
   res.json({
     metaapi: { status: _maStatus, lastSeen: _maLastSeen ? new Date(_maLastSeen).toISOString() : null, retryCount: _maRetry },
@@ -3401,8 +3522,9 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
       pending:    Object.values(_streamStatus).filter(v => v === 'pending').length,
       details:    _streamStatus,
     },
-    refreshing:        _cacheRefreshing,
+    refreshing:         _cacheRefreshing,
     tdCryptoRefreshing: _tdCryptoRefreshing,
+    tdForexRefreshing:  _tdForexRefreshing,
     total:   Object.keys(_maSymMap).length,
     loaded:  oanda.done.length,
     empty:   oanda.empty.length,
@@ -3414,6 +3536,12 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
       loaded:     tdCrypto.done.length,
       symbols:    tdCrypto.done,
       notStarted: tdCrypto.empty,
+    },
+    tdForex: {
+      total:      TD_FOREX_SYMBOLS.length,
+      loaded:     tdForex.done.length,
+      symbols:    tdForex.done,
+      notStarted: tdForex.empty,
     },
   });
 });
@@ -3874,6 +4002,9 @@ app.listen(PORT, () => {
   /* TwelveData crypto — load from disk, then fetch fresh in background */
   setTimeout(() => refreshTDCryptoCache(false), 5000);
 
+  /* TwelveData forex — staggered 10s after crypto to avoid API rate limit overlap */
+  setTimeout(() => refreshTDForexCache(false), 10000);
+
   if (METAAPI_TOKEN) {
     setTimeout(() => {
       console.log('[MetaApi] Initializing OANDA connection...');
@@ -3917,10 +4048,16 @@ app.listen(PORT, () => {
     console.log('\n📊 [Scheduled] Refreshing TwelveData crypto cache...');
     refreshTDCryptoCache(true);
   });
+  /* TwelveData forex — incremental refresh every 12 hours (offset 30min to avoid collision) */
+  cron.schedule('30 */12 * * *', () => {
+    console.log('\n📊 [Scheduled] Refreshing TwelveData forex cache...');
+    refreshTDForexCache(true);
+  });
 
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
   console.log('🔄 Sniper scanner: Every 30 minutes');
   console.log('📈 SMA crossover scanner: Every 10 minutes');
   console.log('📊 TwelveData crypto cache: Every 12 hours');
+  console.log('📊 TwelveData forex cache:  Every 12 hours (offset 30m)');
 });
