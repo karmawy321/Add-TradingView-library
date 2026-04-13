@@ -789,7 +789,101 @@ function detectCandlestickPatterns(candles) {
 }
 
 
-/* ── 18. MASTER PATTERN DETECTOR ──
+/* ── 18. HARMONIC PATTERNS ──
+   Detects Gartley, Bat, Butterfly, Crab from the last 5 alternating swing points.
+   XABCD structure: each leg checked against pattern-specific Fibonacci ratio tolerances.
+   D point = PRZ (Potential Reversal Zone). */
+
+const HARMONIC_DEFS = [
+  { name: 'Gartley',   AB_XA: [0.618, 0.618], BC_AB: [0.382, 0.886], CD_XA: [0.786, 0.786], confidence: 0.72 },
+  { name: 'Bat',       AB_XA: [0.382, 0.500], BC_AB: [0.382, 0.886], CD_XA: [0.886, 0.886], confidence: 0.75 },
+  { name: 'Butterfly', AB_XA: [0.786, 0.786], BC_AB: [0.382, 0.886], CD_XA: [1.272, 1.618], confidence: 0.70 },
+  { name: 'Crab',      AB_XA: [0.382, 0.618], BC_AB: [0.382, 0.886], CD_XA: [1.618, 1.618], confidence: 0.73 },
+];
+const HARM_TOL = 0.06; // 6% tolerance on each ratio check
+
+function _ratioOk(ratio, min, max) {
+  return ratio >= min * (1 - HARM_TOL) && ratio <= max * (1 + HARM_TOL);
+}
+
+function detectHarmonics(candles, swings) {
+  const results  = [];
+  const lastClose = +candles[candles.length - 1].c;
+
+  // Merge highs and lows into one time-ordered sequence
+  const all = [
+    ...swings.highs.map(s => ({ ...s, kind: 'high' })),
+    ...swings.lows.map(s =>  ({ ...s, kind: 'low'  })),
+  ].sort((a, b) => a.index - b.index);
+
+  // Build strictly alternating sequence — when two same-kind swings are adjacent, keep the more extreme
+  const seq = [];
+  for (const sw of all) {
+    if (seq.length === 0) { seq.push(sw); continue; }
+    const last = seq[seq.length - 1];
+    if (last.kind === sw.kind) {
+      if ((sw.kind === 'high' && sw.price > last.price) ||
+          (sw.kind === 'low'  && sw.price < last.price)) {
+        seq[seq.length - 1] = sw;
+      }
+    } else {
+      seq.push(sw);
+    }
+  }
+
+  if (seq.length < 5) return results;
+
+  // Only check the most recent 5-point window
+  const [X, A, B, C, D] = seq.slice(-5);
+
+  const isBullish = X.kind === 'low'  && A.kind === 'high' && B.kind === 'low'  && C.kind === 'high' && D.kind === 'low';
+  const isBearish = X.kind === 'high' && A.kind === 'low'  && B.kind === 'high' && C.kind === 'low'  && D.kind === 'high';
+
+  if (!isBullish && !isBearish) return results;
+
+  // Leg sizes — all positive
+  const XA = isBullish ? A.price - X.price : X.price - A.price;
+  const AB = isBullish ? A.price - B.price : B.price - A.price;
+  const BC = isBullish ? C.price - B.price : B.price - C.price;
+  const CD = isBullish ? C.price - D.price : D.price - C.price;
+
+  if (XA <= 0 || AB <= 0 || BC <= 0 || CD <= 0) return results;
+
+  const abXa = AB / XA;
+  const bcAb = BC / AB;
+  const cdXa = CD / XA;
+
+  for (const def of HARMONIC_DEFS) {
+    if (!_ratioOk(abXa, def.AB_XA[0], def.AB_XA[1])) continue;
+    if (!_ratioOk(bcAb, def.BC_AB[0], def.BC_AB[1])) continue;
+    if (!_ratioOk(cdXa, def.CD_XA[0], def.CD_XA[1])) continue;
+
+    // Confirmed: price has moved 5%+ of XA away from D in the reversal direction
+    const confirmed = isBullish
+      ? lastClose > D.price && (lastClose - D.price) / XA > 0.05
+      : lastClose < D.price && (D.price - lastClose) / XA > 0.05;
+
+    // In PRZ: last close within 1.5% of D point
+    const inPRZ = Math.abs(lastClose - D.price) / Math.max(D.price, 0.0001) < 0.015;
+
+    results.push({
+      name:       def.name,
+      type:       isBullish ? 'bullish' : 'bearish',
+      confirmed,
+      inPRZ,
+      priceTarget: C.price,       // first meaningful target after D reversal
+      neckline:    D.price,       // D = PRZ level
+      points:     { X: X.price, A: A.price, B: B.price, C: C.price, D: D.price },
+      ratios:     { AB_XA: +abXa.toFixed(3), BC_AB: +bcAb.toFixed(3), CD_XA: +cdXa.toFixed(3) },
+      confidence: def.confidence,
+    });
+  }
+
+  return results;
+}
+
+
+/* ── 19. MASTER PATTERN DETECTOR ──
    Runs all pattern checks and returns a unified array. */
 
 function detectPatterns(candles, swings) {
@@ -799,6 +893,7 @@ function detectPatterns(candles, swings) {
   patterns.push(...detectTriangle(candles, swings));
   patterns.push(...detectBroadening(candles, swings));
   patterns.push(...detectCandlestickPatterns(candles));
+  patterns.push(...detectHarmonics(candles, swings));
   return patterns;
 }
 
@@ -948,9 +1043,11 @@ function sniperSignal(candles, pair, timeframe) {
 
   // Setup type — base classification then pattern override
   let setupType = classifySetup(structure, swings, parsed);
+  const HARMONIC_NAMES = ['Gartley', 'Bat', 'Butterfly', 'Crab'];
   const hasConfirmedReversal = patterns.some(p =>
     p.confirmed &&
-    ['Head & Shoulders', 'Inverse Head & Shoulders', 'Double Top', 'Double Bottom'].includes(p.name)
+    ['Head & Shoulders', 'Inverse Head & Shoulders', 'Double Top', 'Double Bottom',
+     ...HARMONIC_NAMES].includes(p.name)
   );
   if (hasConfirmedReversal) {
     setupType = 'reversal';
@@ -984,7 +1081,16 @@ function sniperSignal(candles, pair, timeframe) {
       priceTarget: p.priceTarget != null ? +p.priceTarget.toFixed(decimals) : null,
       neckline:    p.neckline    != null ? +p.neckline.toFixed(decimals)    : null,
       confidence:  p.confidence,
+      // Harmonic-specific fields (undefined for non-harmonic patterns)
+      inPRZ:  p.inPRZ  != null ? p.inPRZ  : undefined,
+      points: p.points != null ? Object.fromEntries(
+        Object.entries(p.points).map(([k, v]) => [k, +v.toFixed(decimals)])
+      ) : undefined,
+      ratios: p.ratios != null ? p.ratios : undefined,
     })),
+    // Harmonic PRZ flag — true if price is currently inside a PRZ
+    harmonic_prz: patterns.some(p => p.inPRZ),
+
     // Context tags
     ctx_trend:      ctx.trend,
     ctx_session:    ctx.session,
