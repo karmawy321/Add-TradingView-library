@@ -2662,19 +2662,19 @@ async function runCheck() {
 async function purgeAll() {
   const count = document.querySelector('.stat .val');
   const total = count ? count.textContent : '?';
-  if (!confirm('⚠️ This will permanently delete ALL ' + total + ' sniper signals and reset condition weights.\n\nThis cannot be undone. Continue?')) return;
-  if (!confirm('🔴 FINAL CONFIRM: Delete everything and start fresh?')) return;
+  if (!confirm('WARNING: This will permanently delete ALL ' + total + ' sniper signals and reset condition weights.\n\nThis cannot be undone. Continue?')) return;
+  if (!confirm('FINAL CONFIRM: Delete everything and start fresh?')) return;
   const btn = document.getElementById('purgeBtn');
   btn.disabled = true; btn.textContent = 'Purging...';
   try {
     const r = await fetch('/api/sniper/purge', { method: 'DELETE', headers: H });
     const d = await r.json();
     if (d.success) {
-      alert('✅ Purged ' + (d.deleted || 'all') + ' signals. Dashboard is clean.');
+      alert('Purged ' + (d.deleted || 'all') + ' signals. Dashboard is clean.');
       await load();
     } else { alert('Error: ' + (d.error || 'Unknown')); }
   } catch(e) { alert('Error: ' + e.message); }
-  btn.disabled = false; btn.textContent = '🗑️ Purge All Data';
+  btn.disabled = false; btn.textContent = 'Purge All Data';
 }
 
 load();
