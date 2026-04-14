@@ -7953,8 +7953,8 @@ function initDrawEvents(){
                    origP2:{bi:bpd.p2.bi,price:bpd.p2.price}};
           e.preventDefault(); return;
         }
-        /* Body hit */
-        if(co.x>=rb.x1&&co.x<=rb.x2&&co.y>=rb.y1&&co.y<=rb.y2){
+        /* Body hit — use normalized bounding box */
+        if(co.x>=rb.bx1&&co.x<=rb.bx2&&co.y>=rb.by1&&co.y<=rb.by2){
           _bpDrag={idx:bpi,point:'body',startX:co.x,startY:co.y,
                    origP1:{bi:bpd.p1.bi,price:bpd.p1.price},
                    origP2:{bi:bpd.p2.bi,price:bpd.p2.price}};
@@ -8206,8 +8206,8 @@ function initDrawEvents(){
           if(Math.sqrt(_dp1x*_dp1x+_dp1y*_dp1y)<=_HR3||Math.sqrt(_dp2x*_dp2x+_dp2y*_dp2y)<=_HR3){
             cv.style.cursor='nwse-resize'; cursorSet=true; break;
           }
-          /* Check body hit */
-          if(hoverPoint.x>=_rb2.x1&&hoverPoint.x<=_rb2.x2&&hoverPoint.y>=_rb2.y1&&hoverPoint.y<=_rb2.y2){
+          /* Check body hit — use normalized bounding box */
+          if(hoverPoint.x>=_rb2.bx1&&hoverPoint.x<=_rb2.bx2&&hoverPoint.y>=_rb2.by1&&hoverPoint.y<=_rb2.by2){
             cv.style.cursor='grab'; cursorSet=true; break;
           }
         }
@@ -8959,10 +8959,11 @@ function drawOne(ctx,d,co,prev){
     var x2=PAD.l+(d.p2.bi-co.si)*co.barW;
     var y2=cpY(d.p2.price,co);
     var gw=x2-x1, gh=y2-y1;
-    if(gw<2||gh<2){d._rb=null;ctx.restore();return;}
+    if(Math.abs(gw)<2||Math.abs(gh)<2){d._rb=null;ctx.restore();return;}
 
     var bw=gw/bars.length;
 
+    /* gSY works for both normal and mirrored (negative gh) naturally */
     function gSY(v){return y1+((origPmx-v)/origPrng)*gh;}
 
     ctx.setLineDash([]);
@@ -8970,23 +8971,23 @@ function drawOne(ctx,d,co,prev){
       var isUp=c.c>=c.o;
       var gcx=x1+(ii+0.5)*bw;
       ctx.strokeStyle=isUp?'rgba(201,168,76,.95)':'rgba(201,168,76,.55)'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(gcx,gSY(c.h)); ctx.lineTo(gcx,gSY(c.l)); ctx.stroke();
-      var top=gSY(Math.max(c.o,c.c)), cbh=Math.max(1,gSY(Math.min(c.o,c.c))-top);
+      /* Wick — min/max handles both normal and mirrored gh */
+      var wyH=gSY(c.h), wyL=gSY(c.l);
+      ctx.beginPath(); ctx.moveTo(gcx,Math.min(wyH,wyL)); ctx.lineTo(gcx,Math.max(wyH,wyL)); ctx.stroke();
+      /* Body — use abs so it works when gh is negative */
+      var sy1=gSY(Math.max(c.o,c.c)), sy2=gSY(Math.min(c.o,c.c));
+      var top=Math.min(sy1,sy2), cbh=Math.max(1,Math.abs(sy2-sy1));
       ctx.fillStyle=isUp?'rgba(201,168,76,.55)':'rgba(201,168,76,.18)';
-      ctx.fillRect(gcx-bw*.38,top,bw*.76,cbh);
+      ctx.fillRect(gcx-Math.abs(bw)*.38,top,Math.abs(bw)*.76,cbh);
     });
 
-    /* Border box */
-    ctx.strokeStyle='rgba(201,168,76,.28)'; ctx.lineWidth=0.8; ctx.setLineDash([3,3]);
-    ctx.strokeRect(x1,y1,gw,gh);
-    ctx.setLineDash([]);
-
-    /* Label */
+    /* Label — anchor to whichever corner is top-left */
+    var labelX=Math.min(x1,x2), labelY=Math.min(y1,y2);
     ctx.font='bold 8px DM Mono'; ctx.textAlign='left';
     ctx.fillStyle='rgba(201,168,76,.6)';
-    ctx.fillText('◈ '+bars.length+' bars',x1+3,y1-3);
+    ctx.fillText('◈ '+bars.length+' bars',labelX+3,labelY-3);
 
-    /* 2 circle handles — p1 top-left, p2 bottom-right */
+    /* 2 circle handles at actual p1/p2 positions */
     var HR=6;
     [[x1,y1],[x2,y2]].forEach(function(h){
       ctx.beginPath(); ctx.arc(h[0],h[1],HR,0,Math.PI*2);
@@ -8994,8 +8995,11 @@ function drawOne(ctx,d,co,prev){
       ctx.strokeStyle='rgba(201,168,76,.9)'; ctx.lineWidth=1.5; ctx.setLineDash([]); ctx.stroke();
     });
 
-    /* Store render bounds for hit testing */
-    d._rb={x1:x1,y1:y1,x2:x2,y2:y2,gw:gw,gh:gh,HR:HR};
+    /* Store render bounds — x1/y1/x2/y2 are actual handle positions,
+       bx1/by1/bx2/by2 are the normalized bounding box for body hit testing */
+    d._rb={x1:x1,y1:y1,x2:x2,y2:y2,
+           bx1:Math.min(x1,x2),by1:Math.min(y1,y2),
+           bx2:Math.max(x1,x2),by2:Math.max(y1,y2),HR:HR};
     ctx.restore();return;
   }
 
