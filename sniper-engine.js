@@ -125,7 +125,13 @@ function findOrderBlock(candles, structure) {
       const isBearish = currClose < currOpen;
       const strongBullish = nextClose > nextOpen && nextBody > threshold;
       if (isBearish && strongBullish && nextBody > currBody) {
-        return { type: 'bullish', high: currOpen, low: +curr.l, index: i };
+        const ob = { type: 'bullish', high: currOpen, low: +curr.l, index: i };
+        // Mitigation check: skip if price already broke through OB zone
+        let mitigated = false;
+        for (let j = i + 2; j < len - 1; j++) {
+          if (+candles[j].c < ob.low) { mitigated = true; break; }
+        }
+        if (!mitigated) return ob;
       }
     }
     if (structure === 'bearish' || structure === 'ranging') {
@@ -133,7 +139,13 @@ function findOrderBlock(candles, structure) {
       const isBullish = currClose > currOpen;
       const strongBearish = nextClose < nextOpen && nextBody > threshold;
       if (isBullish && strongBearish && nextBody > currBody) {
-        return { type: 'bearish', high: +curr.h, low: currOpen, index: i };
+        const ob = { type: 'bearish', high: +curr.h, low: currOpen, index: i };
+        // Mitigation check: skip if price already broke through OB zone
+        let mitigated = false;
+        for (let j = i + 2; j < len - 1; j++) {
+          if (+candles[j].c > ob.high) { mitigated = true; break; }
+        }
+        if (!mitigated) return ob;
       }
     }
   }
@@ -241,9 +253,8 @@ function getTrend(candles) {
   const sma50 = calcSMA(candles, Math.min(50, candles.length));
   const lastClose = +candles[candles.length - 1].c;
 
-  if (!sma20 || !sma50) {
-    return lastClose > sma20 ? 'uptrend' : 'downtrend';
-  }
+  if (!sma20) return 'ranging'; // Insufficient data for trend
+  if (!sma50) return lastClose > sma20 ? 'uptrend' : 'downtrend';
 
   if (sma20 > sma50 && lastClose > sma20) return 'uptrend';
   if (sma20 < sma50 && lastClose < sma20) return 'downtrend';
@@ -991,14 +1002,13 @@ function sniperSignal(candles, pair, timeframe) {
   if (structure === 'bullish') direction = 'long';
   else if (structure === 'bearish') direction = 'short';
   else {
-    // Ranging — use linear regression slope for a data-driven tiebreaker
+    // Ranging — use already-computed linear regression slope as data-driven tiebreaker
     // instead of defaulting to long when both structure and SMA trend are inconclusive
-    const _slope = getTrendSlope(parsed);
-    if (ctx.trend === 'downtrend' || _slope.direction === 'downtrend') direction = 'short';
-    else if (ctx.trend === 'uptrend' || _slope.direction === 'uptrend') direction = 'long';
+    if (ctx.trend === 'downtrend' || trendSlope.direction === 'downtrend') direction = 'short';
+    else if (ctx.trend === 'uptrend' || trendSlope.direction === 'uptrend') direction = 'long';
     else {
       // Truly flat — use micro-slope sign as final tiebreaker
-      direction = _slope.slope >= 0 ? 'long' : 'short';
+      direction = trendSlope.slope >= 0 ? 'long' : 'short';
     }
   }
 

@@ -24,6 +24,8 @@ function runBacktest(candles, opts = {}) {
   const minConf     = opts.minConfidence || 50;
   const startEquity = opts.startEquity   || 10000;
   const riskPct     = opts.riskPct       || 0.01; // 1% risk per trade
+  const btPair      = opts.pair          || 'BT';
+  const btTimeframe = opts.timeframe     || '1h';
 
   const MIN_CANDLES = LOOKBACK + 20;
   if (!candles || candles.length < MIN_CANDLES) {
@@ -73,7 +75,7 @@ function runBacktest(candles, opts = {}) {
 
     /* ── Run sniper on lookback window ── */
     const window = candles.slice(i - LOOKBACK, i + 1);
-    const sig    = sniperSignal(window, 'BT', 'bt');
+    const sig    = sniperSignal(window, btPair, btTimeframe);
     if (sig.error || sig.confidence < minConf) continue;
 
     /* ── Compute RR (sniperSignal gives raw prices) ── */

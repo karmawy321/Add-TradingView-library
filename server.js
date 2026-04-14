@@ -2061,23 +2061,29 @@ const { runBacktest } = require('./backtest-engine');
    exact condition has historically performed on this platform's signals. */
 
 let conditionWeights = {};
-const CW_MIN_SAMPLE  = 10; // min resolved signals to trust a bucket
+let conditionWeightsRecent = {};  // Fast window (recent signals only)
+const CW_MIN_SAMPLE  = 10; // min resolved signals to trust a baseline bucket
+const CW_RECENT_MIN  = 5;  // lower threshold for recent window
+const CW_RECENT_DAYS = 14; // fast pulse window = last 14 days
+const CW_DEVIATION   = 0.10; // 10pp deviation triggers pulse adjustment
 
 async function refreshConditionWeights() {
   if (!sbAdmin) return;
   try {
     const { data, error } = await sbAdmin
       .from('sniper_signals')
-      .select('ctx_trend, ctx_session, ctx_volatility, setup_type, direction, pair, outcome, source')
+      .select('ctx_trend, ctx_session, ctx_volatility, setup_type, direction, pair, outcome, source, created_at')
       .in('outcome', ['tp1_hit', 'tp2_hit', 'sl_hit']);
     if (error || !data || data.length === 0) return;
 
+    const recentCutoff = Date.now() - CW_RECENT_DAYS * 24 * 3600 * 1000;
     const buckets = {};
-    const bump = (key, win) => {
+    const recentBuckets = {};
+    const bump = (store, key, win) => {
       if (!key || key.includes('null') || key.includes('undefined')) return;
-      if (!buckets[key]) buckets[key] = { wins: 0, total: 0 };
-      buckets[key].total++;
-      if (win) buckets[key].wins++;
+      if (!store[key]) store[key] = { wins: 0, total: 0 };
+      store[key].total++;
+      if (win) store[key].wins++;
     };
 
     for (const s of data) {
@@ -2085,23 +2091,29 @@ async function refreshConditionWeights() {
       const { ctx_trend: t, ctx_session: se, ctx_volatility: v, setup_type: st, direction: d, pair: p, source: src } = s;
       /* Extract data source label from source field (scanner_oanda → oanda, scanner_td_forex → td_forex) */
       const ds = src ? src.replace('scanner_', '') : null;
-      bump(`${t}|${se}|${v}|${st}`, win);
-      bump(`${t}|${se}|${st}`, win);
-      bump(`${se}|${st}`, win);
-      bump(`${t}|${st}`, win);
-      bump(se, win);
-      bump(d, win);
-      bump(p, win);
-      if (ds) bump(ds, win); /* data source as its own bucket: 'oanda', 'td_forex', 'td_crypto' */
+      const isRecent = new Date(s.created_at).getTime() >= recentCutoff;
+
+      const keys = [
+        `${t}|${se}|${v}|${st}`, `${t}|${se}|${st}`, `${se}|${st}`, `${t}|${st}`, se, d, p,
+      ];
+      if (ds) keys.push(ds);
+
+      for (const k of keys) {
+        bump(buckets, k, win);
+        if (isRecent) bump(recentBuckets, k, win);
+      }
     }
 
-    for (const key of Object.keys(buckets)) {
-      const b = buckets[key];
-      b.win_rate = b.total > 0 ? +(b.wins / b.total).toFixed(3) : 0;
+    for (const store of [buckets, recentBuckets]) {
+      for (const key of Object.keys(store)) {
+        const b = store[key];
+        b.win_rate = b.total > 0 ? +(b.wins / b.total).toFixed(3) : 0;
+      }
     }
 
     conditionWeights = buckets;
-    console.log(`[ConditionWeights] Refreshed: ${Object.keys(buckets).length} buckets from ${data.length} resolved signals`);
+    conditionWeightsRecent = recentBuckets;
+    console.log(`[ConditionWeights] Refreshed: ${Object.keys(buckets).length} baseline + ${Object.keys(recentBuckets).length} recent buckets from ${data.length} resolved signals`);
   } catch(e) {
     console.error('[ConditionWeights] Refresh error:', e.message);
   }
@@ -2125,7 +2137,26 @@ function applyConditionWeight(sig) {
   for (const key of keys) {
     const b = conditionWeights[key];
     if (!b || b.total < CW_MIN_SAMPLE) continue;
-    const adj = _cwAdj(b.win_rate);
+    let adj = _cwAdj(b.win_rate);
+
+    // Dual-window pulse: if recent window deviates significantly from baseline,
+    // apply a capped secondary adjustment (±5 max) to catch regime shifts
+    const recent = conditionWeightsRecent[key];
+    if (recent && recent.total >= CW_RECENT_MIN) {
+      const deviation = recent.win_rate - b.win_rate;
+      if (Math.abs(deviation) >= CW_DEVIATION) {
+        const pulseAdj = Math.max(-5, Math.min(5, Math.round(deviation * 20)));
+        adj += pulseAdj;
+        sig.condition_pulse = {
+          recent_wr: +(recent.win_rate * 100).toFixed(1),
+          baseline_wr: +(b.win_rate * 100).toFixed(1),
+          deviation_pp: +(deviation * 100).toFixed(1),
+          pulse_adj: pulseAdj,
+          recent_n: recent.total,
+        };
+      }
+    }
+
     sig.confidence = Math.min(95, Math.max(15, sig.confidence + adj));
     sig.condition_edge = { key, win_rate: +(b.win_rate * 100).toFixed(1), sample: b.total, adj };
     return sig;
@@ -2381,6 +2412,7 @@ app.delete('/api/sniper/purge', requireAdmin, async (req, res) => {
 
     // Reset in-memory condition weights
     conditionWeights = {};
+    conditionWeightsRecent = {};
     console.log(`🗑️ [Sniper Purge] Deleted ${count || 'all'} signals, condition weights reset.`);
     res.json({ success: true, deleted: count || 0, message: 'All sniper signals purged. Condition weights reset.' });
   } catch(e) {
