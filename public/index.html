@@ -5179,8 +5179,8 @@ function renderChart() {
 
   /* Watermarks - 5 positions */
   chartCtx.save(); 
-  chartCtx.font='bold 11px DM Mono'; 
-  chartCtx.fillStyle='rgba(201,168,76,0.04)';
+  chartCtx.font='bold 11px DM Mono';
+  chartCtx.fillStyle='rgba(201,168,76,0.09)';
   
   /* Central upper left */
   chartCtx.textAlign='left'; 
@@ -7630,7 +7630,9 @@ function handleSingle(g) {
 
 function setCursor(cur) {
   var cv=document.getElementById('chartCanvas');
-  if(cv) cv.style.cursor=cur||'crosshair';
+  /* Hide native cursor for all crosshair/drawing tools — custom dot handles it.
+     Keep native cursor only for arrow_cur tool (explicitly 'default'). */
+  if(cv) cv.style.cursor=(cur==='crosshair')?'none':(cur||'none');
 }
 
 /* ── Shared coord helper — PAD MUST match renderChart ── */
@@ -8217,7 +8219,7 @@ function initDrawEvents(){
           var _W2=cv.width/_dpr2, _H2=cv.height/_dpr2;
           if(_cx2>_W2-75)       cv.style.cursor='ns-resize';
           else if(_cy2>_H2-56)  cv.style.cursor='ew-resize';
-          else                   cv.style.cursor=activeItem?(activeItem.cur||'crosshair'):'crosshair';
+          else cv.style.cursor=(activeItem&&activeItem.cur==='default')?'default':'none';
         }
       }
       _rafPending=true;
@@ -8228,7 +8230,7 @@ function initDrawEvents(){
   /* mouseup on document to catch releases outside canvas */
   document.addEventListener('mouseup',function(e){
     /* Release ghost drag */
-    if(_bpDrag!==null){ _bpDrag=null; cv.style.cursor=activeItem?(activeItem.cur||'crosshair'):'crosshair'; renderChart(); return; }
+    if(_bpDrag!==null){ _bpDrag=null; cv.style.cursor=(activeItem&&activeItem.cur==='default')?'default':'none'; renderChart(); return; }
     /* Release universal drawing drag */
     if(_drawDrag!==null){ _drawDrag=null; renderChart(); return; }
     if(isBrushing){
@@ -8419,7 +8421,7 @@ function drawCursorOverlay(ctx,co){
 
   /* Crosshair lines — only when chart loaded */
   if(!hasChart){ctx.restore();return;}
-  ctx.strokeStyle='rgba(201,168,76,.3)'; ctx.lineWidth=.6; ctx.setLineDash([4,4]);
+  ctx.strokeStyle='rgba(201,168,76,.55)'; ctx.lineWidth=.9; ctx.setLineDash([4,4]);
   ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,co.H); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(co.W,y); ctx.stroke();
   ctx.setLineDash([]);
