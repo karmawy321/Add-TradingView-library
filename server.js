@@ -926,6 +926,35 @@ let _maLastSeen   = null;
 let _maRetry      = 0;
 let _maWatchdog   = null;
 
+async function _discoverBrokerSymbols() {
+  if (!_maConn) return;
+  try {
+    const brokerSymbols = await _maConn.getSymbols();
+    if (!brokerSymbols || !brokerSymbols.length) return;
+    /* Build lookup: normalized base (strip ., _, suffix) → actual broker symbol */
+    const brokerMap = new Map();
+    for (const bs of brokerSymbols) {
+      const name = bs.symbol || bs;
+      const base = name.toUpperCase().replace(/[._-].*/,''); /* strip suffix: XAUUSD.sml → XAUUSD */
+      if (!brokerMap.has(base)) brokerMap.set(base, name);  /* keep first match */
+    }
+    let remapped = 0;
+    for (const [internalSym, oldBrokerSym] of Object.entries(_maSymMap)) {
+      const base = internalSym.toUpperCase().replace(/[._-].*/,'');
+      const found = brokerMap.get(base);
+      if (found && found !== oldBrokerSym) {
+        console.log(`[MetaApi] Remapped ${internalSym}: ${oldBrokerSym} → ${found}`);
+        _maSymMap[internalSym] = found;
+        remapped++;
+      }
+    }
+    if (remapped > 0) console.log(`[MetaApi] Symbol discovery complete — ${remapped} symbols remapped`);
+    else console.log('[MetaApi] Symbol discovery: all names current, no changes needed');
+  } catch(e) {
+    console.warn('[MetaApi] _discoverBrokerSymbols error:', e.message);
+  }
+}
+
 async function initMetaApi() {
   if (!METAAPI_TOKEN) return;
   _maStatus = 'connecting';
@@ -943,6 +972,8 @@ async function initMetaApi() {
     _maLastSeen = Date.now();
     _maRetry    = 0;
     console.log('[MetaApi] OANDA connection ready');
+    /* Auto-discover broker symbol names — remaps _maSymMap to actual broker names */
+    _discoverBrokerSymbols().catch(e => console.warn('[MetaApi] Symbol discovery failed:', e.message));
     _startWatchdog();
     startOandaStream(); /* non-blocking — subscribes all symbols for live prices */
   } catch(e) {
