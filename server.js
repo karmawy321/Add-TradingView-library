@@ -2427,8 +2427,28 @@ app.get('/api/condition-weights', requireAdmin, (req, res) => {
   const qualified = Object.entries(conditionWeights)
     .filter(([, b]) => b.total >= CW_MIN_SAMPLE)
     .sort(([, a], [, b]) => b.total - a.total)
-    .map(([key, b]) => ({ key, win_rate: +(b.win_rate * 100).toFixed(1), wins: b.wins, total: b.total, adj: _cwAdj(b.win_rate) }));
-  res.json({ total_buckets: total, qualified_buckets: qualified.length, min_sample: CW_MIN_SAMPLE, buckets: qualified });
+    .map(([key, b]) => {
+      const entry = { key, win_rate: +(b.win_rate * 100).toFixed(1), wins: b.wins, total: b.total, adj: _cwAdj(b.win_rate) };
+      // Attach pulse data if recent window has enough samples
+      const recent = conditionWeightsRecent[key];
+      if (recent && recent.total >= CW_RECENT_MIN) {
+        const deviation = recent.win_rate - b.win_rate;
+        entry.pulse = {
+          recent_wr: +(recent.win_rate * 100).toFixed(1),
+          recent_n: recent.total,
+          deviation_pp: +(deviation * 100).toFixed(1),
+          pulse_adj: Math.abs(deviation) >= CW_DEVIATION ? Math.max(-5, Math.min(5, Math.round(deviation * 20))) : 0,
+        };
+      }
+      return entry;
+    });
+
+  const totalRecent = Object.keys(conditionWeightsRecent).length;
+  res.json({
+    total_buckets: total, qualified_buckets: qualified.length, min_sample: CW_MIN_SAMPLE,
+    pulse_window_days: CW_RECENT_DAYS, pulse_min_sample: CW_RECENT_MIN, pulse_recent_buckets: totalRecent,
+    buckets: qualified,
+  });
 });
 
 /* ═══════════════════════════════════════════════════
