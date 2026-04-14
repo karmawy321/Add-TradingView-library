@@ -1614,7 +1614,12 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           return res.json({ data: [] });
         }
         const _blocked = new Set(['Warrant','Structured Product','Leverage Product','Certificate','Mini Future']);
-        const filtered = (json.data || []).filter(r => !_blocked.has(r.instrument_type));
+        const _deduped = new Map();
+        for (const r of (json.data || [])) {
+          if (_blocked.has(r.instrument_type)) continue;
+          if (!_deduped.has(r.symbol)) _deduped.set(r.symbol, r); // keep first (primary US exchange)
+        }
+        const filtered = Array.from(_deduped.values());
 
         /* Inject OANDA results — static catalog matching _maSymMap */
         const _oandaCatalog = [
