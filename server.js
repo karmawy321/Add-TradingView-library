@@ -2178,9 +2178,11 @@ app.post('/sniper', rateLimit(20, 60000), async (req, res) => {
     const raw = algoSniperSignal(candles, pair, timeframe);
     if (raw.error) return res.status(500).json({ error: raw.error });
 
-    /* ── Validate ── */
+    /* ── Validate — use full candle history for price range, not the visible window sent by frontend ── */
     const lastClose = +candles[candles.length - 1].c;
-    const validationErr = validateSniper(raw, lastClose, priceMin, priceMax);
+    let fullMin = Infinity, fullMax = -Infinity;
+    for (const c of candles) { const l = +c.l, h = +c.h; if (l < fullMin) fullMin = l; if (h > fullMax) fullMax = h; }
+    const validationErr = validateSniper(raw, lastClose, fullMin, fullMax);
     if (validationErr) {
       console.warn('[Sniper] Validation failed:', validationErr);
       return res.status(500).json({ error: 'Signal validation failed: ' + validationErr });
