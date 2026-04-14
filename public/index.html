@@ -7021,7 +7021,8 @@ function executeSearch() {
           badge = '<span style="display:inline-flex;align-items:center;background:#1e1e1e;color:#fff;font-size:10px;padding:2px 7px;border-radius:3px">'
                 + '<span style="font-weight:700">twelve</span><span style="font-weight:400;color:rgba(255,255,255,0.55)">data</span></span>';
         }
-        var isSelected = sym === currentSymbol || sym.replace('/','') === currentSymbol;
+        var isSelected = (sym === currentSymbol || sym.replace('/','') === currentSymbol)
+          && (isOanda ? currentDataSource === 'oanda' : currentDataSource !== 'oanda');
         return '<div class="s-res-item'+(isSelected?' s-res-active':'')+'" onclick="'+onclick+'">'
           +'<div class="s-res-info" style="min-width:0">'
             +'<div class="s-res-symbol">'+sym+'</div>'
