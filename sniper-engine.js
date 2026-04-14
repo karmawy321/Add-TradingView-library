@@ -405,7 +405,8 @@ function generateReasoning(direction, structure, setupType, confluence, ctx, ent
   }
 
   if (ob) {
-    parts.push(`${ob.type} OB at ${ob.low.toFixed(2)}-${ob.high.toFixed(2)}`);
+    const obDp = ob.high >= 100 ? 2 : ob.high >= 10 ? 3 : ob.high >= 1 ? 4 : 5;
+    parts.push(`${ob.type} OB at ${ob.low.toFixed(obDp)}-${ob.high.toFixed(obDp)}`);
   }
 
   parts.push(`SL beyond swing ${direction === 'long' ? 'low' : 'high'}`);
@@ -414,13 +415,18 @@ function generateReasoning(direction, structure, setupType, confluence, ctx, ent
     parts.push(`setup: ${setupType.replace(/_/g, ' ')}`);
   }
 
-  // Confirmed and forming chart patterns
-  const confirmedPatterns = patterns.filter(p => p.confirmed && p.type !== 'neutral');
-  const formingPatterns   = patterns.filter(p => !p.confirmed &&
-    (p.type === (direction === 'long' ? 'bullish' : 'bearish') || p.type === 'neutral'));
+  // Confirmed and forming chart patterns — filtered by direction alignment
+  const signalType          = direction === 'long' ? 'bullish' : 'bearish';
+  const confirmedPatterns   = patterns.filter(p => p.confirmed && p.type === signalType);
+  const conflictingPatterns = patterns.filter(p => p.confirmed && p.type !== 'neutral' && p.type !== signalType);
+  const formingPatterns     = patterns.filter(p => !p.confirmed &&
+    (p.type === signalType || p.type === 'neutral'));
 
   if (confirmedPatterns.length > 0) {
     parts.push(`confirmed: ${confirmedPatterns.map(p => p.name).join(', ')}`);
+  }
+  if (conflictingPatterns.length > 0) {
+    parts.push(`conflicting: ${conflictingPatterns.map(p => p.name).join(', ')}`);
   }
   if (formingPatterns.length > 0) {
     parts.push(`forming: ${formingPatterns.map(p => p.name).join(', ')}`);
