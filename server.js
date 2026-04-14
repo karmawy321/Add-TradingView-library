@@ -2147,13 +2147,14 @@ function validateSniper(sig, lastClose, priceMin, priceMax) {
     const entryDrift = Math.abs(sig.entry - lastClose) / lastClose;
     if (entryDrift > 0.02) return 'Entry too far from last close (' + (entryDrift * 100).toFixed(1) + '%)';
   }
-  /* Minimum RR enforcement */
+  /* Minimum RR enforcement — aligned with engine floors (1.5:1 TP1, 2.5:1 TP2)
+     Uses slightly lower thresholds (1.4 / 2.4) for float-rounding tolerance */
   const slDist  = Math.abs(sig.entry - sig.sl);
   const tp1Dist = Math.abs(sig.tp1 - sig.entry);
   const tp2Dist = Math.abs(sig.tp2 - sig.entry);
   if (slDist > 0) {
-    if (tp1Dist / slDist < 1.0) return 'TP1 RR below 1:1';
-    if (tp2Dist / slDist < 1.5) return 'TP2 RR below 1:1.5';
+    if (tp1Dist / slDist < 1.4) return 'TP1 RR below 1:1.5';
+    if (tp2Dist / slDist < 2.4) return 'TP2 RR below 1:2.5';
   }
   /* Price range check — entry must be within candle range (SL exempt: ATR buffer extends beyond lows by design) */
   if (priceMin > 0 && priceMax > 0) {
@@ -2331,6 +2332,27 @@ app.post('/api/sniper/check-now', requireAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── Purge all sniper signals (engine version reset) ── */
+app.delete('/api/sniper/purge', requireAdmin, async (req, res) => {
+  if (!sbAdmin) return res.status(500).json({ error: 'Database not configured' });
+  try {
+    // Delete all rows from sniper_signals
+    const { error: delErr, count } = await sbAdmin
+      .from('sniper_signals')
+      .delete({ count: 'exact' })
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // match all rows
+    if (delErr) throw delErr;
+
+    // Reset in-memory condition weights
+    conditionWeights = {};
+    console.log(`🗑️ [Sniper Purge] Deleted ${count || 'all'} signals, condition weights reset.`);
+    res.json({ success: true, deleted: count || 0, message: 'All sniper signals purged. Condition weights reset.' });
+  } catch(e) {
+    console.error('[Sniper Purge] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /* ── Condition weights — current feedback loop state ── */
 app.get('/api/condition-weights', requireAdmin, (req, res) => {
   const total = Object.keys(conditionWeights).length;
@@ -2505,12 +2527,15 @@ app.get('/admin/sniper', requireAdmin, (_req, res) => {
   .b-short{color:#f87171}
   #checkBtn{background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit;margin-left:16px}
   #checkBtn:disabled{opacity:.4;cursor:not-allowed}
+  #purgeBtn{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.3);padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit;margin-left:8px;transition:all .2s}
+  #purgeBtn:hover{background:rgba(248,113,113,.25);border-color:#f87171}
+  #purgeBtn:disabled{opacity:.4;cursor:not-allowed}
   .loading{text-align:center;padding:40px;color:rgba(255,255,255,.3)}
 </style>
 </head>
 <body>
 <h1>🎯 Sniper Performance Dashboard</h1>
-<p class="subtitle">Algorithmic signal performance · Context-based edge discovery · <button id="checkBtn" onclick="runCheck()">Force Outcome Check</button></p>
+<p class="subtitle">Algorithmic signal performance · Context-based edge discovery · <button id="checkBtn" onclick="runCheck()">Force Outcome Check</button><button id="purgeBtn" onclick="purgeAll()">🗑️ Purge All Data</button></p>
 <div id="content"><div class="loading">Loading stats...</div></div>
 <script>
 const ADMIN_KEY = new URLSearchParams(location.search).get('key') || '';
@@ -2632,6 +2657,24 @@ async function runCheck() {
     await load();
   } catch(e) { alert('Error: ' + e.message); }
   btn.disabled = false; btn.textContent = 'Force Outcome Check';
+}
+
+async function purgeAll() {
+  const count = document.querySelector('.stat .val');
+  const total = count ? count.textContent : '?';
+  if (!confirm('⚠️ This will permanently delete ALL ' + total + ' sniper signals and reset condition weights.\n\nThis cannot be undone. Continue?')) return;
+  if (!confirm('🔴 FINAL CONFIRM: Delete everything and start fresh?')) return;
+  const btn = document.getElementById('purgeBtn');
+  btn.disabled = true; btn.textContent = 'Purging...';
+  try {
+    const r = await fetch('/api/sniper/purge', { method: 'DELETE', headers: H });
+    const d = await r.json();
+    if (d.success) {
+      alert('✅ Purged ' + (d.deleted || 'all') + ' signals. Dashboard is clean.');
+      await load();
+    } else { alert('Error: ' + (d.error || 'Unknown')); }
+  } catch(e) { alert('Error: ' + e.message); }
+  btn.disabled = false; btn.textContent = '🗑️ Purge All Data';
 }
 
 load();
