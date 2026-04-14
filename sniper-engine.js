@@ -13,7 +13,29 @@
 
 /* ── 1. SWING DETECTION ──
    A swing high is a candle whose high is higher than `left` candles before
-   and `right` candles after. Vice versa for swing low. */
+   and `right` candles after. Vice versa for swing low.
+   Params scale with timeframe — sub-1H charts need wider windows to filter noise. */
+
+const SWING_PARAMS = {
+  '1':   { left: 15, right: 10 },  // 1m  — 25-bar window filters micro-noise
+  '5':   { left: 10, right: 7 },   // 5m
+  '15':  { left: 8,  right: 5 },   // 15m
+  '30':  { left: 6,  right: 4 },   // 30m
+  // 1H+ uses defaults (left=5, right=3)
+};
+
+function getSwingParams(timeframe) {
+  if (!timeframe) return { left: 5, right: 3 };
+  const tf = String(timeframe).toLowerCase().replace(/\s+/g, '');
+  // Extract numeric part for minute-based timeframes
+  const minMatch = tf.match(/^(\d+)(m|min)?$/);
+  if (minMatch) {
+    const mins = parseInt(minMatch[1], 10);
+    if (SWING_PARAMS[String(mins)]) return SWING_PARAMS[String(mins)];
+    if (mins < 60) return { left: 6, right: 4 }; // fallback for unlisted sub-1H
+  }
+  return { left: 5, right: 3 }; // 1H+ defaults
+}
 
 function detectSwings(candles, left = 5, right = 3) {
   const highs = [], lows = [];
@@ -163,12 +185,20 @@ function findConfluence(entry, fibs, orderBlock, keyLevels, atr, tolerancePct = 
   let score = 0;
   const factors = [];
 
-  // Check Fibonacci levels near entry — only count the closest match per level
+  // Check Fibonacci levels near entry — cap at best 2 matches to prevent
+  // score inflation when tight swing ranges cluster all Fib levels together
+  const fibHits = [];
   for (const [level, price] of Object.entries(fibs)) {
     if (Math.abs(price - entry) < absTol) {
-      score += level === '0.618' ? 3 : level === '0.500' ? 2 : 1;
-      factors.push(`Fib ${level}`);
+      const pts = level === '0.618' ? 3 : level === '0.500' ? 2 : 1;
+      fibHits.push({ level, pts });
     }
+  }
+  // Keep only the 2 highest-value Fib matches
+  fibHits.sort((a, b) => b.pts - a.pts);
+  for (const fh of fibHits.slice(0, 2)) {
+    score += fh.pts;
+    factors.push(`Fib ${fh.level}`);
   }
 
   // Check order block zone
@@ -305,8 +335,18 @@ function computeContext(candles, pair, timeframe) {
   else if (atrPct < 2.0) volatility = 'high';
   else volatility = 'extreme';
 
-  // SESSION (based on current UTC hour)
-  const utcHour = new Date().getUTCHours();
+  // SESSION — use last candle's timestamp when available (backtest-safe),
+  // fall back to wall-clock time for live signals.
+  const lastCandle = candles[candles.length - 1];
+  let utcHour;
+  if (lastCandle && lastCandle.t) {
+    const candleDate = new Date(typeof lastCandle.t === 'number'
+      ? lastCandle.t * (lastCandle.t < 1e12 ? 1000 : 1)  // handle seconds vs ms
+      : lastCandle.t);
+    utcHour = isNaN(candleDate.getTime()) ? new Date().getUTCHours() : candleDate.getUTCHours();
+  } else {
+    utcHour = new Date().getUTCHours();
+  }
   let session;
   if (utcHour >= 0 && utcHour < 7) session = 'asia';
   else if (utcHour >= 7 && utcHour < 12) session = 'london';
@@ -381,12 +421,15 @@ function computeConfidence(confluence, structure, ctx, patterns = [], direction 
   // extreme = no bonus
 
   // Pattern confirmation/conflict — use actual direction, not structure
+  // Capped at ±30 pts total to prevent triple-pattern ceiling/floor hits
   const signalDir = dir === 'long' ? 'bullish' : 'bearish';
+  let patternBonus = 0;
   for (const p of patterns) {
-    if (p.type === signalDir && p.confirmed)                              conf += 15;
-    else if (p.type === signalDir)                                        conf += 8;
-    else if (p.type !== 'neutral' && p.type !== signalDir && p.confirmed) conf -= 10;
+    if (p.type === signalDir && p.confirmed)                              patternBonus += 15;
+    else if (p.type === signalDir)                                        patternBonus += 8;
+    else if (p.type !== 'neutral' && p.type !== signalDir && p.confirmed) patternBonus -= 10;
   }
+  conf += Math.max(-30, Math.min(30, patternBonus));
 
   return Math.min(95, Math.max(15, conf));
 }
@@ -405,7 +448,7 @@ function generateReasoning(direction, structure, setupType, confluence, ctx, ent
   }
 
   if (ob) {
-    const obDp = ob.high >= 100 ? 2 : ob.high >= 10 ? 3 : ob.high >= 1 ? 4 : 5;
+    const obDp = getDecimals(ob.high);
     parts.push(`${ob.type} OB at ${ob.low.toFixed(obDp)}-${ob.high.toFixed(obDp)}`);
   }
 
@@ -930,7 +973,8 @@ function sniperSignal(candles, pair, timeframe) {
   }));
 
   // ─── ANALYSIS ───
-  const swings    = detectSwings(parsed);
+  const { left: swL, right: swR } = getSwingParams(timeframe);
+  const swings    = detectSwings(parsed, swL, swR);
   const structure = getStructure(swings);
   const ctx       = computeContext(parsed, pair, timeframe);
 
@@ -947,8 +991,15 @@ function sniperSignal(candles, pair, timeframe) {
   if (structure === 'bullish') direction = 'long';
   else if (structure === 'bearish') direction = 'short';
   else {
-    // Ranging — follow trend, default to long if no trend
-    direction = ctx.trend === 'downtrend' ? 'short' : 'long';
+    // Ranging — use linear regression slope for a data-driven tiebreaker
+    // instead of defaulting to long when both structure and SMA trend are inconclusive
+    const _slope = getTrendSlope(parsed);
+    if (ctx.trend === 'downtrend' || _slope.direction === 'downtrend') direction = 'short';
+    else if (ctx.trend === 'uptrend' || _slope.direction === 'uptrend') direction = 'long';
+    else {
+      // Truly flat — use micro-slope sign as final tiebreaker
+      direction = _slope.slope >= 0 ? 'long' : 'short';
+    }
   }
 
   // Key prices
@@ -1047,13 +1098,14 @@ function sniperSignal(candles, pair, timeframe) {
     }
   }
 
-  // Ensure TP ordering + minimum RR (1:1 TP1, 1.5:1 TP2)
+  // Ensure TP ordering + minimum RR (1.5:1 TP1, 2.5:1 TP2)
+  // Previous floor was 1:1 for TP1 — allowed S/R snap to produce negative-EV targets
   if (direction === 'long') {
-    if (tp1 <= entry || (tp1 - entry) < finalSLDist) tp1 = entry + finalSLDist * 1.5;
-    if (tp2 <= tp1 || (tp2 - entry) < finalSLDist * 1.5) tp2 = tp1 + finalSLDist;
+    if (tp1 <= entry || (tp1 - entry) < finalSLDist * 1.5) tp1 = entry + finalSLDist * 1.5;
+    if (tp2 <= tp1 || (tp2 - entry) < finalSLDist * 2.5) tp2 = entry + finalSLDist * 2.5;
   } else {
-    if (tp1 >= entry || (entry - tp1) < finalSLDist) tp1 = entry - finalSLDist * 1.5;
-    if (tp2 >= tp1 || (entry - tp2) < finalSLDist * 1.5) tp2 = tp1 - finalSLDist;
+    if (tp1 >= entry || (entry - tp1) < finalSLDist * 1.5) tp1 = entry - finalSLDist * 1.5;
+    if (tp2 >= tp1 || (entry - tp2) < finalSLDist * 2.5) tp2 = entry - finalSLDist * 2.5;
   }
 
   // ─── CONFLUENCE & CONFIDENCE ───
@@ -1221,6 +1273,7 @@ module.exports = {
   detectCandlestickPatterns,
   // Internals (exposed for testing)
   detectSwings,
+  getSwingParams,
   getStructure,
   calcFibLevels,
   findOrderBlock,
