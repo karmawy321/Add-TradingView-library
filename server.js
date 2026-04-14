@@ -2543,7 +2543,7 @@ const H = { 'x-admin-key': ADMIN_KEY };
 
 function wrColor(rate) { rate = parseFloat(rate); return rate >= 60 ? '#22c55e' : rate >= 45 ? '#c9a84c' : '#f87171'; }
 function badgeClass(outcome) { return outcome === 'tp1_hit' ? 'b-tp1' : outcome === 'tp2_hit' ? 'b-tp2' : outcome === 'sl_hit' ? 'b-sl' : outcome === 'expired' ? 'b-exp' : 'b-pend'; }
-function badgeLabel(outcome) { return outcome === 'tp1_hit' ? 'TP1 ✓' : outcome === 'tp2_hit' ? 'TP2 ✓✓' : outcome === 'sl_hit' ? 'SL ✗' : outcome === 'expired' ? 'Expired' : 'Pending'; }
+function badgeLabel(outcome) { return outcome === 'tp1_hit' ? 'TP1 &#10003;' : outcome === 'tp2_hit' ? 'TP2 &#10003;&#10003;' : outcome === 'sl_hit' ? 'SL &#10007;' : outcome === 'expired' ? 'Expired' : 'Pending'; }
 
 function renderCtxCard(title, data) {
   const entries = Object.entries(data).filter(([k]) => k !== 'unknown');
@@ -2581,7 +2581,7 @@ async function load() {
     /* Edge discovery */
     if (bc.sample > 0) {
       html += '<div class="edge-box">' +
-        '<div class="edge-label">🏆 Best Context Combination</div>' +
+        '<div class="edge-label">&#127942; Best Context Combination</div>' +
         '<div class="edge-value">' + bc.label + ': ' + bc.win_rate + '% win rate</div>' +
         '<div class="edge-detail">' + bc.wins + ' wins in ' + bc.sample + ' signals</div>' +
       '</div>';
@@ -2599,14 +2599,14 @@ async function load() {
           return '<div style="flex:1;min-width:160px;background:#0d0f18;border:1px solid ' + c + '22;border-radius:6px;padding:14px;text-align:center">' +
             '<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">' + label + '</div>' +
             '<div style="font-size:26px;font-weight:700;color:' + c + '">' + wr + '%</div>' +
-            '<div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:4px">' + v.wins + 'W / ' + v.losses + 'L &nbsp;·&nbsp; ' + v.total + ' resolved</div>' +
+            '<div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:4px">' + v.wins + 'W / ' + v.losses + 'L &nbsp;&middot;&nbsp; ' + v.total + ' resolved</div>' +
           '</div>';
         }).join('') +
       '</div></div>';
     }
 
     /* Context breakdown */
-    html += '<div class="card"><h2>Context Breakdown — Edge Discovery</h2><div class="ctx-grid">' +
+    html += '<div class="card"><h2>Context Breakdown &mdash; Edge Discovery</h2><div class="ctx-grid">' +
       renderCtxCard('Trend', d.by_context.trend) +
       renderCtxCard('Session', d.by_context.session) +
       renderCtxCard('Volatility', d.by_context.volatility) +
@@ -2625,21 +2625,21 @@ async function load() {
         '<th>Outcome</th><th>Bars</th><th>Setup</th><th>Trend</th><th>Session</th><th>Vol</th><th>Conf</th><th>Date</th>' +
       '</tr></thead><tbody>' +
       d.recent.map(s => '<tr>' +
-        '<td><b>' + (s.pair || '—') + '</b></td>' +
-        '<td class="' + (s.direction === 'long' ? 'b-long' : 'b-short') + '"><b>' + (s.direction || '—').toUpperCase() + '</b></td>' +
-        '<td>' + (s.entry || '—') + '</td>' +
-        '<td>' + (s.sl || '—') + '</td>' +
-        '<td>' + (s.sl_pips || '—') + '</td>' +
-        '<td>' + (s.tp1 || '—') + '</td>' +
-        '<td>' + (s.tp2 || '—') + '</td>' +
+        '<td><b>' + (s.pair || '-') + '</b></td>' +
+        '<td class="' + (s.direction === 'long' ? 'b-long' : 'b-short') + '"><b>' + (s.direction || '-').toUpperCase() + '</b></td>' +
+        '<td>' + (s.entry || '-') + '</td>' +
+        '<td>' + (s.sl || '-') + '</td>' +
+        '<td>' + (s.sl_pips || '-') + '</td>' +
+        '<td>' + (s.tp1 || '-') + '</td>' +
+        '<td>' + (s.tp2 || '-') + '</td>' +
         '<td><span class="badge ' + badgeClass(s.outcome) + '">' + badgeLabel(s.outcome) + '</span></td>' +
-        '<td>' + (s.bars_to_outcome || '—') + '</td>' +
-        '<td>' + (s.setup_type || '—') + '</td>' +
-        '<td>' + (s.ctx_trend || '—') + '</td>' +
-        '<td>' + (s.ctx_session || '—') + '</td>' +
-        '<td>' + (s.ctx_volatility || '—') + '</td>' +
-        '<td>' + (s.confidence || '—') + '%</td>' +
-        '<td>' + (s.created_at ? new Date(s.created_at).toLocaleDateString() : '—') + '</td>' +
+        '<td>' + (s.bars_to_outcome || '-') + '</td>' +
+        '<td>' + (s.setup_type || '-') + '</td>' +
+        '<td>' + (s.ctx_trend || '-') + '</td>' +
+        '<td>' + (s.ctx_session || '-') + '</td>' +
+        '<td>' + (s.ctx_volatility || '-') + '</td>' +
+        '<td>' + (s.confidence || '-') + '%</td>' +
+        '<td>' + (s.created_at ? new Date(s.created_at).toLocaleDateString() : '-') + '</td>' +
       '</tr>').join('') +
       '</tbody></table></div>';
     }
