@@ -2155,12 +2155,11 @@ function validateSniper(sig, lastClose, priceMin, priceMax) {
     if (tp1Dist / slDist < 1.0) return 'TP1 RR below 1:1';
     if (tp2Dist / slDist < 1.5) return 'TP2 RR below 1:1.5';
   }
-  /* Price range check (within 5% of data extremes) */
+  /* Price range check — entry must be within candle range (SL exempt: ATR buffer extends beyond lows by design) */
   if (priceMin > 0 && priceMax > 0) {
     const margin = (priceMax - priceMin) * 0.1;
     const rLow = priceMin - margin, rHigh = priceMax + margin;
     if (sig.entry < rLow || sig.entry > rHigh) return 'Entry outside data range';
-    if (sig.sl < rLow || sig.sl > rHigh) return 'SL outside data range';
   }
   return null; /* null = valid */
 }

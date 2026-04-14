@@ -1047,13 +1047,13 @@ function sniperSignal(candles, pair, timeframe) {
     }
   }
 
-  // Ensure TP ordering
+  // Ensure TP ordering + minimum RR (1:1 TP1, 1.5:1 TP2)
   if (direction === 'long') {
-    if (tp1 <= entry) tp1 = entry + finalSLDist * 1.5;
-    if (tp2 <= tp1) tp2 = tp1 + finalSLDist;
+    if (tp1 <= entry || (tp1 - entry) < finalSLDist) tp1 = entry + finalSLDist * 1.5;
+    if (tp2 <= tp1 || (tp2 - entry) < finalSLDist * 1.5) tp2 = tp1 + finalSLDist;
   } else {
-    if (tp1 >= entry) tp1 = entry - finalSLDist * 1.5;
-    if (tp2 >= tp1) tp2 = tp1 - finalSLDist;
+    if (tp1 >= entry || (entry - tp1) < finalSLDist) tp1 = entry - finalSLDist * 1.5;
+    if (tp2 >= tp1 || (entry - tp2) < finalSLDist * 1.5) tp2 = tp1 - finalSLDist;
   }
 
   // ─── CONFLUENCE & CONFIDENCE ───
