@@ -7216,7 +7216,7 @@ function runSingleTool(tool){
     var _sStart = Math.max(0, chartCandles.length - _sBars - chartView.offset);
     var _sEnd   = Math.min(chartCandles.length, _sStart + _sBars);
     var _sVisC  = chartCandles.slice(_sStart, _sEnd);
-    if(_sVisC.length > 80) _sVisC = _sVisC.slice(_sVisC.length - 80);
+    if(_sVisC.length > 300) _sVisC = _sVisC.slice(_sVisC.length - 300);
     var _sPMin  = Math.min.apply(null, _sVisC.map(function(c){ return c.l; }));
     var _sPMax  = Math.max.apply(null, _sVisC.map(function(c){ return c.h; }));
     var _sRng   = _sPMax - _sPMin;
