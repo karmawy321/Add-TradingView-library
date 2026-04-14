@@ -2475,12 +2475,9 @@ app.get('/api/sniper/stats', requireAdmin, async (req, res) => {
   }
 });
 
-/* ═══════════════════════════════════════════════════
-   SNIPER ADMIN DASHBOARD
-   ═══════════════════════════════════════════════════ */
-
+/* ── SNIPER ADMIN DASHBOARD ── */
 app.get('/admin/sniper', requireAdmin, (_req, res) => {
-  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2534,8 +2531,8 @@ app.get('/admin/sniper', requireAdmin, (_req, res) => {
 </style>
 </head>
 <body>
-<h1>🎯 Sniper Performance Dashboard</h1>
-<p class="subtitle">Algorithmic signal performance · Context-based edge discovery · <button id="checkBtn" onclick="runCheck()">Force Outcome Check</button><button id="purgeBtn" onclick="purgeAll()">🗑️ Purge All Data</button></p>
+<h1>Sniper Performance Dashboard</h1>
+<p class="subtitle">Algorithmic signal performance | Context-based edge discovery | <button id="checkBtn" onclick="runCheck()">Force Outcome Check</button><button id="purgeBtn" onclick="purgeAll()">Purge All Data</button></p>
 <div id="content"><div class="loading">Loading stats...</div></div>
 <script>
 const ADMIN_KEY = new URLSearchParams(location.search).get('key') || '';
@@ -2543,7 +2540,7 @@ const H = { 'x-admin-key': ADMIN_KEY };
 
 function wrColor(rate) { rate = parseFloat(rate); return rate >= 60 ? '#22c55e' : rate >= 45 ? '#c9a84c' : '#f87171'; }
 function badgeClass(outcome) { return outcome === 'tp1_hit' ? 'b-tp1' : outcome === 'tp2_hit' ? 'b-tp2' : outcome === 'sl_hit' ? 'b-sl' : outcome === 'expired' ? 'b-exp' : 'b-pend'; }
-function badgeLabel(outcome) { return outcome === 'tp1_hit' ? 'TP1 &#10003;' : outcome === 'tp2_hit' ? 'TP2 &#10003;&#10003;' : outcome === 'sl_hit' ? 'SL &#10007;' : outcome === 'expired' ? 'Expired' : 'Pending'; }
+function badgeLabel(outcome) { return outcome === 'tp1_hit' ? 'TP1 [OK]' : outcome === 'tp2_hit' ? 'TP2 [OK][OK]' : outcome === 'sl_hit' ? 'SL [X]' : outcome === 'expired' ? 'Expired' : 'Pending'; }
 
 function renderCtxCard(title, data) {
   const entries = Object.entries(data).filter(([k]) => k !== 'unknown');
@@ -2563,7 +2560,7 @@ function renderCtxCard(title, data) {
 
 async function load() {
   try {
-    const r = await fetch('/api/sniper/stats?key=' + ADMIN_KEY, { headers: H });
+    const r = await fetch("/api/sniper/stats?key=" + ADMIN_KEY, { headers: H });
     if (!r.ok) { document.getElementById('content').innerHTML = '<p style="color:red;padding:24px">Unauthorized</p>'; return; }
     const d = await r.json();
     const o = d.overall;
@@ -2573,39 +2570,36 @@ async function load() {
       '<div class="stat"><div class="val">' + o.total + '</div><div class="lbl">Total Signals</div></div>' +
       '<div class="stat green"><div class="val">' + o.win_rate + '%</div><div class="lbl">Win Rate (TP1+)</div></div>' +
       '<div class="stat blue"><div class="val">' + o.tp2_rate + '%</div><div class="lbl">TP2 Hit Rate</div></div>' +
-      '<div class="stat"><div class="val">' + o.wins + '/' + o.sl_hits + '</div><div class="lbl">Wins / Losses</div></div>' +
+      '<div class="stat"><div class="val">' + o.wins + "/" + o.sl_hits + '</div><div class="lbl">Wins / Losses</div></div>' +
       '<div class="stat"><div class="val">' + o.pending + '</div><div class="lbl">Pending</div></div>' +
       '<div class="stat"><div class="val">' + o.avg_bars + '</div><div class="lbl">Avg Bars to Outcome</div></div>' +
     '</div>';
 
-    /* Edge discovery */
     if (bc.sample > 0) {
       html += '<div class="edge-box">' +
-        '<div class="edge-label">&#127942; Best Context Combination</div>' +
+        '<div class="edge-label">Best Context Combination</div>' +
         '<div class="edge-value">' + bc.label + ': ' + bc.win_rate + '% win rate</div>' +
         '<div class="edge-detail">' + bc.wins + ' wins in ' + bc.sample + ' signals</div>' +
       '</div>';
     }
 
-    /* Source breakdown */
     if (d.by_source && Object.keys(d.by_source).length > 0) {
-      const srcColors = { oanda: '#c9a84c', td_forex: '#4ade80', td_crypto: '#60a5fa', unknown: '#64748b' };
-      const srcLabels = { oanda: 'OANDA (MetaAPI)', td_forex: 'TD Forex', td_crypto: 'TD Crypto', unknown: 'Legacy' };
+      const srcColors = { oanda: "#c9a84c", td_forex: "#4ade80", td_crypto: "#60a5fa", unknown: "#64748b" };
+      const srcLabels = { oanda: "OANDA (MetaAPI)", td_forex: "TD Forex", td_crypto: "TD Crypto", unknown: "Legacy" };
       html += '<div class="card" style="border-color:rgba(255,255,255,.08)"><h2>Performance by Data Source</h2><div style="display:flex;gap:12px;flex-wrap:wrap">' +
         Object.entries(d.by_source).map(([k, v]) => {
-          const c = srcColors[k] || '#64748b';
+          const c = srcColors[k] || "#64748b";
           const label = srcLabels[k] || k;
           const wr = parseFloat(v.win_rate) || 0;
           return '<div style="flex:1;min-width:160px;background:#0d0f18;border:1px solid ' + c + '22;border-radius:6px;padding:14px;text-align:center">' +
             '<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">' + label + '</div>' +
             '<div style="font-size:26px;font-weight:700;color:' + c + '">' + wr + '%</div>' +
-            '<div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:4px">' + v.wins + 'W / ' + v.losses + 'L &nbsp;&middot;&nbsp; ' + v.total + ' resolved</div>' +
+            '<div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:4px">' + v.wins + "W / " + v.losses + "L &nbsp;&middot;&nbsp; " + v.total + ' resolved</div>' +
           '</div>';
         }).join('') +
       '</div></div>';
     }
 
-    /* Context breakdown */
     html += '<div class="card"><h2>Context Breakdown &mdash; Edge Discovery</h2><div class="ctx-grid">' +
       renderCtxCard('Trend', d.by_context.trend) +
       renderCtxCard('Session', d.by_context.session) +
@@ -2615,7 +2609,6 @@ async function load() {
       renderCtxCard('By Pair', d.by_pair) +
     '</div></div>';
 
-    /* Signal table */
     html += '<div class="card"><h2>Recent Resolved Signals</h2>';
     if (d.recent.length === 0) {
       html += '<p style="color:rgba(255,255,255,.3);padding:16px;text-align:center">No resolved signals yet. Run some Sniper analyses and wait for the outcome checker.</p>';
@@ -2653,28 +2646,27 @@ async function runCheck() {
   const btn = document.getElementById('checkBtn');
   btn.disabled = true; btn.textContent = 'Checking...';
   try {
-    await fetch('/api/sniper/check-now', { method: 'POST', headers: H });
+    await fetch("/api/sniper/check-now?key=" + ADMIN_KEY, { method: "POST" });
     await load();
   } catch(e) { alert('Error: ' + e.message); }
   btn.disabled = false; btn.textContent = 'Force Outcome Check';
 }
 
 async function purgeAll() {
-  const count = document.querySelector('.stat .val');
-  const total = count ? count.textContent : '?';
-  if (!confirm('WARNING: This will permanently delete ALL ' + total + ' sniper signals and reset condition weights.\n\nThis cannot be undone. Continue?')) return;
-  if (!confirm('FINAL CONFIRM: Delete everything and start fresh?')) return;
+  const countVal = document.querySelector(".stat .val");
+  const total = countVal ? countVal.textContent : "?";
+  if (!confirm("WARNING: This will permanently delete ALL signals and reset weights.\\n\\nContinue?")) return;
   const btn = document.getElementById('purgeBtn');
   btn.disabled = true; btn.textContent = 'Purging...';
   try {
-    const r = await fetch('/api/sniper/purge', { method: 'DELETE', headers: H });
+    const r = await fetch("/api/sniper/purge?key=" + ADMIN_KEY, { method: "DELETE" });
     const d = await r.json();
     if (d.success) {
-      alert('Purged ' + (d.deleted || 'all') + ' signals. Dashboard is clean.');
+      alert("Purged successfully.");
       await load();
-    } else { alert('Error: ' + (d.error || 'Unknown')); }
-  } catch(e) { alert('Error: ' + e.message); }
-  btn.disabled = false; btn.textContent = 'Purge All Data';
+    } else { alert("Error: " + (d.error || "Unknown")); }
+  } catch(e) { alert("Error: " + e.message); }
+  btn.disabled = false; btn.textContent = "Purge All Data";
 }
 
 load();
@@ -2682,6 +2674,8 @@ load();
 </body>
 </html>`);
 });
+
+
 
 /* ═══════════════════════════════════════════════════
    🔄 SNIPER SCANNER — Automated signal generation
