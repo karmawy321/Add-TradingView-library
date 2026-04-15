@@ -3165,7 +3165,7 @@ app.get('/api/crossovers/live', requireAdmin, async (_req, res) => {
 app.delete('/api/crossovers/purge', requireAdmin, async (_req, res) => {
   if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
   try {
-    const { error } = await sbAdmin.from('sma_crossovers').delete().gte('id', 0);
+    const { error } = await sbAdmin.from('sma_crossovers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     if (error) throw error;
     console.log('[CrossoverScanner] All crossover history purged.');
     res.json({ success: true, message: 'All crossover history purged.' });
