@@ -3089,6 +3089,7 @@ function detectSMACrossovers(candles, pair) {
         sma200: parseFloat(curr200.toFixed(6)),
         sma400: parseFloat(curr400.toFixed(6)),
         cross_time: new Date(slice[i].t).toISOString(),
+        source: getDataSource(pair),
       });
     }
   }
@@ -3160,6 +3161,17 @@ app.get('/api/crossovers/live', requireAdmin, async (_req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── Purge all crossover history ── */
+app.delete('/api/crossovers/purge', requireAdmin, async (_req, res) => {
+  if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
+  try {
+    const { error } = await sbAdmin.from('sma_crossovers').delete().gte('id', 0);
+    if (error) throw error;
+    console.log('[CrossoverScanner] All crossover history purged.');
+    res.json({ success: true, message: 'All crossover history purged.' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── Crossover Admin Dashboard ── */
 app.get('/admin/crossovers', requireAdmin, (_req, res) => {
   res.setHeader('Content-Type', 'text/html');
@@ -3191,15 +3203,20 @@ app.get('/admin/crossovers', requireAdmin, (_req, res) => {
   .pair{font-weight:700;color:#60a5fa}
   .status{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#aaa}
   .empty{padding:32px;text-align:center;color:#555}
+  .src-oanda{background:#1e3a5f;color:#93c5fd}
+  .src-td_forex{background:#1a3320;color:#86efac}
+  .src-td_crypto{background:#3b1f5e;color:#d8b4fe}
+  .btn-danger{background:#7f1d1d;color:#fca5a5} .btn-danger:hover{background:#991b1b}
   @media(max-width:700px){.cards{flex-direction:column}}
 </style>
 </head>
 <body>
-<h1>📈 SMA200/400 Crossover Dashboard</h1>
-<p class="sub">1m timeframe — newest 1000 candles — all OANDA symbols</p>
+<h1>SMA200/400 Crossover Dashboard</h1>
+<p class="sub">1m timeframe — 1000 candles — OANDA + TD Forex + TD Crypto</p>
 <div class="status" id="status">Loading...</div>
 <div class="actions">
   <button onclick="runScan(this)">Run Scan Now</button>
+  <button class="btn-danger" onclick="purgeAll(this)">Purge All History</button>
 </div>
 <div class="cards" id="cards"></div>
 <div id="crossTable"></div>
@@ -3242,13 +3259,16 @@ async function loadCrosses() {
       return;
     }
     let html = '<div style="overflow-x:auto"><table><thead><tr>' +
-      '<th>Pair</th><th>Direction</th><th>Cross Price</th><th>SMA200</th><th>SMA400</th><th>Cross Time</th>' +
+      '<th>Pair</th><th>Source</th><th>Direction</th><th>Cross Price</th><th>SMA200</th><th>SMA400</th><th>Cross Time</th>' +
     '</tr></thead><tbody>';
     crosses.forEach(c => {
       const isGolden = c.direction === 'golden_cross';
+      const src = c.source || 'oanda';
+      const srcLabel = src === 'td_forex' ? 'TD Forex' : src === 'td_crypto' ? 'TD Crypto' : 'OANDA';
       html += '<tr>' +
         '<td class="pair">' + (c.pair||'—') + '</td>' +
-        '<td><span class="badge ' + (isGolden ? 'golden' : 'death') + '">' + (isGolden ? '🟡 Golden Cross' : '🔴 Death Cross') + '</span></td>' +
+        '<td><span class="badge src-' + src + '">' + srcLabel + '</span></td>' +
+        '<td><span class="badge ' + (isGolden ? 'golden' : 'death') + '">' + (isGolden ? 'Golden Cross' : 'Death Cross') + '</span></td>' +
         '<td>' + (c.cross_price||'—') + '</td>' +
         '<td>' + (c.sma200||'—') + '</td>' +
         '<td>' + (c.sma400||'—') + '</td>' +
@@ -3269,6 +3289,20 @@ async function runScan(btn) {
     await loadCrosses();
   } catch(e) { alert('Error: ' + e.message); }
   btn.disabled = false; btn.textContent = 'Run Scan Now';
+}
+
+async function purgeAll(btn) {
+  if (!confirm('Purge ALL crossover history? This cannot be undone.')) return;
+  if (!confirm('Are you sure? All records will be deleted.')) return;
+  btn.disabled = true; btn.textContent = 'Purging...';
+  try {
+    const r = await fetch('/api/crossovers/purge', { method: 'DELETE', headers: H });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error || 'Purge failed');
+    await loadCrosses();
+    alert('All crossover history purged.');
+  } catch(e) { alert('Error: ' + e.message); }
+  btn.disabled = false; btn.textContent = 'Purge All History';
 }
 
 loadStatus();
