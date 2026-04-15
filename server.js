@@ -936,23 +936,39 @@ async function _discoverBrokerSymbols() {
 
     _lastBrokerSymbolList = brokerSymbols.map(bs => bs.symbol || bs).sort();
 
-    const brokerMap = new Map();
+    /* Group all broker symbols by their base name */
+    const baseToSuffixes = new Map();
     for (const bs of brokerSymbols) {
       const name = bs.symbol || bs;
       const base = name.toUpperCase().replace(/[._-].*/,'');
-      if (!brokerMap.has(base)) brokerMap.set(base, name);
+      if (!baseToSuffixes.has(base)) baseToSuffixes.set(base, []);
+      baseToSuffixes.get(base).push(name);
+    }
+
+    /* Prioritize specific account suffixes to prevent charting conflicts */
+    const SUFFIX_PRIORITY = ['.sml', '.pro', '.raw', ''];
+
+    function pickBestSymbol(base) {
+      const available = baseToSuffixes.get(base);
+      if (!available || available.length === 0) return null;
+      
+      for (const pref of SUFFIX_PRIORITY) {
+        const match = available.find(s => s.toLowerCase().endsWith(pref.toLowerCase()));
+        if (match) return match;
+      }
+      return available[0]; /* fallback to the first available */
     }
 
     let remapped = 0;
     for (const [internalSym, oldBrokerSym] of Object.entries(_maSymMap)) {
       /* Pass 1: match by internal symbol base (XAUUSD → XAUUSD.sml) */
       const internalBase = internalSym.toUpperCase().replace(/[._-].*/,'');
-      let found = brokerMap.get(internalBase);
+      let found = pickBestSymbol(internalBase);
 
       /* Pass 2: match by old broker symbol base (GOLD.pro → GOLD.sml) */
       if (!found) {
         const oldBase = oldBrokerSym.toUpperCase().replace(/[._-].*/,'');
-        found = brokerMap.get(oldBase);
+        found = pickBestSymbol(oldBase);
       }
 
       if (found && found !== oldBrokerSym) {
