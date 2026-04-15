@@ -1466,7 +1466,13 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
 
   /* source=oanda → serve from OANDA candle store if available */
   const _oandaKey = sym.replace('/', ''); /* XAU/USD → XAUUSD */
-  const forceOanda = !!_maSymMap[_oandaKey];
+  /* Only force OANDA if the symbol is mapped AND actually has cached data.
+     If OANDA renamed the broker symbol, oandaCandles will be empty — fall through
+     to TwelveData instead of returning loading:true forever or mixing sources. */
+  const _oandaHasData = !!_maSymMap[_oandaKey] &&
+    oandaCandles[_oandaKey] &&
+    Object.values(oandaCandles[_oandaKey]).some(arr => arr.length > 0);
+  const forceOanda = _oandaHasData;
   const reqSource = forceOanda ? 'oanda' : req.query.source;
 
   if (reqSource === 'oanda' && _maReady && _maSymMap[_oandaKey]) {
@@ -1626,8 +1632,10 @@ app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
   ensureSymbol(sym);
 
   const _oandaKey = sym.replace('/', '');
-  const forceOanda = !!_maSymMap[_oandaKey];
-  res.reqSource = forceOanda ? 'oanda' : req.query.source;
+  const _oandaHasDataSSE = !!_maSymMap[_oandaKey] &&
+    oandaCandles[_oandaKey] &&
+    Object.values(oandaCandles[_oandaKey]).some(arr => arr.length > 0);
+  res.reqSource = _oandaHasDataSSE ? 'oanda' : req.query.source;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
