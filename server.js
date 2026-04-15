@@ -1543,9 +1543,10 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
   if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
 
   /* ── OANDA history: serve from store, fetch more from MetaApi if needed ── */
-  if (req.query.source === 'oanda') {
+  const _oKey      = sym.replace('/', '');
+  const forceOanda = !!_maSymMap[_oKey];
+  if (req.query.source === 'oanda' || forceOanda) {
     if (!endTime || endTime < 0) return res.json({ candles: [] });
-    const _oKey  = sym.replace('/', '');
     const maSym  = _maSymMap[_oKey];
     ensureOandaSym(_oKey);
     const store = oandaCandles[_oKey][tf];
@@ -1621,9 +1622,11 @@ app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
   const sym = req.params.symbol.toUpperCase().replace('-', '/');
   connectTD(sym);
   ensureSymbol(sym);
-  
-  res.reqSource = req.query.source;
-  
+
+  const _oandaKey = sym.replace('/', '');
+  const forceOanda = !!_maSymMap[_oandaKey];
+  res.reqSource = forceOanda ? 'oanda' : req.query.source;
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -3475,6 +3478,7 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
   <span id="ma-retry" style="font-size:12px;color:#f87171"></span>
 </div>
 <button id="refresh-btn" onclick="triggerRefresh()">Force Full Refresh</button>
+<button id="purge-all-btn" onclick="purgeAllCache()" style="background:linear-gradient(135deg,#991b1b,#ef4444);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px;margin-left:8px">Force Purge All Cache</button>
 <div class="card">
   <div class="row">
     <div class="stat"><div class="val" id="pct">—</div><div class="lbl">Overall %</div></div>
@@ -3491,7 +3495,7 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
 <div class="card">
   <h2>OANDA Symbols Status</h2>
   <table>
-    <thead><tr><th>Symbol</th><th>1m</th><th>5m</th><th>15m</th><th>30m</th><th>1h</th><th>4h</th><th>1d</th><th>1w</th><th>Last Candle</th><th>Status</th></tr></thead>
+    <thead><tr><th>Symbol</th><th>1m</th><th>5m</th><th>15m</th><th>30m</th><th>1h</th><th>4h</th><th>1d</th><th>1w</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
     <tbody id="sym-table"></tbody>
   </table>
 </div>
@@ -3505,7 +3509,7 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
     </div>
   </div>
   <table>
-    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th></tr></thead>
+    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
     <tbody id="td-table"></tbody>
   </table>
 </div>
@@ -3519,7 +3523,7 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
     </div>
   </div>
   <table>
-    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th></tr></thead>
+    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
     <tbody id="td-forex-table"></tbody>
   </table>
 </div>
@@ -3589,7 +3593,7 @@ async function poll() {
       const badge = isActive
         ? '<span class="badge" style="background:rgba(34,197,94,0.2);color:#22c55e">&#9654; fetching</span>'
         : hasTfs ? '<span class="badge badge-ok">loaded</span>' : '<span class="badge badge-empty">pending</span>';
-      return '<tr' + (isActive?' style="background:rgba(201,168,76,0.05)"':'') + '><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td></tr>';
+      return '<tr' + (isActive?' style="background:rgba(201,168,76,0.05)"':'') + '><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td><td><button onclick="purgeSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#ef4444;border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:bold;">Purge</button></td></tr>';
     }).join('');
 
     document.getElementById('refresh-btn').disabled = p.active || d.refreshing;
@@ -3631,8 +3635,8 @@ async function poll() {
         const badge = hasTfs
           ? '<span class="badge" style="background:' + accentColor + '22;color:' + accentColor + '">loaded</span>'
           : '<span class="badge badge-empty">pending</span>';
-        return '<tr><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td></tr>';
-      }).join('') || '<tr><td colspan="7" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No data yet</td></tr>';
+        return '<tr><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td><td><button onclick="purgeSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#ef4444;border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:bold;">Purge</button></td></tr>';
+      }).join('') || '<tr><td colspan="8" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No data yet</td></tr>';
     }
 
     const tdAllSyms = [...(td.symbols || []), ...(td.notStarted || []).map(s => ({ sym: s, tfs: {} }))];
@@ -3647,6 +3651,26 @@ async function triggerRefresh() {
   btn.disabled = true;
   await fetch('/admin/cache-refresh', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
   poll();
+}
+
+async function purgeAllCache() {
+  if (!confirm('Are you sure you want to permanently delete ALL cached symbols? They will rebuild on demand.')) return;
+  const btn = document.getElementById('purge-all-btn');
+  btn.disabled = true; btn.textContent = 'Purging...';
+  try {
+    await fetch('/admin/cache-purge-all', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  } finally {
+    btn.disabled = false; btn.textContent = 'Force Purge All Cash';
+    poll();
+  }
+}
+
+async function purgeSym(sym) {
+  if (!confirm(\`Delete cache for \${sym}?\`)) return;
+  try {
+    await fetch(\`/admin/cache-purge/\${sym.replace('/', '')}\`, { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+    poll();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function triggerTDRefresh() {
@@ -3673,6 +3697,45 @@ setInterval(poll, 2000);
 app.post('/admin/cache-refresh', requireAdmin, (_req, res) => {
   refreshAllOandaCache().catch(e => console.error('[Cache] Manual refresh error:', e.message));
   res.json({ ok: true, message: 'Refresh started' });
+});
+
+app.post('/admin/cache-purge-all', requireAdmin, async (_req, res) => {
+  try {
+    const fs = require('fs');
+    if (fs.existsSync('oanda_cache')) fs.rmSync('oanda_cache', { recursive: true, force: true });
+    if (fs.existsSync('td_cache')) fs.rmSync('td_cache', { recursive: true, force: true });
+    if (fs.existsSync('td_forex_cache')) fs.rmSync('td_forex_cache', { recursive: true, force: true });
+    for (const k of Object.keys(oandaCandles)) delete oandaCandles[k];
+    for (const k of Object.keys(candles)) delete candles[k];
+    for (const k of Object.keys(_oandaLoaded)) delete _oandaLoaded[k];
+    for (const k of Object.keys(_oandaLastFetch)) delete _oandaLastFetch[k];
+    res.json({ ok: true, message: 'All caches purged. Will recache on demand.' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/admin/cache-purge/:symbol', requireAdmin, async (req, res) => {
+  try {
+    let sym = req.params.symbol;
+    if (sym.includes('/')) sym = sym.replace('/', '');
+    const fs = require('fs');
+    const files = [
+      \`oanda_cache/\${sym}.json\`, 
+      \`td_cache/\${sym}.json\`, 
+      \`td_forex_cache/\${sym}.json\`
+    ];
+    for (const f of files) { if (fs.existsSync(f)) fs.unlinkSync(f); }
+    delete oandaCandles[sym];
+    const slashSym = req.params.symbol.includes('/') ? req.params.symbol : req.params.symbol.replace(/^(...)(...)$/, '$1/$2');
+    delete candles[slashSym];
+    delete candles[sym];
+    delete _oandaLoaded[sym];
+    delete _oandaLastFetch[sym];
+    res.json({ ok: true, message: \`Purged \${sym}\` });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.post('/admin/td-crypto-refresh', requireAdmin, (_req, res) => {
