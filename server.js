@@ -926,30 +926,46 @@ let _maLastSeen   = null;
 let _maRetry      = 0;
 let _maWatchdog   = null;
 
+let _lastBrokerSymbolList = [];
+
 async function _discoverBrokerSymbols() {
   if (!_maConn) return;
   try {
     const brokerSymbols = await _maConn.getSymbols();
     if (!brokerSymbols || !brokerSymbols.length) return;
-    /* Build lookup: normalized base (strip ., _, suffix) → actual broker symbol */
+
+    _lastBrokerSymbolList = brokerSymbols.map(bs => bs.symbol || bs).sort();
+
     const brokerMap = new Map();
     for (const bs of brokerSymbols) {
       const name = bs.symbol || bs;
-      const base = name.toUpperCase().replace(/[._-].*/,''); /* strip suffix: XAUUSD.sml → XAUUSD */
-      if (!brokerMap.has(base)) brokerMap.set(base, name);  /* keep first match */
+      const base = name.toUpperCase().replace(/[._-].*/,'');
+      if (!brokerMap.has(base)) brokerMap.set(base, name);
     }
+
     let remapped = 0;
     for (const [internalSym, oldBrokerSym] of Object.entries(_maSymMap)) {
-      const base = internalSym.toUpperCase().replace(/[._-].*/,'');
-      const found = brokerMap.get(base);
+      /* Pass 1: match by internal symbol base (XAUUSD → XAUUSD.sml) */
+      const internalBase = internalSym.toUpperCase().replace(/[._-].*/,'');
+      let found = brokerMap.get(internalBase);
+
+      /* Pass 2: match by old broker symbol base (GOLD.pro → GOLD.sml) */
+      if (!found) {
+        const oldBase = oldBrokerSym.toUpperCase().replace(/[._-].*/,'');
+        found = brokerMap.get(oldBase);
+      }
+
       if (found && found !== oldBrokerSym) {
-        console.log(`[MetaApi] Remapped ${internalSym}: ${oldBrokerSym} → ${found}`);
+        console.log(`[MetaApi] Remapped ${internalSym}: ${oldBrokerSym} -> ${found}`);
         _maSymMap[internalSym] = found;
         remapped++;
+      } else if (!found) {
+        console.warn(`[MetaApi] No broker match for ${internalSym} (was: ${oldBrokerSym})`);
       }
     }
-    if (remapped > 0) console.log(`[MetaApi] Symbol discovery complete — ${remapped} symbols remapped`);
-    else console.log('[MetaApi] Symbol discovery: all names current, no changes needed');
+
+    if (remapped > 0) console.log(`[MetaApi] Symbol discovery complete - ${remapped} remapped`);
+    else console.log('[MetaApi] Symbol discovery: no changes needed');
   } catch(e) {
     console.warn('[MetaApi] _discoverBrokerSymbols error:', e.message);
   }
@@ -3159,6 +3175,17 @@ app.get('/api/crossovers/live', requireAdmin, async (_req, res) => {
     const crosses = (data || []).map(r => ({ ...r, source: getDataSource(r.pair) }));
     res.json({ crosses });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── Broker symbol diagnostic — shows current _maSymMap + full OANDA symbol list ── */
+app.get('/api/admin/broker-symbols', requireAdmin, async (_req, res) => {
+  res.json({
+    symMap: _maSymMap,
+    brokerList: _lastBrokerSymbolList,
+    unmapped: Object.entries(_maSymMap)
+      .filter(([, v]) => !_lastBrokerSymbolList.includes(v))
+      .map(([k, v]) => ({ internal: k, brokerName: v }))
+  });
 });
 
 /* ── Purge all crossover history ── */
