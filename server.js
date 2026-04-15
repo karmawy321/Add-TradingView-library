@@ -3089,7 +3089,6 @@ function detectSMACrossovers(candles, pair) {
         sma200: parseFloat(curr200.toFixed(6)),
         sma400: parseFloat(curr400.toFixed(6)),
         cross_time: new Date(slice[i].t).toISOString(),
-        source: getDataSource(pair),
       });
     }
   }
@@ -3157,7 +3156,8 @@ app.get('/api/crossovers/live', requireAdmin, async (_req, res) => {
       .order('cross_time', { ascending: false })
       .limit(200);
     if (error) throw error;
-    res.json({ crosses: data || [] });
+    const crosses = (data || []).map(r => ({ ...r, source: getDataSource(r.pair) }));
+    res.json({ crosses });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
