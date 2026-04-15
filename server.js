@@ -1466,8 +1466,10 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
 
   /* source=oanda → serve from OANDA candle store if available */
   const _oandaKey = sym.replace('/', ''); /* XAU/USD → XAUUSD */
+  const forceOanda = !!_maSymMap[_oandaKey];
+  const reqSource = forceOanda ? 'oanda' : req.query.source;
 
-  if (req.query.source === 'oanda' && _maReady && _maSymMap[_oandaKey]) {
+  if (reqSource === 'oanda' && _maReady && _maSymMap[_oandaKey]) {
     const now       = Date.now();
     const lastFetch = _oandaLastFetch[_oandaKey] || 0;
     const cooldown  = _oandaLoaded[_oandaKey] ? 600000 : 0; /* 10min if loaded, instant if new */
@@ -1481,10 +1483,10 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   const _oandaArr = oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]);
   const oandaReady = _oandaArr && _oandaArr.length > 0;
 
-  if (req.query.source === 'oanda' && !oandaReady) {
+  if (reqSource === 'oanda' && !oandaReady) {
     return res.json({ candles: [], loading: true });
   }
-  const useOanda = req.query.source === 'oanda' && oandaReady;
+  const useOanda = reqSource === 'oanda' && oandaReady;
   let arr = useOanda ? (oandaCandles[_oandaKey][tf] || []) : (candles[sym][tf] || []);
 
   /* If empty, try to derive from a lower TF that's already loaded */
