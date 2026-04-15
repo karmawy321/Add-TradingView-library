@@ -1023,6 +1023,10 @@ if (isEmbedded) {
 
             <button id="smaCrossZoneBtn" onclick="toggleSmaCrossZone()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA CROSS</button>
 
+            <button id="sma200Btn" onclick="toggleSMA(200)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA 200</button>
+            <button id="sma400Btn" onclick="toggleSMA(400)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA 400</button>
+            <button id="sma900Btn" onclick="toggleSMA(900)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA 900</button>
+
             <!-- Upload fallback -->
             <label id="uploadLabel" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
               ↑ UPLOAD
@@ -4463,6 +4467,7 @@ var chartSSE        = null;
 var sma50On         = false;
 var sma200On        = false;
 var sma400On        = false;
+var sma900On        = false;
 var smaCrossZoneOn  = false;
 var complexFractalOn = false;
 var vpvrOn           = false;
@@ -4481,7 +4486,7 @@ var _vpvrDragOff     = 0;
 var allCandleData   = {}; /* cache disabled — kept as empty object to avoid reference errors */
 var lwChartInstance = null; /* truthy flag for compatibility */
 var chartView       = { offset: 0, zoom: 1.0, rightPad: 0, yScale: 1 };
-var C = { up:'#26a69a', dn:'#ef5350', bg:'#06080d', grid:'rgba(201,168,76,0.05)', sma50:'#c9a84c', sma200:'#3498db', crosshair:'rgba(201,168,76,0.4)' };
+var C = { up:'#26a69a', dn:'#ef5350', bg:'#06080d', grid:'rgba(201,168,76,0.05)', sma50:'#c9a84c', sma200:'#26a69a', sma400:'#3498db', sma900:'#9b8fe8', crosshair:'rgba(201,168,76,0.4)' };
 
 /* ═══════════════════════════════════════════════════
    WORLD-SPACE VIEWPORT  (Phase 1 — new coordinate system)
@@ -4857,6 +4862,8 @@ function renderChart() {
   }
   if(sma50On)  drawSMA(50, C.sma50);
   if(sma200On) drawSMA(200,C.sma200);
+  if(sma400On) drawSMA(400,C.sma400);
+  if(sma900On) drawSMA(900,C.sma900);
   /* smaCrossZoneOn SMAs hidden — bar pattern drawing shows the result */
 
   /* ── Fractal Cross overlay ── */
@@ -6719,18 +6726,21 @@ function toggleSMA(period){
     }
   } else if(period===200){
     sma200On=!sma200On;
-    var b=document.getElementById('sma200Btn');if(b)b.style.opacity=sma200On?'1':'0.35';
+    var b=document.getElementById('sma200Btn');if(b){ b.style.opacity=sma200On?'1':'0.35'; b.style.color=sma200On?C.sma200:'#8a95a8'; b.style.borderColor=sma200On?'rgba(38,166,154,.4)':'rgba(255,255,255,.08)'; }
     if(chart){
       if(sma200On && !tvStudyIds.sma200) tvStudyIds.sma200 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:200},{'Plot.color':'#3498db'});
       else if(!sma200On && tvStudyIds.sma200){ chart.removeEntity(tvStudyIds.sma200); tvStudyIds.sma200=null; }
     }
   } else if(period===400){
     sma400On=!sma400On;
-    var b=document.getElementById('sma400Btn');if(b)b.style.opacity=sma400On?'1':'0.35';
+    var b=document.getElementById('sma400Btn');if(b){ b.style.opacity=sma400On?'1':'0.35'; b.style.color=sma400On?C.sma400:'#8a95a8'; b.style.borderColor=sma400On?'rgba(52,152,219,.4)':'rgba(255,255,255,.08)'; }
     if(chart){
-      if(sma400On && !tvStudyIds.sma400) tvStudyIds.sma400 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:400},{'Plot.color':'#9b8fe8'});
+      if(sma400On && !tvStudyIds.sma400) tvStudyIds.sma400 = chart.createStudy('Moving Average@tv-basicstudies-1',false,false,{length:400},{'Plot.color':'#3498db'});
       else if(!sma400On && tvStudyIds.sma400){ chart.removeEntity(tvStudyIds.sma400); tvStudyIds.sma400=null; }
     }
+  } else if(period===900){
+    sma900On=!sma900On;
+    var b=document.getElementById('sma900Btn');if(b){ b.style.opacity=sma900On?'1':'0.35'; b.style.color=sma900On?C.sma900:'#8a95a8'; b.style.borderColor=sma900On?'rgba(155,143,232,.4)':'rgba(255,255,255,.08)'; }
   }
   if(!chart) renderChart();
 }
