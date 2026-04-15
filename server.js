@@ -3721,9 +3721,9 @@ app.post('/admin/cache-purge/:symbol', requireAdmin, async (req, res) => {
     if (sym.includes('/')) sym = sym.replace('/', '');
     const fs = require('fs');
     const files = [
-      \`oanda_cache/\${sym}.json\`, 
-      \`td_cache/\${sym}.json\`, 
-      \`td_forex_cache/\${sym}.json\`
+      `oanda_cache/${sym}.json`, 
+      `td_cache/${sym}.json`, 
+      `td_forex_cache/${sym}.json`
     ];
     for (const f of files) { if (fs.existsSync(f)) fs.unlinkSync(f); }
     delete oandaCandles[sym];
@@ -3732,7 +3732,7 @@ app.post('/admin/cache-purge/:symbol', requireAdmin, async (req, res) => {
     delete candles[sym];
     delete _oandaLoaded[sym];
     delete _oandaLastFetch[sym];
-    res.json({ ok: true, message: \`Purged \${sym}\` });
+    res.json({ ok: true, message: `Purged ${sym}` });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
