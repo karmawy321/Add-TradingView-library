@@ -940,7 +940,8 @@ async function _discoverBrokerSymbols() {
     const baseToSuffixes = new Map();
     for (const bs of brokerSymbols) {
       const name = bs.symbol || bs;
-      const base = name.toUpperCase().replace(/[._-].*/,'');
+      /* Only strip dot suffixes (like .sml, .pro) so we don't accidentally match Futures contracts like US500-U5 */
+      const base = name.toUpperCase().replace(/\..*/,'');
       if (!baseToSuffixes.has(base)) baseToSuffixes.set(base, []);
       baseToSuffixes.get(base).push(name);
     }
@@ -962,12 +963,12 @@ async function _discoverBrokerSymbols() {
     let remapped = 0;
     for (const [internalSym, oldBrokerSym] of Object.entries(_maSymMap)) {
       /* Pass 1: match by internal symbol base (XAUUSD → XAUUSD.sml) */
-      const internalBase = internalSym.toUpperCase().replace(/[._-].*/,'');
+      const internalBase = internalSym.toUpperCase().replace(/\..*/,'');
       let found = pickBestSymbol(internalBase);
 
       /* Pass 2: match by old broker symbol base (GOLD.pro → GOLD.sml) */
       if (!found) {
-        const oldBase = oldBrokerSym.toUpperCase().replace(/[._-].*/,'');
+        const oldBase = oldBrokerSym.toUpperCase().replace(/\..*/,'');
         found = pickBestSymbol(oldBase);
       }
 
