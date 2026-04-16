@@ -607,8 +607,8 @@ async function fetchTDCryptoHistory(sym, tdSym, incremental) {
         const needed = Math.min(TD_CRYPTO_PAGE, Math.ceil((Date.now() - lastT) / TF_MS[tf]) + 5);
         if (needed <= 0) continue;
         const fresh = (await fetchTDSingle(tdSym, tdIval, { outputsize: String(needed) }))
-          .filter(c => c.t > lastT);
-        fresh.forEach(c => arr.push(c));
+          .filter(c => c.t > lastT).sort((a, b) => a.t - b.t);
+        fresh.forEach(c => { const cur = arr[arr.length - 1]; if (!cur || c.t > cur.t) arr.push(c); });
         if (fresh.length) console.log(`[TD Crypto] ${sym} ${tf}: +${fresh.length} new`);
       } else {
         // Paginated full fetch — walk backwards until target reached
@@ -1141,11 +1141,25 @@ const oandaCandles = {};
 const OANDA_CACHE_DIR = path.join(__dirname, 'oanda_cache');
 try { if (!fs.existsSync(OANDA_CACHE_DIR)) fs.mkdirSync(OANDA_CACHE_DIR); } catch(e) {}
 
+function _dedupSortArr(arr) {
+  if (!arr || !arr.length) return arr;
+  const seen = new Set();
+  return arr
+    .filter(c => { if (seen.has(c.t)) return false; seen.add(c.t); return true; })
+    .sort((a, b) => a.t - b.t);
+}
+
 function saveCacheToDisk(sym) {
   try {
+    const tfs = oandaCandles[sym] || {};
+    const clean = {};
+    for (const tf of Object.keys(tfs)) {
+      clean[tf] = _dedupSortArr(tfs[tf]);
+      oandaCandles[sym][tf] = clean[tf]; /* also fix in-memory */
+    }
     fs.writeFileSync(
       path.join(OANDA_CACHE_DIR, sym + '.json'),
-      JSON.stringify(oandaCandles[sym])
+      JSON.stringify(clean)
     );
     console.log(`[Cache] Saved ${sym}`);
   } catch(e) { console.error('[Cache] Save error ' + sym + ':', e.message); }
@@ -1163,6 +1177,10 @@ function loadCacheFromDisk() {
     try {
       if (!fs.existsSync(file)) continue;
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      /* Deduplicate and sort each TF array on load to fix any existing corruption */
+      for (const tf of Object.keys(data)) {
+        data[tf] = _dedupSortArr(data[tf]);
+      }
       oandaCandles[sym] = data;
       _oandaLoaded[sym] = true;
       n++;
@@ -1289,8 +1307,8 @@ async function fetchOandaHistory(internalSym, incremental) {
         const elapsed = Date.now() - lastT;
         const limit   = Math.min(_OANDA_PAGE_SIZE, Math.ceil(elapsed / TF_MS[tf]) + 20);
         const batch   = await fetchOandaCandles(maSym, tf, new Date(), limit);
-        const fresh   = batch.filter(c => c.t > lastT);
-        fresh.forEach(c => arr.push(c));
+        const fresh   = batch.filter(c => c.t > lastT).sort((a, b) => a.t - b.t);
+        fresh.forEach(c => { const cur = arr[arr.length - 1]; if (!cur || c.t > cur.t) arr.push(c); });
         if (fresh.length) console.log(`[MetaApi] ${internalSym} ${tf}: +${fresh.length} new (incremental)`);
       } else {
         if (needsBackfill) console.log(`[MetaApi] ${internalSym} ${tf}: only ${arr.length}/${target} candles — back-filling history...`);
