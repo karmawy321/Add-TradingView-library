@@ -1011,6 +1011,35 @@ if (isEmbedded) {
               <option value="1h">H1</option><option value="1d">D1</option>
               <option value="1w">W1</option>
             </select>
+            <select id="tzSelect" onchange="chartTzOffsetHours=parseFloat(this.value);localStorage.setItem('chartTzOffset',this.value);renderChart()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
+              <option value="-12">UTC-12</option>
+              <option value="-11">UTC-11</option>
+              <option value="-10">UTC-10 Hawaii</option>
+              <option value="-9">UTC-9 Alaska</option>
+              <option value="-8">UTC-8 LA/Seattle</option>
+              <option value="-7">UTC-7 Denver/Phoenix</option>
+              <option value="-6">UTC-6 Chicago</option>
+              <option value="-5">UTC-5 New York</option>
+              <option value="-4">UTC-4 Halifax</option>
+              <option value="-3">UTC-3 São Paulo</option>
+              <option value="-2">UTC-2</option>
+              <option value="-1">UTC-1</option>
+              <option value="0">UTC+0 London</option>
+              <option value="1">UTC+1 Frankfurt</option>
+              <option value="2">UTC+2 Cairo/Athens</option>
+              <option value="3">UTC+3 Moscow/Riyadh</option>
+              <option value="4">UTC+4 Dubai</option>
+              <option value="5">UTC+5 Islamabad</option>
+              <option value="5.5">UTC+5:30 India</option>
+              <option value="6">UTC+6 Dhaka</option>
+              <option value="7">UTC+7 Bangkok</option>
+              <option value="8">UTC+8 Singapore/HK</option>
+              <option value="9">UTC+9 Tokyo</option>
+              <option value="9.5">UTC+9:30 Adelaide</option>
+              <option value="10">UTC+10 Sydney</option>
+              <option value="11">UTC+11</option>
+              <option value="12">UTC+12 Auckland</option>
+            </select>
             <!-- SMA indicators loaded silently in background -->
             <!-- Chart type selector -->
             <select id="chartTypeIn" onchange="chartType=this.value;renderChart()" style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
@@ -4064,6 +4093,10 @@ function stepReplayForward() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+  /* Restore timezone selector from localStorage */
+  var tzSel = document.getElementById('tzSelect');
+  if (tzSel) tzSel.value = (localStorage.getItem('chartTzOffset') || '0');
+
   var speedEl = document.getElementById('rpSpeed');
   if (speedEl) {
     speedEl.addEventListener('change', function() {
@@ -4668,14 +4701,18 @@ function formatVol(v) {
     animateTicker();
   });
 })();
+/* Timezone-aware date: applies chartTzOffsetHours offset then uses UTC methods */
+function tzDate(ts) {
+  return new Date(ts + chartTzOffsetHours * 3600000);
+}
 function formatTime(ts, tf) {
   /* Legacy — only used by hover tooltip now */
-  var d = new Date(ts);
-  var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
-  var hh = d.getHours().toString().padStart(2,'0');
-  var mm = d.getMinutes().toString().padStart(2,'0');
-  var ss = d.getSeconds().toString().padStart(2,'0');
-  return d.getDate()+' '+mo+' '+d.getFullYear().toString().slice(2)+' '+hh+':'+mm+':'+ss;
+  var d = tzDate(ts);
+  var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+  var hh = d.getUTCHours().toString().padStart(2,'0');
+  var mm = d.getUTCMinutes().toString().padStart(2,'0');
+  var ss = d.getUTCSeconds().toString().padStart(2,'0');
+  return d.getUTCDate()+' '+mo+' '+d.getUTCFullYear().toString().slice(2)+' '+hh+':'+mm+':'+ss;
 }
 
 /* ── Smart time axis — purely zoom-driven, not tf-driven ── */
@@ -4698,44 +4735,44 @@ function renderTimeAxis(visible, px, W, H, PAD) {
   if (spanDay > 365) {
     /* Years visible — show year, mark month boundaries */
     tickUnit = 'month';
-    labelFn = function(d) { return MO[d.getMonth()] + ' ' + d.getFullYear(); };
-    boundaryFn = function(d, prev) { return d.getFullYear() !== prev.getFullYear(); };
+    labelFn = function(d) { return MO[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); };
+    boundaryFn = function(d, prev) { return d.getUTCFullYear() !== prev.getUTCFullYear(); };
   } else if (spanDay > 60) {
     /* Months visible — show month+year, mark year boundaries */
     tickUnit = 'month';
-    labelFn = function(d) { return MO[d.getMonth()]; };
-    boundaryFn = function(d, prev) { return d.getMonth() !== prev.getMonth() || d.getFullYear() !== prev.getFullYear(); };
+    labelFn = function(d) { return MO[d.getUTCMonth()]; };
+    boundaryFn = function(d, prev) { return d.getUTCMonth() !== prev.getUTCMonth() || d.getUTCFullYear() !== prev.getUTCFullYear(); };
   } else if (spanDay > 7) {
     /* Weeks visible — show day+month */
     tickUnit = 'day';
-    labelFn = function(d) { return d.getDate()+' '+MO[d.getMonth()]; };
-    boundaryFn = function(d, prev) { return d.getMonth() !== prev.getMonth(); };
+    labelFn = function(d) { return d.getUTCDate()+' '+MO[d.getUTCMonth()]; };
+    boundaryFn = function(d, prev) { return d.getUTCMonth() !== prev.getUTCMonth(); };
   } else if (spanDay > 1) {
     /* Days visible — show day or HH:MM, mark day boundaries */
     tickUnit = 'day';
     labelFn = function(d, isB) {
-      if (isB) return d.getDate()+' '+MO[d.getMonth()];
-      return d.getHours().toString().padStart(2,'0')+':00';
+      if (isB) return d.getUTCDate()+' '+MO[d.getUTCMonth()];
+      return d.getUTCHours().toString().padStart(2,'0')+':00';
     };
-    boundaryFn = function(d, prev) { return d.getDate() !== prev.getDate(); };
+    boundaryFn = function(d, prev) { return d.getUTCDate() !== prev.getUTCDate(); };
   } else if (spanHr > 4) {
     /* Hours visible — show HH:MM, mark day boundary */
     tickUnit = 'hour';
     labelFn = function(d, isB) {
-      if (isB) return d.getDate()+' '+MO[d.getMonth()];
-      return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
+      if (isB) return d.getUTCDate()+' '+MO[d.getUTCMonth()];
+      return d.getUTCHours().toString().padStart(2,'0')+':'+d.getUTCMinutes().toString().padStart(2,'0');
     };
-    boundaryFn = function(d, prev) { return d.getDate() !== prev.getDate(); };
+    boundaryFn = function(d, prev) { return d.getUTCDate() !== prev.getUTCDate(); };
   } else if (spanMin > 30) {
     /* Sub-hour — show HH:MM */
     tickUnit = 'minute';
-    labelFn = function(d) { return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'); };
-    boundaryFn = function(d, prev) { return d.getHours() !== prev.getHours(); };
+    labelFn = function(d) { return d.getUTCHours().toString().padStart(2,'0')+':'+d.getUTCMinutes().toString().padStart(2,'0'); };
+    boundaryFn = function(d, prev) { return d.getUTCHours() !== prev.getUTCHours(); };
   } else {
     /* Very zoomed in — show MM:SS */
     tickUnit = 'second';
-    labelFn = function(d) { return d.getMinutes().toString().padStart(2,'0')+':'+d.getSeconds().toString().padStart(2,'0'); };
-    boundaryFn = function(d, prev) { return d.getMinutes() !== prev.getMinutes(); };
+    labelFn = function(d) { return d.getUTCMinutes().toString().padStart(2,'0')+':'+d.getUTCSeconds().toString().padStart(2,'0'); };
+    boundaryFn = function(d, prev) { return d.getUTCMinutes() !== prev.getUTCMinutes(); };
   }
 
   /* Step: space labels ~80px apart */
@@ -4750,7 +4787,7 @@ function renderTimeAxis(visible, px, W, H, PAD) {
 
   visible.forEach(function(c, i) {
     if (i % step !== 0) return;
-    var d = new Date(c.t);
+    var d = tzDate(c.t);
     var x = px(i);
     var isB = prevD ? boundaryFn(d, prevD) : false;
     var label = typeof labelFn === 'function' ? labelFn(d, isB) : '';
@@ -4773,6 +4810,7 @@ function renderTimeAxis(visible, px, W, H, PAD) {
 }
 
 var chartType = 'candles'; /* candles | bars | hollow | area | line */
+var chartTzOffsetHours = (function(){ var v = parseFloat(localStorage.getItem('chartTzOffset') || '0'); return isNaN(v) ? 0 : v; })();
 
 function renderChart() {
   if (!chartCtx || !chartCanvas.width) return;
@@ -8581,16 +8619,16 @@ function drawCursorOverlay(ctx,co){
     var vi = hoverPoint.bi - hoverPoint.si;
     if(vi>=0 && vi<hoverPoint.visible.length){
       var candle2 = hoverPoint.visible[vi];
-      var d2=new Date(candle2.t);
       var MO2=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-      var dayName = days[d2.getDay()];
-      var dd = d2.getDate().toString().padStart(2, '0');
-      var mo = MO2[d2.getMonth()];
-      var yy = d2.getFullYear().toString().slice(-2);
-      var hh = d2.getHours().toString().padStart(2,'0');
-      var mm = d2.getMinutes().toString().padStart(2,'0');
-      
+      var d2tz = tzDate(candle2.t);
+      var dayName = days[d2tz.getUTCDay()];
+      var dd = d2tz.getUTCDate().toString().padStart(2, '0');
+      var mo = MO2[d2tz.getUTCMonth()];
+      var yy = d2tz.getUTCFullYear().toString().slice(-2);
+      var hh = d2tz.getUTCHours().toString().padStart(2,'0');
+      var mm = d2tz.getUTCMinutes().toString().padStart(2,'0');
+
       /* Full detailed TradingView style label: Day Name, Date, Month, Year, Time (24h) */
       var dtStr = dayName + ' ' + dd + ' ' + mo + " '" + yy + '  ' + hh + ':' + mm;
       
@@ -8805,7 +8843,8 @@ function drawOne(ctx,d,co,prev){
               var c = co.visible[pbi], d2 = new Date(c.t);
               var MO2 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
               var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-              var dtStr = days[d2.getDay()] + ' ' + d2.getDate().toString().padStart(2, '0') + ' ' + MO2[d2.getMonth()] + " '" + d2.getFullYear().toString().slice(-2) + '  ' + d2.getHours().toString().padStart(2,'0') + ':' + d2.getMinutes().toString().padStart(2,'0');
+              var d2tz2 = tzDate(c.t);
+              var dtStr = days[d2tz2.getUTCDay()] + ' ' + d2tz2.getUTCDate().toString().padStart(2, '0') + ' ' + MO2[d2tz2.getUTCMonth()] + " '" + d2tz2.getUTCFullYear().toString().slice(-2) + '  ' + d2tz2.getUTCHours().toString().padStart(2,'0') + ':' + d2tz2.getUTCMinutes().toString().padStart(2,'0');
               var dw = dtStr.length * 6.8 + 14;
               ctx.fillStyle = '#3b82f6';
               ctx.fillRect(Math.max(PAD.l, Math.min(co.W - PAD.r - dw, bx - dw / 2)), co.H - 18, dw, 17);
