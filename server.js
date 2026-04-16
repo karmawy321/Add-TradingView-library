@@ -3131,7 +3131,7 @@ function detectSMACrossovers(candles, pair) {
         pair,
         timeframe: '1m',
         direction: currAbove ? 'golden_cross' : 'death_cross',
-        cross_price: parseFloat(slice[i].c),
+        cross_price: parseFloat(((curr200 + curr400) / 2).toFixed(6)),
         sma200: parseFloat(curr200.toFixed(6)),
         sma400: parseFloat(curr400.toFixed(6)),
         cross_time: new Date(slice[i].t).toISOString(),

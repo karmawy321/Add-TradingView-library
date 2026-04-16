@@ -4847,23 +4847,80 @@ function renderChart() {
     chartCtx.fillRect(px(i)-candleW/2, H-PAD.b-vh, candleW, vh);
   });
 
-  /* SMAs */
-  function drawSMA(period,color){
-    if(startIdx+period>candles.length) return;
-    chartCtx.strokeStyle=color; chartCtx.lineWidth=1.4; chartCtx.setLineDash([]); chartCtx.beginPath();
-    var drew=false;
-    visible.forEach(function(c,i){
-      var gi=startIdx+i; if(gi<period-1) return;
-      var sum=0; for(var k=0;k<period;k++) sum+=candles[gi-k].c;
-      var y=py(sum/period);
-      if(!drew){chartCtx.moveTo(px(i),y);drew=true;}else chartCtx.lineTo(px(i),y);
+  /* SMAs — precomputed over full candle array so they render at any zoom level */
+  function computeFullSMA(period) {
+    if(candles.length < period) return null;
+    var arr = new Array(candles.length).fill(null);
+    var sum = 0;
+    for(var j = 0; j < candles.length; j++) {
+      sum += candles[j].c;
+      if(j >= period) sum -= candles[j - period].c;
+      if(j >= period - 1) arr[j] = sum / period;
+    }
+    return arr;
+  }
+  function drawSMAFull(smaArr, color) {
+    if(!smaArr) return;
+    chartCtx.strokeStyle = color; chartCtx.lineWidth = 1.4; chartCtx.setLineDash([]); chartCtx.beginPath();
+    var drew = false;
+    visible.forEach(function(c, i) {
+      var gi = startIdx + i;
+      var v = smaArr[gi];
+      if(v === null) { drew = false; return; }
+      var y = py(v);
+      if(!drew) { chartCtx.moveTo(px(i), y); drew = true; } else { chartCtx.lineTo(px(i), y); }
     });
     chartCtx.stroke();
   }
-  if(sma50On)  drawSMA(50, C.sma50);
-  if(sma200On) drawSMA(200,C.sma200);
-  if(sma400On) drawSMA(400,C.sma400);
-  if(sma900On) drawSMA(900,C.sma900);
+  var _sma200arr = sma200On ? computeFullSMA(200) : null;
+  var _sma400arr = sma400On ? computeFullSMA(400) : null;
+  var _sma900arr = sma900On ? computeFullSMA(900) : null;
+  if(sma50On)  drawSMAFull(computeFullSMA(50),  C.sma50);
+  if(sma200On) drawSMAFull(_sma200arr, C.sma200);
+  if(sma400On) drawSMAFull(_sma400arr, C.sma400);
+  if(sma900On) drawSMAFull(_sma900arr, C.sma900);
+
+  /* ── SMA Crossover markers — diamond dot where any two active SMAs cross ── */
+  var _xoverPairs = [];
+  if(sma200On && sma400On) _xoverPairs.push({a:_sma200arr,b:_sma400arr,col:'#fff'});
+  if(sma200On && sma900On) _xoverPairs.push({a:_sma200arr,b:_sma900arr,col:'#fff'});
+  if(sma400On && sma900On) _xoverPairs.push({a:_sma400arr,b:_sma900arr,col:'#fff'});
+  var _smaSnapPrices = [];
+  _xoverPairs.forEach(function(pair) {
+    visible.forEach(function(c, i) {
+      var gi = startIdx + i;
+      if(gi < 1) return;
+      var a0=pair.a[gi-1], a1=pair.a[gi], b0=pair.b[gi-1], b1=pair.b[gi];
+      if(a0===null||b0===null||a1===null||b1===null) return;
+      if((a0 > b0) !== (a1 > b1)) {
+        var xp = px(i), yp = py((a1 + b1) / 2);
+        /* Diamond shape */
+        chartCtx.beginPath();
+        chartCtx.moveTo(xp, yp - 7);
+        chartCtx.lineTo(xp + 5, yp);
+        chartCtx.lineTo(xp, yp + 7);
+        chartCtx.lineTo(xp - 5, yp);
+        chartCtx.closePath();
+        chartCtx.fillStyle = 'rgba(255,255,255,0.9)';
+        chartCtx.fill();
+        chartCtx.strokeStyle = '#c9a84c';
+        chartCtx.lineWidth = 1.5;
+        chartCtx.stroke();
+        /* Horizontal dotted guide line at cross price */
+        var snapPrice = (a1 + b1) / 2;
+        chartCtx.setLineDash([3, 5]);
+        chartCtx.strokeStyle = 'rgba(201,168,76,0.35)';
+        chartCtx.lineWidth = 0.7;
+        chartCtx.beginPath();
+        chartCtx.moveTo(PAD.l, yp); chartCtx.lineTo(W - PAD.r, yp);
+        chartCtx.stroke();
+        chartCtx.setLineDash([]);
+        _smaSnapPrices.push(snapPrice);
+      }
+    });
+  });
+  window._smaSnapPrices = _smaSnapPrices;
+
   /* smaCrossZoneOn SMAs hidden — bar pattern drawing shows the result */
 
   /* ── Fractal Cross overlay ── */
@@ -7671,11 +7728,19 @@ function getCoords(e) {
   var bi=Math.max(0,Math.min(chartCandles.length-1,Math.round(screenToWorldX(mx))));
   /* Price under cursor */
   var price=screenToWorldY(my);
-  /* Magnet snap */
+  /* Magnet snap — OHLC */
   if(magnetOn&&chartCandles[bi]){
     var _mc=chartCandles[bi];
     var snaps=[_mc.o,_mc.h,_mc.l,_mc.c];
     price=snaps.reduce(function(a,b){return Math.abs(b-price)<Math.abs(a-price)?b:a;});
+  }
+  /* SMA crossover snap — always active when crossover markers are visible (within ~12px) */
+  if(window._smaSnapPrices&&window._smaSnapPrices.length){
+    var _snapRng=viewState.priceMax-viewState.priceMin||1;
+    var _snapThresh=_snapRng*(_chartPAD.vol>0?12:12)/(CH||200); /* 12px in price units */
+    window._smaSnapPrices.forEach(function(sp){
+      if(Math.abs(sp-price)<_snapThresh) price=sp;
+    });
   }
   var mn=viewState.priceMin, rng=viewState.priceMax-viewState.priceMin||1;
   return {x:mx,y:my,price:price,bi:bi,W:W,H:H,CW:CW,CH:CH,mn:mn,rng:rng,barW:barW,si:si,visible:visible};
