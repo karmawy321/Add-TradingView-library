@@ -5225,7 +5225,8 @@ function renderChart() {
   /* Current price line — dashed line only, stays inside clip bounds */
   if (candles.length > 0) {
     var liveC = candles[candles.length-1];
-    var pyVal = py(liveC.c);
+    var _displayPrice = (_animLivePrice !== null) ? _animLivePrice : liveC.c;
+    var pyVal = py(_displayPrice);
     var lastY = Math.max(PAD.t + 10, Math.min(H - PAD.b - 10, pyVal));
     var liveCol = (liveC.c >= liveC.o) ? '#26a69a' : '#ef5350';
     var liveLineCol = (liveC.c >= liveC.o) ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
@@ -5297,12 +5298,13 @@ function renderChart() {
   /* Price badge — pinned to price axis, needs to draw outside clip */
   if (candles.length > 0) {
     var _liveC2 = candles[candles.length-1];
-    var _pyVal2 = py(_liveC2.c);
+    var _displayPrice2 = (_animLivePrice !== null) ? _animLivePrice : _liveC2.c;
+    var _pyVal2 = py(_displayPrice2);
     var _lastY2 = Math.max(PAD.t + 10, Math.min(H - PAD.b - 10, _pyVal2));
     var _liveCol2 = (_liveC2.c >= _liveC2.o) ? '#26a69a' : '#ef5350';
     chartCtx.save();
     chartCtx.font = 'bold 11px DM Mono';
-    var _priceStr2 = formatPrice(_liveC2.c);
+    var _priceStr2 = formatPrice(_displayPrice2);
     var _bdgW2 = chartCtx.measureText(_priceStr2).width + 16;
     var _bdgX2 = W - 4 - _bdgW2;
     chartCtx.fillStyle = _liveCol2;
@@ -6304,6 +6306,32 @@ if(chartCanvas){
     }
   }
 
+  /* Live price glide animation — smooth MT5-style price line interpolation */
+  var _animLivePrice  = null;
+  var _animTargetPrice = null;
+  var _animLivePriceRaf = null;
+
+  function updateLivePriceAnim(targetPrice) {
+    _animTargetPrice = targetPrice;
+    if (_animLivePrice === null) _animLivePrice = targetPrice;
+    if (!_animLivePriceRaf) {
+      var animLoop = function() {
+        if (_animLivePrice === null || _animTargetPrice === null) { _animLivePriceRaf = null; return; }
+        var diff = _animTargetPrice - _animLivePrice;
+        if (Math.abs(diff) < 0.000001) {
+          _animLivePrice = _animTargetPrice;
+          _animLivePriceRaf = null;
+          requestRenderChart();
+          return;
+        }
+        _animLivePrice += diff * 0.2;
+        requestRenderChart();
+        _animLivePriceRaf = requestAnimationFrame(animLoop);
+      };
+      _animLivePriceRaf = requestAnimationFrame(animLoop);
+    }
+  }
+
   /* dx > 0 = drag right = older bars; dy < 0 = drag up = higher prices */
   function _applyPanDelta(dx, dy){
     if(!dx && !dy) return;
@@ -6545,6 +6573,7 @@ function loadChart(symbol,interval){
   var empty=document.getElementById('chartEmpty');if(empty)empty.style.display='none';
   if(chartSSE){chartSSE.close();chartSSE=null;}
   chartCandles=[]; _historyLoading=false; _historyDepleted=false;
+  _animLivePrice = null; _animTargetPrice = null;
   resizeCanvas();
   if(chartCtx){
     var _dpr=window.devicePixelRatio||1;
@@ -6637,6 +6666,7 @@ function loadChart(symbol,interval){
           chartCandles.push(tc);
           if(chartCandles.length>500) chartCandles.shift();
         }
+        updateLivePriceAnim(tc.c);
         renderChart();
         var last2=chartCandles[chartCandles.length-1];
         var prev2=chartCandles.length>1?chartCandles[chartCandles.length-2].c:last2.o;
