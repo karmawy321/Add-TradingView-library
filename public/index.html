@@ -6292,6 +6292,18 @@ if(chartCanvas){
   /* Inertia state */
   var _panVelX=0, _panLastX=0, _panLastY=0, _panLastT=0, _panAccum=0, _inertiaRaf=null;
 
+  /* Global chart render throttle */
+  var _mainRafPending = false;
+  function requestRenderChart() {
+    if (!_mainRafPending && typeof renderChart === 'function') {
+      _mainRafPending = true;
+      requestAnimationFrame(function() {
+        renderChart();
+        _mainRafPending = false;
+      });
+    }
+  }
+
   /* dx > 0 = drag right = older bars; dy < 0 = drag up = higher prices */
   function _applyPanDelta(dx, dy){
     if(!dx && !dy) return;
@@ -6313,7 +6325,7 @@ if(chartCanvas){
       var newOff = viewState.priceOffset + dy / _lastCH;
       viewState.priceOffset = Math.min(1, Math.max(-1, newOff));
     }
-    renderChart();
+    requestRenderChart();
     if(typeof _scheduleHistoryCheck==='function') _scheduleHistoryCheck();
   }
 
@@ -6381,7 +6393,7 @@ if(chartCanvas){
     var r   = chartCanvas.getBoundingClientRect();
     var cx  = (e.clientX - r.left);
     vpvrAnchorX = cx - _vpvrDragOff;
-    renderChart && renderChart();
+    requestRenderChart();
   });
 
   document.addEventListener('mouseup', function(e) {
@@ -6430,14 +6442,14 @@ if(chartCanvas){
       /* Keep pivot bar at the same screen position */
       viewState.scaleX  = newScaleX;
       viewState.offsetX = _dateAxisDrag.pivotX - _chartPAD.l - (_dateAxisDrag.pivotBar + 0.5) * newScaleX;
-      renderChart && renderChart(); return;
+      requestRenderChart(); return;
     }
     if (_priceAxisDrag) {
       var dy = e.clientY - _priceAxisDrag.startY;
       /* drag up (dy<0) = zoom in (tighter range), drag down = zoom out (wider range) */
       chartView.yScale = Math.max(0.1, Math.min(10, _priceAxisDrag.startYScale * Math.pow(1.003, dy)));
       viewState.priceOffset = 0; /* pure compression — don't mix with Y pan */
-      renderChart && renderChart(); return;
+      requestRenderChart(); return;
     }
   });
 
