@@ -11,6 +11,64 @@ const fs        = require('fs');
 const crypto    = require('crypto');
 
 /* ═══════════════════════════════════════════════════
+   NEW DATA LAYER — clean source-namespaced modules
+   ═══════════════════════════════════════════════════ */
+const store   = require('./src/candleStore');
+const sse     = require('./src/sse');
+const oanda   = require('./src/sources/oanda');
+const binance = require('./src/sources/binance');
+const td      = require('./src/sources/twelvedata');
+
+const _binanceSymSet = new Set(binance.SYMBOLS);
+
+/* getSymSource — returns which source owns a given symbol */
+function getSymSource(sym) {
+  if (oanda.SYMBOL_MAP[sym])  return 'oanda';
+  if (_binanceSymSet.has(sym)) return 'binance';
+  return 'td';
+}
+
+/* ── Backward-compat shim: oandaCandles[sym][tf] → new store ─────────────────
+   Scanner + admin code reads oandaCandles without modification.            */
+const oandaCandles = new Proxy({}, {
+  get(_, sym) {
+    if (typeof sym !== 'string') return undefined;
+    const src = _binanceSymSet.has(sym) ? 'binance' : 'oanda';
+    return new Proxy({}, {
+      get(_, tf) {
+        if (typeof tf !== 'string') return [];
+        return store.readCandles(src, sym, tf);
+      },
+      has: () => true,
+      ownKeys: () => oanda.TIMEFRAMES,
+      getOwnPropertyDescriptor: (_, tf) => ({ enumerable: true, configurable: true, value: store.readCandles(oanda.SYMBOL_MAP[sym] ? 'oanda' : 'binance', sym, tf) }),
+    });
+  },
+  has: (_, sym) => !!(oanda.SYMBOL_MAP[sym] || _binanceSymSet.has(sym)),
+  ownKeys: () => [...oanda.getSymbols(), ...binance.getSymbols()],
+  getOwnPropertyDescriptor: (_, sym) => {
+    if (oanda.SYMBOL_MAP[sym] || _binanceSymSet.has(sym)) return { enumerable: true, configurable: true, writable: false, value: {} };
+    return undefined;
+  },
+  deleteProperty: () => true,
+  set: () => true,
+});
+
+/* ── Backward-compat shim: candles[sym][tf] → td store ── */
+const candles = new Proxy({}, {
+  get(_, sym) {
+    if (typeof sym !== 'string') return undefined;
+    return new Proxy({}, {
+      get(_, tf) { return typeof tf === 'string' ? store.readCandles('td', sym, tf) : []; },
+    });
+  },
+  deleteProperty: () => true,
+  set: () => true,
+  ownKeys: () => [],
+  getOwnPropertyDescriptor: () => undefined,
+});
+
+/* ═══════════════════════════════════════════════════
    SUPABASE
    ═══════════════════════════════════════════════════ */
 const { createClient } = require('@supabase/supabase-js');
@@ -418,1004 +476,46 @@ async function getUserProfile(token) {
 }
 
 /* ═══════════════════════════════════════════════════
-   CANDLE BUILDER
+   CANDLE BUILDER — replaced by src/ modules
+   These constants are still used by scanner + admin code.
    ═══════════════════════════════════════════════════ */
-const TF_MS = { '1m':60000,'5m':300000,'15m':900000,'30m':1800000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000 };
-const TIMEFRAMES = Object.keys(TF_MS);
-const candles    = {};
-const sseClients = {};
-
-function ensureSymbol(sym) {
-  if (!candles[sym]) { candles[sym] = {}; TIMEFRAMES.forEach(tf => { candles[sym][tf] = []; }); }
-  if (!sseClients[sym]) sseClients[sym] = new Set();
-}
-
-function processTick(sym, price, volume, tsMs) {
-  ensureSymbol(sym);
-  const ts = tsMs || Date.now();
-  TIMEFRAMES.forEach(tf => {
-    const periodMs = TF_MS[tf];
-    const bucketTs = Math.floor(ts / periodMs) * periodMs;
-    const arr      = candles[sym][tf];
-    const cur      = arr[arr.length - 1];
-    if (!cur || cur.t !== bucketTs) {
-      arr.push({ t: bucketTs, o: price, h: price, l: price, c: price, v: volume || 0 });
-      if (arr.length > 500) arr.shift();
-    } else {
-      cur.c = price;
-      cur.h = Math.max(cur.h, price);
-      cur.l = Math.min(cur.l, price);
-      cur.v += (volume || 0);
-    }
-  });
-  pushSSE(sym);
-}
-
-/* Throttle SSE: coalesce all ticks within 1 second into one push.
-   Prevents 100+/sec Binance aggTrades from flooding connected clients. */
-const _ssePending = {};
-function pushSSE(sym) {
-  const clients = sseClients[sym];
-  if (!clients || clients.size === 0) return;
-  if (_ssePending[sym]) return;
-  _ssePending[sym] = setTimeout(() => {
-    delete _ssePending[sym];
-    const cs = sseClients[sym];
-    if (!cs || cs.size === 0) return;
-    
-    const tick = {};
-    TIMEFRAMES.forEach(tf => { const a = candles[sym][tf]; if (a && a.length) tick[tf] = a[a.length - 1]; });
-    const msgDef = `data: ${JSON.stringify({ symbol: sym, tick })}\n\n`;
-    
-    const _oKey = sym.replace('/', '');
-    let msgOanda = msgDef;
-    if (oandaCandles[_oKey]) {
-      const oTick = {};
-      TIMEFRAMES.forEach(tf => { const a = oandaCandles[_oKey][tf]; if (a && a.length) oTick[tf] = a[a.length - 1]; });
-      msgOanda = `data: ${JSON.stringify({ symbol: sym, tick: oTick })}\n\n`;
-    }
-
-    cs.forEach(res => { 
-      try { 
-        if (res.reqSource === 'oanda') res.write(msgOanda);
-        else res.write(msgDef);
-      } catch(e) { cs.delete(res); } 
-    });
-  }, 250);
-}
+const TF_MS    = oanda.TF_MS;
+const TIMEFRAMES = oanda.TIMEFRAMES;
 
 /* ═══════════════════════════════════════════════════
-   TWELVEDATA DATA SOURCE
+   TWELVEDATA DATA SOURCE — replaced by src/sources/twelvedata.js
+   Keeping only constants still referenced by /search, /history, AI tools.
    ═══════════════════════════════════════════════════ */
-const TD_KEY  = process.env.TWELVEDATA_API_KEY || '';
-const tdLoaded = {};
+const TD_KEY = process.env.TWELVEDATA_API_KEY || '';
 
-/* Convert internal symbol (BTCUSDT, EURUSD, XAUUSD) → TwelveData format (BTC/USD, EUR/USD, XAU/USD) */
-/* Known stock tickers — TwelveData needs plain ticker (no slash) */
-const _STOCK_TICKERS = new Set([
-  'AAPL','MSFT','GOOGL','GOOG','AMZN','META','NVDA','TSLA','NFLX','AMD',
-  'INTC','BABA','DIS','JPM','GS','BAC','V','MA','PYPL','UBER','LYFT',
-  'COIN','HOOD','PLTR','RIVN','NIO','LCID','GME','AMC','SPY','QQQ','GLD','SLV'
-]);
+/* toTDSymbol still used by trySavePrediction and /search */
+const toTDSymbol = td.toTDSymbol;
 
-function toTDSymbol(sym) {
-  const s = sym.toUpperCase();
-  // Already has slash — pass through
-  if (s.includes('/')) return s;
-  // Known stock tickers — use as-is (TwelveData accepts plain US tickers)
-  if (_STOCK_TICKERS.has(s)) return s;
-  // Crypto: ends with USDT or USDC
-  if (s.endsWith('USDT')) return s.replace('USDT', '/USD');
-  if (s.endsWith('USDC')) return s.replace('USDC', '/USD');
-  if (s.endsWith('BTC'))  return s.replace('BTC',  '/BTC');
-  // Metals / forex: exactly 6 chars like XAUUSD, XAGUSD, XPTUSD, EURUSD, GBPJPY
-  if (s.length === 6) return s.slice(0, 3) + '/' + s.slice(3);
-  // Short tickers (1-5 chars) that aren't in known list — assume stock
-  return s;
-}
-
-/* Convert TwelveData interval names */
+/* TD_TF used by /history TD fallback */
 const TD_TF = { '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1h','4h':'4h','1d':'1day','1w':'1week' };
 
-/* Parse TwelveData datetime string → Unix ms
-   Handles both "2026-04-07 14:30:00" (intraday) and "2026-04-07" (daily/weekly) */
+/* tdTs used by /history TD fallback */
 function tdTs(dt) {
   if (!dt) return 0;
   const s = dt.includes(' ') ? dt.replace(' ', 'T') + 'Z' : dt + 'T00:00:00Z';
   return new Date(s).getTime();
 }
 
-/* Aggregate lower-TF candles into higher TF (OHLCV rollup) */
-function aggregateCandles(src, periodMs) {
-  const out = [];
-  for (const c of src) {
-    const bucket = Math.floor(c.t / periodMs) * periodMs;
-    const last = out[out.length - 1];
-    if (!last || last.t !== bucket) {
-      out.push({ t: bucket, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v });
-    } else {
-      last.h = Math.max(last.h, c.h);
-      last.l = Math.min(last.l, c.l);
-      last.c = c.c;
-      last.v += c.v;
-    }
-  }
-  return out;
-}
-
-
-/* Fetch one timeframe from TwelveData REST, returns Promise<candle[]> */
-function fetchTDSingle(tdSym, tdInterval, extraParams) {
-  return new Promise(resolve => {
-    const params = new URLSearchParams({
-      symbol:     tdSym,
-      interval:   tdInterval,
-      outputsize: '1000',   /* Reduced from 5000 to prevent Database Timeouts on heavy assets like Gold */
-      order:      'ASC',
-      timezone:   'UTC',
-      apikey:     TD_KEY,
-      ...extraParams
-    });
-    const path = `/time_series?${params.toString()}`;
-    const req = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, res => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.status !== 'ok' || !Array.isArray(json.values)) {
-            console.warn(`[TwelveData] ${tdSym} ${tdInterval}:`, json.message || json.status);
-            return resolve([]);
-          }
-          const out = json.values.map(v => ({
-            t: tdTs(v.datetime),
-            o: parseFloat(v.open), h: parseFloat(v.high),
-            l: parseFloat(v.low),  c: parseFloat(v.close),
-            v: parseFloat(v.volume || 0)
-          }));
-          console.log(`[TwelveData] Loaded ${out.length} ${tdInterval} candles for ${tdSym}`);
-          resolve(out);
-        } catch(e) { console.error('[TwelveData] parse error', e.message); resolve([]); }
-      });
-    });
-    req.on('error', e => { console.error('[TwelveData] request error', e.message); resolve([]); });
-    req.end();
-  });
-}
-
-/* ── TwelveData Crypto Cache — fetch + store into oandaCandles ── */
-
-function _tdDateStr(ts) {
-  // Format timestamp → TwelveData end_date param: "YYYY-MM-DD HH:MM:SS"
-  return new Date(ts).toISOString().slice(0, 19).replace('T', ' ');
-}
-
-async function fetchTDCryptoHistory(sym, tdSym, incremental) {
-  if (!TD_KEY) return;
-  if (!oandaCandles[sym]) oandaCandles[sym] = {};
-  TD_CRYPTO_TFS.forEach(tf => { if (!oandaCandles[sym][tf]) oandaCandles[sym][tf] = []; });
-
-  for (const tf of TD_CRYPTO_TFS) {
-    const arr    = oandaCandles[sym][tf];
-    const tdIval = TD_TF[tf];
-    const target = TD_CRYPTO_LIMITS[tf] || 5000;
-
-    try {
-      if (incremental && arr.length > 0) {
-        // Only fetch new candles since last cached candle
-        const lastT  = arr[arr.length - 1].t;
-        const needed = Math.min(TD_CRYPTO_PAGE, Math.ceil((Date.now() - lastT) / TF_MS[tf]) + 5);
-        if (needed <= 0) continue;
-        const fresh = (await fetchTDSingle(tdSym, tdIval, { outputsize: String(needed) }))
-          .filter(c => c.t > lastT).sort((a, b) => a.t - b.t);
-        fresh.forEach(c => { const cur = arr[arr.length - 1]; if (!cur || c.t > cur.t) arr.push(c); });
-        if (fresh.length) console.log(`[TD Crypto] ${sym} ${tf}: +${fresh.length} new`);
-      } else {
-        // Paginated full fetch — walk backwards until target reached
-        let collected = [];
-        let endDate   = null; // null = start from latest
-
-        while (collected.length < target) {
-          const pageSize = Math.min(TD_CRYPTO_PAGE, target - collected.length);
-          const extra    = endDate
-            ? { outputsize: String(pageSize), end_date: endDate }
-            : { outputsize: String(pageSize) };
-
-          const batch = await fetchTDSingle(tdSym, tdIval, extra);
-          if (!batch.length) break;
-
-          collected = [...batch, ...collected]; // prepend older candles
-          // Move end_date to just before the oldest candle in this batch
-          endDate = _tdDateStr(batch[0].t - TF_MS[tf]);
-
-          console.log(`[TD Crypto] ${sym} ${tf}: fetched ${collected.length}/${target}`);
-          if (batch.length < pageSize) break; // no more history available
-
-          await new Promise(r => setTimeout(r, 400)); // cooldown between pages
-        }
-
-        if (collected.length) {
-          oandaCandles[sym][tf] = collected;
-          console.log(`[TD Crypto] ${sym} ${tf}: ${collected.length} candles total`);
-        }
-      }
-      await new Promise(r => setTimeout(r, 400)); // cooldown between TFs
-    } catch(e) {
-      console.error(`[TD Crypto] Error ${sym} ${tf}:`, e.message);
-    }
-  }
-  saveCacheToDisk(sym);
-}
-
-let _tdCryptoRefreshing = false;
-async function refreshTDCryptoCache(incremental = false) {
-  if (!TD_KEY || _tdCryptoRefreshing) return;
-  _tdCryptoRefreshing = true;
-  console.log(`[TD Crypto] ${incremental ? 'Incremental' : 'Full'} refresh (${TD_CRYPTO_SYMBOLS.length} symbols)...`);
-  for (const { symbol, td } of TD_CRYPTO_SYMBOLS) {
-    try { await fetchTDCryptoHistory(symbol, td, incremental); }
-    catch(e) { console.error(`[TD Crypto] ${symbol}:`, e.message); }
-    await new Promise(r => setTimeout(r, 500));
-  }
-  _tdCryptoRefreshing = false;
-  console.log('[TD Crypto] Cache refresh complete');
-}
-
-let _tdForexRefreshing = false;
-async function refreshTDForexCache(incremental = false) {
-  if (!TD_KEY || _tdForexRefreshing) return;
-  _tdForexRefreshing = true;
-  console.log(`[TD Forex] ${incremental ? 'Incremental' : 'Full'} refresh (${TD_FOREX_SYMBOLS.length} symbols)...`);
-  for (const { symbol, td } of TD_FOREX_SYMBOLS) {
-    try { await fetchTDCryptoHistory(symbol, td, incremental); }
-    catch(e) { console.error(`[TD Forex] ${symbol}:`, e.message); }
-    await new Promise(r => setTimeout(r, 500));
-  }
-  _tdForexRefreshing = false;
-  console.log('[TD Forex] Cache refresh complete');
-}
-
-const _intradayLoaded = {}; /* tracks which symbols have had intraday (1m+1h) fetched */
-
-function storeTF(symbol, tf, arr) {
-  if (!arr.length) return;
-  candles[symbol][tf].length = 0;
-  arr.forEach(c => candles[symbol][tf].push(c));
-}
-
-function deriveFrom(symbol, src, targets) {
-  if (!src.length) return;
-  targets.forEach(tf => {
-    if (candles[symbol][tf].length > 0) return; /* don't overwrite */
-    const derived = aggregateCandles(src, TF_MS[tf]);
-    storeTF(symbol, tf, derived);
-    if (derived.length) console.log(`[TwelveData] Derived ${derived.length} ${tf} for ${symbol}`);
-  });
-}
-
-/* Fetch daily, 1h, and 1m history sequentially to prevent burst limits */
-async function fetchTDHistory(symbol) {
-  if (!TD_KEY) return;
-  ensureSymbol(symbol);
-  const tdSym = toTDSymbol(symbol);
-  
-  try {
-    // 1. Daily
-    const d1 = await fetchTDSingle(tdSym, '1day');
-    storeTF(symbol, '1d', d1);
-    deriveFrom(symbol, d1, ['1w']);
-    
-    await new Promise(r => setTimeout(r, 400));
-    
-    // 2. Hourly
-    const h1 = await fetchTDSingle(tdSym, '1h');
-    storeTF(symbol, '1h', h1);
-    deriveFrom(symbol, h1, ['4h']);
-    
-    await new Promise(r => setTimeout(r, 400));
-    
-    // 3. Minute
-    const m1 = await fetchTDSingle(tdSym, '1min');
-    storeTF(symbol, '1m', m1);
-    deriveFrom(symbol, m1, ['5m','15m','30m']);
-    
-    console.log(`[TwelveData] History fully ready for ${symbol}`);
-  } catch(e) {
-    console.error(`[TwelveData] History fetch error for ${symbol}`, e);
-  }
-}
-
 /* ═══════════════════════════════════════════════════
-   TWELVEDATA WEBSOCKET — Single Master Connection
+   METAAPI (OANDA) — replaced by src/sources/oanda.js
+   Aliases kept for any remaining references.
    ═══════════════════════════════════════════════════ */
+const METAAPI_TOKEN = process.env.METAAPI_TOKEN || '';
 
-/* Reverse map: TwelveData symbol → internal symbol (e.g. BTC/USD → BTCUSDT) */
-const _tdToInternal = {};
-function fromTDSymbol(tdSym) { return _tdToInternal[tdSym] || tdSym.replace('/', ''); }
+/* Aliases for scanner code that reads _maSymMap */
+const _maSymMap = oanda.SYMBOL_MAP;
+const _maReady  = { get value() { return oanda.isReady(); } };
 
-/* Create and manage one TwelveData WebSocket connection */
-function createTDSocket(name, initialSymbols) {
-  if (!TD_KEY) return null;
-  let ws = null;
-  let subscribed = new Set(initialSymbols);
-  let ready = false;
-  let reconnectTimer = null;
-
-  function connect() {
-    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    ws = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${TD_KEY}`);
-
-    ws.on('open', () => {
-      ready = true;
-      console.log(`[TDws:${name}] connected`);
-      if (subscribed.size > 0) {
-        ws.send(JSON.stringify({ action:'subscribe', params:{ symbols: [...subscribed].join(',') } }));
-      }
-    });
-
-    ws.on('message', raw => {
-      try {
-        const msg = JSON.parse(raw);
-        if (msg.event === 'price') {
-          const internalSym = fromTDSymbol(msg.symbol);
-          const price = parseFloat(msg.price);
-          const ts = (msg.timestamp || 0) * 1000 || Date.now();
-          if (price && internalSym) {
-            processTick(internalSym, price, 0, ts);
-            /* Also update oandaCandles for TD cached symbols — sniper scanner reads from there */
-            if (oandaCandles[internalSym]) {
-              TIMEFRAMES.forEach(tf => {
-                const arr = oandaCandles[internalSym][tf];
-                if (!arr || !arr.length) return;
-                const bucket = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
-                const cur = arr[arr.length - 1];
-                if (!cur || cur.t !== bucket) {
-                  arr.push({ t: bucket, o: price, h: price, l: price, c: price, v: 0 });
-                } else {
-                  cur.c = price; cur.h = Math.max(cur.h, price); cur.l = Math.min(cur.l, price);
-                }
-              });
-            }
-          }
-        }
-      } catch(e) {}
-    });
-
-    ws.on('close', () => {
-      ready = false;
-      console.log(`[TDws:${name}] closed — reconnecting in 5s`);
-      reconnectTimer = setTimeout(connect, 5000);
-    });
-
-    ws.on('error', e => {
-      console.error(`[TDws:${name}] error:`, e.message);
-      ws.terminate();
-    });
-  }
-
-  connect();
-
-  return {
-    subscribe(tdSym) {
-      subscribed.add(tdSym);
-      if (ready && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ action:'subscribe', params:{ symbols: tdSym } }));
-        console.log(`[TDws:${name}] subscribed ${tdSym}`);
-      }
-    },
-    unsubscribe(tdSym) {
-      subscribed.delete(tdSym);
-      if (ready && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ action:'unsubscribe', params:{ symbols: tdSym } }));
-        console.log(`[TDws:${name}] unsubscribed ${tdSym}`);
-      }
-    },
-    has(tdSym) { return subscribed.has(tdSym); }
-  };
-}
-
-/* Initialise a single Master Socket to conserve TwelveData connection limits */
-const _tdRootWS = TD_KEY ? createTDSocket('master', ['XAU/USD', 'BTC/USD', 'ETH/USD', 'SOL/USD']) : null;
-
-/* Register reverse-map entries for always-on symbols */
-['XAUUSD','BTCUSDT','ETHUSDT','SOLUSDT'].forEach(s => { _tdToInternal[toTDSymbol(s)] = s; });
-
-/* ═══════════════════════════════════════════════════
-   METAAPI (OANDA) DATA SOURCE
-   ═══════════════════════════════════════════════════ */
-const METAAPI_TOKEN      = process.env.METAAPI_TOKEN || '';
-const METAAPI_ACCOUNT_ID = '620f74cf-9c2e-46d0-8073-36ab51e621c0';
-
-/* Internal symbol → OANDA MT5 symbol name */
-const _maSymMap = {
-  /* ── Metals / Commodities ── */
-  'XAUUSD':   'GOLD.pro',
-  'XAGUSD':   'SILVER.pro',
-  'OILWTI':   'OILWTI.pro',
-  'OILBRNT':  'OILBRNT.pro',
-  'NATGAS':   'NATGAS.pro',
-  'COPPER':   'COPPER-US.pro',
-  'PLATIN':   'PLATIN.pro',
-  'PALLAD':   'PALLAD.pro',
-  /* ── Forex majors ── */
-  'EURUSD':   'EURUSD.pro',
-  'GBPUSD':   'GBPUSD.pro',
-  'USDJPY':   'USDJPY.pro',
-  'USDCHF':   'USDCHF.pro',
-  'AUDUSD':   'AUDUSD.pro',
-  'NZDUSD':   'NZDUSD.pro',
-  'USDCAD':   'USDCAD.pro',
-  /* ── Forex crosses ── */
-  'EURJPY':   'EURJPY.pro',
-  'GBPJPY':   'GBPJPY.pro',
-  'EURGBP':   'EURGBP.pro',
-  'EURAUD':   'EURAUD.pro',
-  'EURCAD':   'EURCAD.pro',
-  'EURCHF':   'EURCHF.pro',
-  'EURNZD':   'EURNZD.pro',
-  'GBPAUD':   'GBPAUD.pro',
-  'GBPCAD':   'GBPCAD.pro',
-  'GBPCHF':   'GBPCHF.pro',
-  'GBPNZD':   'GBPNZD.pro',
-  'AUDCAD':   'AUDCAD.pro',
-  'AUDCHF':   'AUDCHF.pro',
-  'AUDJPY':   'AUDJPY.pro',
-  'AUDNZD':   'AUDNZD.pro',
-  'CADCHF':   'CADCHF.pro',
-  'CADJPY':   'CADJPY.pro',
-  'CHFJPY':   'CHFJPY.pro',
-  'NZDJPY':   'NZDJPY.pro',
-  /* ── Indices ── */
-  'US500':    'US500.pro',
-  'US30':     'US30.pro',
-  'US100':    'US100.pro',
-  'DE30':     'DE30.pro',
-  'GB100':    'GB100.pro',
-  'JP225':    'JP225.pro',
-  'AU200':    'AU200.pro',
-  'EU50':     'EU50.pro',
-  'FR40':     'FR40.pro',
-  /* ── Equity CFDs ── */
-  'TSLA':     'TSLA_CFD.US',
-  'NVDA':     'NVDA_CFD.US',
-  'AAPL':     'AAPL_CFD.US',
-  /* ── Crypto ── */
-  'BTCUSDT':  'BTCUSD',
-  'ETHUSDT':  'ETHUSD',
-  'SOLUSDT':  'SOLUSD',
-  'ADAUSDT':  'ADAUSD',
-  'LTCUSD':   'LTCUSD',
-};
-const _oandaLoaded    = {};
-const _oandaLastFetch = {}; /* sym → timestamp of last background fetch trigger */
-
-/* Classify a symbol by its data source for signal tagging */
-const _tdCryptoSet = new Set();   // populated after TD_CRYPTO_SYMBOLS is defined (below)
-const _tdForexSet  = new Set();   // populated after TD_FOREX_SYMBOLS is defined (below)
+/* getDataSource — used by scanner to tag DB records */
 function getDataSource(sym) {
-  if (_tdForexSet.has(sym))  return 'td_forex';
-  if (_tdCryptoSet.has(sym)) return 'td_crypto';
-  return 'oanda';
-}
-
-/* ── TwelveData Crypto Cache ──
-   Symbols not covered by OANDA, fetched via TwelveData REST and stored
-   in oandaCandles so they flow through the scanner + sniper automatically. */
-const TD_CRYPTO_SYMBOLS = [
-  { symbol: 'BNBUSDT',   td: 'BNB/USD',  name: 'BNB / US Dollar'         },
-  { symbol: 'XRPUSDT',   td: 'XRP/USD',  name: 'XRP / US Dollar'         },
-  { symbol: 'DOGEUSDT',  td: 'DOGE/USD', name: 'Dogecoin / US Dollar'     },
-  { symbol: 'DOTUSDT',   td: 'DOT/USD',  name: 'Polkadot / US Dollar'     },
-  { symbol: 'LINKUSDT',  td: 'LINK/USD', name: 'Chainlink / US Dollar'    },
-  { symbol: 'AVAXUSDT',  td: 'AVAX/USD', name: 'Avalanche / US Dollar'    },
-  { symbol: 'MATICUSDT', td: 'MATIC/USD',name: 'Polygon / US Dollar'      },
-  { symbol: 'ATOMUSDT',  td: 'ATOM/USD', name: 'Cosmos / US Dollar'       },
-];
-const TD_CRYPTO_TFS     = ['1m', '1h', '4h', '1d'];
-const TD_CRYPTO_LIMITS  = { '1m': 10080, '1h': 17520, '4h': 7800, '1d': 5000 }; // match OANDA depth
-const TD_CRYPTO_PAGE    = 5000; // max candles per TwelveData call
-
-const TD_FOREX_SYMBOLS = [
-  { symbol: 'EURUSD', td: 'EUR/USD', name: 'Euro / US Dollar'            },
-  { symbol: 'GBPUSD', td: 'GBP/USD', name: 'British Pound / US Dollar'   },
-  { symbol: 'USDJPY', td: 'USD/JPY', name: 'US Dollar / Japanese Yen'    },
-  { symbol: 'USDCHF', td: 'USD/CHF', name: 'US Dollar / Swiss Franc'     },
-  { symbol: 'AUDUSD', td: 'AUD/USD', name: 'Australian Dollar / USD'     },
-  { symbol: 'USDCAD', td: 'USD/CAD', name: 'US Dollar / Canadian Dollar' },
-  { symbol: 'NZDUSD', td: 'NZD/USD', name: 'New Zealand Dollar / USD'    },
-  { symbol: 'EURJPY', td: 'EUR/JPY', name: 'Euro / Japanese Yen'         },
-  { symbol: 'GBPJPY', td: 'GBP/JPY', name: 'British Pound / Yen'         },
-  { symbol: 'EURGBP', td: 'EUR/GBP', name: 'Euro / British Pound'        },
-  { symbol: 'USDBRL', td: 'USD/BRL', name: 'US Dollar / Brazilian Real'  },
-];
-
-/* Populate source-classification sets now that both arrays are defined */
-TD_CRYPTO_SYMBOLS.forEach(s => _tdCryptoSet.add(s.symbol));
-TD_FOREX_SYMBOLS.forEach(s  => _tdForexSet.add(s.symbol));
-/* Register reverse-map so fromTDSymbol() resolves cached symbols correctly */
-TD_CRYPTO_SYMBOLS.forEach(s => { _tdToInternal[s.td] = s.symbol; });
-TD_FOREX_SYMBOLS.forEach(s  => { _tdToInternal[s.td] = s.symbol; });
-
-let _maAccount  = null;
-let _maConn       = null;
-let _maStreamConn = null;                /* streaming connection for live prices */
-let _streamStatus = {};                  /* brokerSym → 'subscribed'|'failed: ...'|'pending' */
-let _maReady      = false;
-let _maStatus     = 'disconnected';      /* 'connecting' | 'connected' | 'disconnected' | 'error' */
-let _maLastSeen   = null;
-let _maRetry      = 0;
-let _maWatchdog   = null;
-
-let _lastBrokerSymbolList = [];
-
-async function _discoverBrokerSymbols() {
-  if (!_maConn) return;
-  try {
-    const brokerSymbols = await _maConn.getSymbols();
-    if (!brokerSymbols || !brokerSymbols.length) return;
-
-    _lastBrokerSymbolList = brokerSymbols.map(bs => bs.symbol || bs).sort();
-
-    /* Group all broker symbols by their base name */
-    const baseToSuffixes = new Map();
-    for (const bs of brokerSymbols) {
-      const name = bs.symbol || bs;
-      /* Only strip dot suffixes (like .sml, .pro) so we don't accidentally match Futures contracts like US500-U5 */
-      const base = name.toUpperCase().replace(/\..*/,'');
-      if (!baseToSuffixes.has(base)) baseToSuffixes.set(base, []);
-      baseToSuffixes.get(base).push(name);
-    }
-
-    /* Prioritize specific account suffixes to prevent charting conflicts */
-    const SUFFIX_PRIORITY = ['.sml', '.pro', '.raw', ''];
-
-    function pickBestSymbol(base) {
-      const available = baseToSuffixes.get(base);
-      if (!available || available.length === 0) return null;
-      
-      for (const pref of SUFFIX_PRIORITY) {
-        const match = available.find(s => s.toLowerCase().endsWith(pref.toLowerCase()));
-        if (match) return match;
-      }
-      return available[0]; /* fallback to the first available */
-    }
-
-    let remapped = 0;
-    for (const [internalSym, oldBrokerSym] of Object.entries(_maSymMap)) {
-      /* Pass 1: match by internal symbol base (XAUUSD → XAUUSD.sml) */
-      const internalBase = internalSym.toUpperCase().replace(/\..*/,'');
-      let found = pickBestSymbol(internalBase);
-
-      /* Pass 2: match by old broker symbol base (GOLD.pro → GOLD.sml) */
-      if (!found) {
-        const oldBase = oldBrokerSym.toUpperCase().replace(/\..*/,'');
-        found = pickBestSymbol(oldBase);
-      }
-
-      if (found && found !== oldBrokerSym) {
-        console.log(`[MetaApi] Remapped ${internalSym}: ${oldBrokerSym} -> ${found}`);
-        _maSymMap[internalSym] = found;
-        remapped++;
-      } else if (!found) {
-        console.warn(`[MetaApi] No broker match for ${internalSym} (was: ${oldBrokerSym})`);
-      }
-    }
-
-    if (remapped > 0) console.log(`[MetaApi] Symbol discovery complete - ${remapped} remapped`);
-    else console.log('[MetaApi] Symbol discovery: no changes needed');
-  } catch(e) {
-    console.warn('[MetaApi] _discoverBrokerSymbols error:', e.message);
-  }
-}
-
-async function initMetaApi() {
-  if (!METAAPI_TOKEN) return;
-  _maStatus = 'connecting';
-  try {
-    const MetaApi = require('metaapi.cloud-sdk').default;
-    const api = new MetaApi(METAAPI_TOKEN);
-    _maAccount = await api.metatraderAccountApi.getAccount(METAAPI_ACCOUNT_ID);
-    if (!['DEPLOYING','DEPLOYED'].includes(_maAccount.state)) await _maAccount.deploy();
-    _maConn = _maAccount.getRPCConnection();
-    await _maConn.connect();
-    /* Give the connection 5s to settle without blocking on full sync */
-    await new Promise(r => setTimeout(r, 5000));
-    _maReady    = true;
-    _maStatus   = 'connected';
-    _maLastSeen = Date.now();
-    _maRetry    = 0;
-    console.log('[MetaApi] OANDA connection ready');
-    /* Auto-discover broker symbol names — remaps _maSymMap to actual broker names */
-    _discoverBrokerSymbols().catch(e => console.warn('[MetaApi] Symbol discovery failed:', e.message));
-    _startWatchdog();
-    startOandaStream(); /* non-blocking — subscribes all symbols for live prices */
-  } catch(e) {
-    _maStatus = 'error';
-    console.error('[MetaApi] Init failed:', e.message);
-    _scheduleReconnect();
-  }
-}
-
-function _scheduleReconnect() {
-  /* Exponential backoff: 10s, 20s, 40s, 80s … capped at 10 minutes */
-  const delay = Math.min(10000 * Math.pow(2, _maRetry), 600000);
-  _maRetry++;
-  console.log(`[MetaApi] Reconnecting in ${Math.round(delay/1000)}s (attempt ${_maRetry})...`);
-  setTimeout(async () => {
-    _maReady  = false;
-    _maConn   = null;
-    _maAccount = null;
-    await initMetaApi();
-  }, delay);
-}
-
-function _startWatchdog() {
-  if (_maWatchdog) clearInterval(_maWatchdog);
-  /* Every 2 minutes, ping MetaAPI — if it fails or last seen > 5min ago, reconnect */
-  _maWatchdog = setInterval(async () => {
-    try {
-      if (!_maConn) throw new Error('no connection');
-      await _maConn.getSymbolPrice(_maSymMap['EURUSD']); /* lightweight ping */
-      _maLastSeen = Date.now();
-      _maStatus   = 'connected';
-    } catch(e) {
-      const staleSec = _maLastSeen ? Math.round((Date.now() - _maLastSeen) / 1000) : '?';
-      console.warn(`[MetaApi] Watchdog: connection lost (last seen ${staleSec}s ago) — reconnecting...`);
-      _maStatus     = 'disconnected';
-      _maReady      = false;
-      _maStreamConn = null;
-      _streamStatus = {};
-      _streamStarted = false;
-      clearInterval(_maWatchdog);
-      _maWatchdog = null;
-      _scheduleReconnect();
-    }
-  }, 120000);
-}
-
-let _streamStarted = false;
-async function startOandaStream() {
-  if (!_maAccount || _streamStarted) return;
-  _streamStarted = true;
-  try {
-    console.log('[Stream] Starting streaming connection...');
-    _maStreamConn = _maAccount.getStreamingConnection();
-
-    /* Price update listener — SDK may call singular or plural depending on version */
-    function _handleStreamPrice(price) {
-      try {
-        const bid = price.bid, ask = price.ask;
-        if (!bid && !ask) return;
-        const mid = ((bid || ask) + (ask || bid)) / 2;
-        const ts  = price.time ? new Date(price.time).getTime() : Date.now();
-        const internalSym = Object.keys(_maSymMap).find(k => _maSymMap[k] === price.symbol);
-        if (!internalSym) return;
-        ensureOandaSym(internalSym);
-        TIMEFRAMES.forEach(tf => {
-          const periodMs = TF_MS[tf];
-          const arr      = oandaCandles[internalSym][tf];
-          const cur      = arr[arr.length - 1];
-          let bucket = Math.floor(ts / periodMs) * periodMs;
-          if (cur) {
-            const periodsElapsed = Math.floor((ts - cur.t) / periodMs);
-            bucket = cur.t + periodsElapsed * periodMs;
-          }
-          if (!cur || cur.t !== bucket) {
-            arr.push({ t: bucket, o: mid, h: mid, l: mid, c: mid, v: 0 });
-          } else {
-            cur.c = mid; cur.h = Math.max(cur.h, mid); cur.l = Math.min(cur.l, mid);
-          }
-        });
-        processTick(internalSym, mid, 0, ts);
-        _maLastSeen = Date.now();
-      } catch(e) { /* ignore per-tick errors */ }
-    }
-
-    _maStreamConn.addSynchronizationListener({
-      onSymbolPriceUpdated(_i, price)       { _handleStreamPrice(price); },
-      onSymbolPricesUpdated(_i, prices)     { (prices || []).forEach(_handleStreamPrice); },
-    });
-
-    await _maStreamConn.connect();
-    /* Wait for full broker sync — required before subscribing to market data */
-    try {
-      await _maStreamConn.waitSynchronized({ timeoutInSeconds: 60 });
-      console.log('[Stream] Connection synchronized');
-    } catch(e) {
-      console.warn('[Stream] Sync timeout — proceeding anyway:', e.message);
-    }
-
-    /* Symbols that OANDA does not support for streaming market data */
-    const _streamUnsupported = new Set(['ADAUSD', 'LTCUSD']);
-
-    /* Subscribe all symbols — log each result */
-    const brokerSyms = Object.values(_maSymMap).filter(s => !_streamUnsupported.has(s));
-    console.log(`[Stream] Subscribing ${brokerSyms.length} symbols...`);
-    for (const brokerSym of brokerSyms) {
-      _streamStatus[brokerSym] = 'pending';
-      try {
-        await _maStreamConn.subscribeToMarketData(brokerSym);
-        _streamStatus[brokerSym] = 'subscribed';
-        console.log(`[Stream] ${brokerSym} ✓`);
-      } catch(e) {
-        _streamStatus[brokerSym] = 'failed: ' + e.message;
-        console.warn(`[Stream] ${brokerSym} ✗: ${e.message}`);
-      }
-      await new Promise(r => setTimeout(r, 200)); /* small gap between subscriptions */
-    }
-
-    const ok   = Object.values(_streamStatus).filter(v => v === 'subscribed').length;
-    const fail = Object.values(_streamStatus).filter(v => v.startsWith('failed')).length;
-    console.log(`[Stream] Done — ${ok} subscribed, ${fail} failed`);
-  } catch(e) {
-    console.error('[Stream] Streaming connection failed:', e.message);
-  }
-}
-
-
-
-/* Separate candle store for OANDA data — same structure as candles{} */
-const oandaCandles = {};
-
-/* ── Disk cache for OANDA candles ── */
-const OANDA_CACHE_DIR = path.join(__dirname, 'oanda_cache');
-try { if (!fs.existsSync(OANDA_CACHE_DIR)) fs.mkdirSync(OANDA_CACHE_DIR); } catch(e) {}
-
-function _dedupSortArr(arr) {
-  if (!arr || !arr.length) return arr;
-  const seen = new Set();
-  return arr
-    .filter(c => { if (seen.has(c.t)) return false; seen.add(c.t); return true; })
-    .sort((a, b) => a.t - b.t);
-}
-
-function saveCacheToDisk(sym) {
-  try {
-    const tfs = oandaCandles[sym] || {};
-    const clean = {};
-    for (const tf of Object.keys(tfs)) {
-      clean[tf] = _dedupSortArr(tfs[tf]);
-      oandaCandles[sym][tf] = clean[tf]; /* also fix in-memory */
-    }
-    fs.writeFileSync(
-      path.join(OANDA_CACHE_DIR, sym + '.json'),
-      JSON.stringify(clean)
-    );
-    console.log(`[Cache] Saved ${sym}`);
-  } catch(e) { console.error('[Cache] Save error ' + sym + ':', e.message); }
-}
-
-function loadCacheFromDisk() {
-  let n = 0;
-  const allSyms = [...new Set([
-    ...Object.keys(_maSymMap),
-    ...TD_CRYPTO_SYMBOLS.map(s => s.symbol),
-    ...TD_FOREX_SYMBOLS.map(s => s.symbol),
-  ])];
-  for (const sym of allSyms) {
-    const file = path.join(OANDA_CACHE_DIR, sym + '.json');
-    try {
-      if (!fs.existsSync(file)) continue;
-      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      /* Deduplicate and sort each TF array on load to fix any existing corruption */
-      for (const tf of Object.keys(data)) {
-        data[tf] = _dedupSortArr(data[tf]);
-      }
-      oandaCandles[sym] = data;
-      _oandaLoaded[sym] = true;
-      n++;
-    } catch(e) { console.error('[Cache] Load error ' + sym + ':', e.message); }
-  }
-  console.log('[Cache] Loaded ' + n + ' symbols from disk');
-}
-
-let _cacheRefreshing = false;
-const _cacheProgress = {
-  active: false,
-  currentSym: null,
-  currentTF: null,
-  symDone: 0,
-  symTotal: 0,
-  tfDone: 0,
-  tfTotal: 0,
-  pct: 0,
-  startedAt: null,
-  log: [], /* last 20 messages */
-};
-function _cpLog(msg) {
-  _cacheProgress.log.push({ t: new Date().toISOString(), msg });
-  if (_cacheProgress.log.length > 20) _cacheProgress.log.shift();
-}
-
-async function refreshAllOandaCache() {
-  if (!_maReady || _cacheRefreshing) return;
-  _cacheRefreshing = true;
-  const syms = Object.keys(_maSymMap);
-  _cacheProgress.active    = true;
-  _cacheProgress.symDone   = 0;
-  _cacheProgress.symTotal  = syms.length;
-  _cacheProgress.tfDone    = 0;
-  _cacheProgress.tfTotal   = syms.length * TIMEFRAMES.length;
-  _cacheProgress.pct       = 0;
-  _cacheProgress.startedAt = new Date().toISOString();
-  _cacheProgress.log       = [];
-  _cpLog('Started full refresh (' + syms.length + ' symbols)');
-  console.log('[Cache] Starting full OANDA cache refresh (' + syms.length + ' symbols)...');
-  for (const sym of syms) {
-    _cacheProgress.currentSym = sym;
-    _cacheProgress.currentTF  = null;
-    const hasData = oandaCandles[sym] && TIMEFRAMES.some(tf => (oandaCandles[sym][tf] || []).length > 0);
-    try { await fetchOandaHistory(sym, hasData); } catch(e) { console.error('[Cache] Error refreshing ' + sym + ':', e.message); _cpLog('ERROR ' + sym + ': ' + e.message); }
-    _cacheProgress.symDone++;
-    _cacheProgress.pct = Math.round((_cacheProgress.symDone / _cacheProgress.symTotal) * 100);
-    await new Promise(r => setTimeout(r, 1000));
-  }
-  _cacheProgress.active     = false;
-  _cacheProgress.currentSym = null;
-  _cacheProgress.currentTF  = null;
-  _cacheRefreshing = false;
-  _cpLog('Refresh complete');
-  console.log('[Cache] Full OANDA cache refresh complete');
-}
-
-function ensureOandaSym(sym) {
-  if (!oandaCandles[sym]) oandaCandles[sym] = {};
-  /* Always ensure every current TF exists — catches symbols loaded from old disk cache missing new TFs like 1M */
-  TIMEFRAMES.forEach(tf => { if (!oandaCandles[sym][tf]) oandaCandles[sym][tf] = []; });
-}
-
-function storeOandaTF(sym, tf, arr) {
-  if (!arr.length) return;
-  oandaCandles[sym][tf].length = 0;
-  arr.forEach(c => oandaCandles[sym][tf].push(c));
-}
-
-function deriveOanda(sym, src, targets) {
-  if (!src.length) return;
-  targets.forEach(tf => {
-    if (oandaCandles[sym][tf].length > 0) return;
-    const derived = aggregateCandles(src, TF_MS[tf]);
-    storeOandaTF(sym, tf, derived);
-    if (derived.length) console.log(`[MetaApi] Derived ${derived.length} ${tf} for ${sym}`);
-  });
-}
-
-function maToCandle(c) {
-  return { t: new Date(c.time).getTime(), o: c.open, h: c.high, l: c.low, c: c.close, v: c.tickVolume || 0 };
-}
-
-async function fetchOandaCandles(maSym, tf, startTime, limit) {
-  if (!_maAccount) return [];
-  try {
-    const raw = await _maAccount.getHistoricalCandles(maSym, tf, startTime, limit);
-    return (raw || []).map(maToCandle);
-  } catch(e) {
-    console.error('[MetaApi] fetchOandaCandles error:', e.message);
-    return [];
-  }
-}
-
-
-/* Target candle counts per TF for full history fetch:
-   1w  → 1100 (~21 years)   1d  → 5000 (~13 years)
-   4h  → 7800 (~5 years)    1h  → 17520 (~2 years)
-   1m  → 10080 (7 days)     others → 2000             */
-const _OANDA_FULL_LIMITS = { '1w': 1100, '1d': 5000, '4h': 7800, '1h': 17520, '30m': 2000, '15m': 2000, '5m': 2000, '1m': 10080 };
-
-const _OANDA_PAGE_SIZE = 1000; /* max candles per MetaAPI request */
-
-async function fetchOandaHistory(internalSym, incremental) {
-  if (!_maReady) return;
-  const maSym = _maSymMap[internalSym];
-  if (!maSym) return;
-  ensureOandaSym(internalSym);
-
-  const delay = () => new Promise(r => setTimeout(r, 500));
-
-  try {
-    for (const tf of TIMEFRAMES) {
-      _cacheProgress.currentTF = tf;
-      const arr    = oandaCandles[internalSym][tf];
-      const target = _OANDA_FULL_LIMITS[tf] || 1000;
-
-      /* If existing data is less than 70% of the new target, back-fill regardless of incremental flag */
-      const needsBackfill = arr && arr.length > 0 && arr.length < target * 0.7;
-
-      if (incremental && arr.length > 0 && !needsBackfill) {
-        /* Incremental: only fetch candles that could have appeared since last save */
-        const lastT   = arr[arr.length - 1].t;
-        const elapsed = Date.now() - lastT;
-        const limit   = Math.min(_OANDA_PAGE_SIZE, Math.ceil(elapsed / TF_MS[tf]) + 20);
-        const batch   = await fetchOandaCandles(maSym, tf, new Date(), limit);
-        const fresh   = batch.filter(c => c.t > lastT).sort((a, b) => a.t - b.t);
-        fresh.forEach(c => { const cur = arr[arr.length - 1]; if (!cur || c.t > cur.t) arr.push(c); });
-        if (fresh.length) console.log(`[MetaApi] ${internalSym} ${tf}: +${fresh.length} new (incremental)`);
-      } else {
-        if (needsBackfill) console.log(`[MetaApi] ${internalSym} ${tf}: only ${arr.length}/${target} candles — back-filling history...`);
-        /* Full fetch with pagination — walk backwards in time until target reached */
-        let collected = [];
-        let fromTime  = new Date();
-
-        while (collected.length < target) {
-          const limit = Math.min(_OANDA_PAGE_SIZE, target - collected.length);
-          const batch = await fetchOandaCandles(maSym, tf, fromTime, limit);
-          if (!batch.length) break;
-          collected = [...batch, ...collected]; /* prepend older candles */
-          fromTime  = new Date(batch[0].t - 1); /* go further back */
-          if (batch.length < limit) break; /* no more history available */
-          await delay();
-        }
-
-        storeOandaTF(internalSym, tf, collected);
-        console.log(`[MetaApi] ${internalSym} ${tf}: ${collected.length} candles (target ${target})`);
-      }
-
-      _cacheProgress.tfDone++;
-      await delay();
-    }
-    console.log(`[MetaApi] History ready for ${internalSym}`);
-    _cpLog(`Done: ${internalSym}`);
-    saveCacheToDisk(internalSym);
-  } catch(e) {
-    console.error('[MetaApi] fetchOandaHistory error:', e.message);
-  }
-}
-
-const _oandaTickers = {};
-
-function startOandaTicker(internalSym, maSym) {
-  if (_oandaTickers[internalSym]) return; /* already running */
-  _oandaTickers[internalSym] = setInterval(async () => {
-    if (!_maConn) return;
-    try {
-      const p = await _maConn.getSymbolPrice(maSym);
-      if (!p) return;
-      const price = (p.bid + p.ask) / 2;
-      const ts = p.time ? new Date(p.time).getTime() : Date.now();
-      /* Update oandaCandles live candle */
-      ensureOandaSym(internalSym);
-      TIMEFRAMES.forEach(tf => {
-        const periodMs = TF_MS[tf];
-        const arr      = oandaCandles[internalSym][tf];
-        const cur      = arr[arr.length - 1];
-        
-        let bucket = Math.floor(ts / periodMs) * periodMs;
-        if (cur) {
-          const periodsElapsed = Math.floor((ts - cur.t) / periodMs);
-          bucket = cur.t + periodsElapsed * periodMs;
-        }
-
-        if (!cur || cur.t !== bucket) {
-          arr.push({ t: bucket, o: price, h: price, l: price, c: price, v: 0 });
-        } else {
-          cur.c = price; cur.h = Math.max(cur.h, price); cur.l = Math.min(cur.l, price);
-        }
-      });
-      /* Also feed into main candles store so SSE / live price bar works */
-      processTick(internalSym, price, 0, ts);
-    } catch(e) { /* ignore transient errors */ }
-  }, 2000);
-  console.log(`[MetaApi] Live ticker started for ${internalSym}`);
-}
-
-/* Subscribe a symbol on the master socket */
-function tdWSSubscribe(internalSym) {
-  const tdSym = toTDSymbol(internalSym);
-  _tdToInternal[tdSym] = internalSym;
-  if (_tdRootWS && !_tdRootWS.has(tdSym)) _tdRootWS.subscribe(tdSym);
-}
-
-/* Unsubscribe from the master socket when no SSE clients remain for that symbol */
-function tdWSUnsubscribe(internalSym) {
-  const tdSym = toTDSymbol(internalSym);
-  if (_tdRootWS && _tdRootWS.has(tdSym)) _tdRootWS.unsubscribe(tdSym);
-}
-
-function connectTD(symbol) {
-  const sym = symbol.toUpperCase();
-  ensureSymbol(sym);
-  if (!tdLoaded[sym]) { tdLoaded[sym] = true; fetchTDHistory(sym); }
-  tdWSSubscribe(sym);
+  if (_binanceSymSet.has(sym)) return 'binance';
+  if (oanda.SYMBOL_MAP[sym])   return 'oanda';
+  return 'td';
 }
 
 const app = express();
@@ -1491,162 +591,89 @@ const _fetchingTF = {};
 
 // Candles endpoint — 60 req/min per IP
 app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
-  const { symbol } = req.params;
-  const tf = req.query.tf || '1h';
-  const sym = symbol.toUpperCase().replace('-', '/');
+  const sym = req.params.symbol.toUpperCase().replace('-', '/');
+  const tf  = req.query.tf || '1h';
   if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
-  
-  connectTD(sym);
-  ensureSymbol(sym);
 
-  /* source=oanda → serve from OANDA candle store if available */
-  const _oandaKey = sym.replace('/', ''); /* XAU/USD → XAUUSD */
-  /* Only force OANDA if the symbol is mapped AND actually has cached data.
-     If OANDA renamed the broker symbol, oandaCandles will be empty — fall through
-     to TwelveData instead of returning loading:true forever or mixing sources. */
-  const _oandaHasData = !!_maSymMap[_oandaKey] &&
-    oandaCandles[_oandaKey] &&
-    Object.values(oandaCandles[_oandaKey]).some(arr => arr.length > 0);
-  const forceOanda = _oandaHasData;
-  const reqSource = forceOanda ? 'oanda' : req.query.source;
+  const source = req.query.source || getSymSource(sym);
 
-  if (reqSource === 'oanda' && _maReady && _maSymMap[_oandaKey]) {
-    const now       = Date.now();
-    const lastFetch = _oandaLastFetch[_oandaKey] || 0;
-    const cooldown  = _oandaLoaded[_oandaKey] ? 600000 : 0; /* 10min if loaded, instant if new */
-    if (now - lastFetch > cooldown) {
-      _oandaLoaded[_oandaKey]    = true;
-      _oandaLastFetch[_oandaKey] = now;
-      fetchOandaHistory(_oandaKey, !!oandaCandles[_oandaKey]); /* incremental if has data */
-    }
+  if (source === 'oanda' && oanda.isReady()) {
+    const hwm = store.highWaterMark('oanda', sym, tf);
+    if (!hwm) oanda.fetchHistory(sym, false).catch(() => {});
+  }
+  if (source === 'td') {
+    const hwm = store.highWaterMark('td', sym, tf);
+    if (!hwm) { td.fetchHistory(sym).catch(() => {}); td.subscribe(sym); }
   }
 
-  const _oandaArr = oandaCandles[_oandaKey] && (oandaCandles[_oandaKey][tf]||[]);
-  const oandaReady = _oandaArr && _oandaArr.length > 0;
-
-  if (reqSource === 'oanda' && !oandaReady) {
-    return res.json({ candles: [], loading: true });
-  }
-  const useOanda = reqSource === 'oanda' && oandaReady;
-  let arr = useOanda ? (oandaCandles[_oandaKey][tf] || []) : (candles[sym][tf] || []);
-
-  /* If empty, try to derive from a lower TF that's already loaded */
-  if (arr.length === 0) {
-    /* 5m/15m/30m → derive from 1m if available */
-    if (['5m','15m','30m'].includes(tf) && candles[sym]['1m'] && candles[sym]['1m'].length > 0) {
-      deriveFrom(sym, candles[sym]['1m'], [tf]);
-      arr = candles[sym][tf] || [];
-    }
-    /* 4h → derive from 1h if available */
-    if (tf === '4h' && candles[sym]['1h'] && candles[sym]['1h'].length > 0) {
-      deriveFrom(sym, candles[sym]['1h'], ['4h']);
-      arr = candles[sym][tf] || [];
-    }
-    /* 1w → derive from 1d if available */
-    if (tf === '1w' && candles[sym]['1d'] && candles[sym]['1d'].length > 0) {
-      deriveFrom(sym, candles[sym]['1d'], ['1w']);
-      arr = candles[sym][tf] || [];
-    }
-  }
-
-  /* Still empty — fetch directly from TwelveData (anchor TFs: 1m, 1h, 1d) */
-  if (arr.length === 0 && TD_KEY) {
-    const fetchKey = sym + '_' + tf;
-    if (!_fetchingTF[fetchKey]) {
-      _fetchingTF[fetchKey] = true;
-      const tdSym = toTDSymbol(sym);
-      /* For derived TFs, fetch their anchor instead */
-      const anchorTf  = ['5m','15m','30m'].includes(tf) ? '1m'
-                      : tf === '4h'                      ? '1h'
-                      : tf === '1w'                      ? '1d'
-                      : tf;
-      const tdInterval = TD_TF[anchorTf] || TD_TF[tf] || '1h';
-      try {
-        const data = await fetchTDSingle(tdSym, tdInterval);
-        storeTF(sym, anchorTf, data);
-        /* Derive requested TF from anchor */
-        if (anchorTf !== tf) deriveFrom(sym, data, [tf]);
-      } catch(e) {
-        console.error(`[candles] fetch error ${tdSym} ${tdInterval}:`, e.message);
-      } finally {
-        _fetchingTF[fetchKey] = false;
-      }
-    }
-    arr = candles[sym][tf] || [];
-  }
-
+  const arr = store.readCandles(source, sym, tf);
+  if (!arr.length && source === 'oanda') return res.json({ candles: [], loading: true });
   res.json({ candles: arr });
 });
 
-// Historical candles endpoint — lazy scroll pagination via TwelveData
+// Historical candles endpoint — lazy scroll pagination
 app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
-  const sym      = req.params.symbol.toUpperCase().replace('-', '/');
-  const tf       = req.query.tf || '4h';
-  const endTime  = parseInt(req.query.endTime, 10);
+  const sym     = req.params.symbol.toUpperCase().replace('-', '/');
+  const tf      = req.query.tf || '4h';
+  const endTime = parseInt(req.query.endTime, 10);
   if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
 
-  /* ── OANDA history: serve from store, fetch more from MetaApi if needed ── */
-  const _oKey      = sym.replace('/', '');
-  const forceOanda = !!_maSymMap[_oKey];
-  if (req.query.source === 'oanda' || forceOanda) {
-    if (!endTime || endTime < 0) return res.json({ candles: [] });
-    const maSym  = _maSymMap[_oKey];
-    ensureOandaSym(_oKey);
-    const store = oandaCandles[_oKey][tf];
+  const source = req.query.source || getSymSource(sym);
 
-    /* Check how many candles exist before the requested endTime */
-    const before = endTime > 0 ? store.filter(c => c.t < endTime) : store;
-
-    if (before.length < 50 && maSym && _maAccount) {
-      /* Not enough — fetch a fresh batch from MetaApi going back from endTime */
-      const limit  = 2000;
-      const startT = new Date(endTime);
-      try {
-        const fetched = await fetchOandaCandles(maSym, tf, startT, limit);
-        /* Prepend new candles to store, keeping sorted, deduplicated */
-        if (fetched.length) {
-          const existingTs = new Set(store.map(c => c.t));
-          const newOnes    = fetched.filter(c => !existingTs.has(c.t) && c.t < endTime);
-          if (newOnes.length) {
-            Array.prototype.unshift.apply(store, newOnes);
-            store.sort((a, b) => a.t - b.t);
-            console.log(`[OANDA history] Fetched ${newOnes.length} more ${tf} for ${_oKey}`);
+  if (source === 'oanda') {
+    if (!endTime) return res.json({ candles: [] });
+    const existing = store.readCandles('oanda', sym, tf).filter(c => c.t < endTime);
+    if (existing.length < 50 && oanda.isReady()) {
+      const maSym = oanda.SYMBOL_MAP[sym];
+      const conn  = oanda.getRpcConn();
+      if (maSym && conn) {
+        try {
+          const raw = await conn.getHistoricalCandles(maSym, tf, new Date(endTime), 2000);
+          if (raw && raw.length) {
+            store.writeCandles('oanda', sym, tf,
+              raw.map(c => ({ t: new Date(c.time).getTime(), o: c.open, h: c.high, l: c.low, c: c.close, v: c.tickVolume || 0 }))
+                 .filter(c => c.t < endTime));
           }
-        }
-      } catch(e) {
-        console.error('[OANDA history] fetch error:', e.message);
+        } catch(e) { console.error('[history] OANDA fetch:', e.message); }
       }
     }
-
-    const result = store.filter(c => c.t < endTime).slice(-2000);
-    return res.json({ candles: result });
+    return res.json({ candles: store.readCandles('oanda', sym, tf).filter(c => c.t < endTime).slice(-2000) });
   }
 
+  if (source === 'binance') {
+    if (!endTime) return res.json({ candles: [] });
+    const BN_INTERVALS = { '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' };
+    const bnInt = BN_INTERVALS[tf]; if (!bnInt) return res.json({ candles: [] });
+    try {
+      const bnPath = `/api/v3/klines?symbol=${sym}&interval=${bnInt}&endTime=${endTime}&limit=1000`;
+      const rows = await new Promise((resolve, reject) => {
+        https.get({ hostname: 'api.binance.com', path: bnPath, headers: { 'User-Agent': 'fractal/1.0' } }, r => {
+          let d = ''; r.on('data', c => d += c);
+          r.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve([]); } });
+        }).on('error', reject);
+      });
+      const out = (Array.isArray(rows) ? rows : []).map(k => ({
+        t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]), l: parseFloat(k[3]), c: parseFloat(k[4]), v: parseFloat(k[5]),
+      })).filter(c => c.t < endTime);
+      return res.json({ candles: out });
+    } catch(e) { return res.json({ candles: [] }); }
+  }
+
+  // TwelveData fallback
   if (!TD_KEY) return res.status(500).json({ candles: [] });
   const tdInterval = TD_TF[tf];
-  if (!tdInterval || !endTime || endTime < 0) return res.status(400).json({ candles: [] });
-  const tdSym  = toTDSymbol(sym);
-  const endDate = new Date(endTime).toISOString().slice(0, 19); /* UTC ISO */
-  const params = new URLSearchParams({
-    symbol: tdSym, interval: tdInterval,
-    outputsize: '5000', order: 'ASC', timezone: 'UTC',
-    end_date: endDate, apikey: TD_KEY
-  });
-  const path = `/time_series?${params.toString()}`;
-  const treq = https.request({ hostname: 'api.twelvedata.com', path, method: 'GET' }, tres => {
+  if (!tdInterval || !endTime) return res.status(400).json({ candles: [] });
+  const tdSym   = toTDSymbol(sym);
+  const endDate = new Date(endTime).toISOString().slice(0, 19);
+  const params  = new URLSearchParams({ symbol: tdSym, interval: tdInterval, outputsize: '5000', order: 'ASC', timezone: 'UTC', end_date: endDate, apikey: TD_KEY });
+  const treq = https.request({ hostname: 'api.twelvedata.com', path: `/time_series?${params.toString()}`, method: 'GET' }, tres => {
     let data = '';
     tres.on('data', c => { data += c; });
     tres.on('end', () => {
       try {
         const json = JSON.parse(data);
         if (json.status !== 'ok' || !Array.isArray(json.values)) return res.json({ candles: [] });
-        const out = json.values.map(v => ({
-          t: tdTs(v.datetime),
-          o: parseFloat(v.open),  h: parseFloat(v.high),
-          l: parseFloat(v.low),   c: parseFloat(v.close),
-          v: parseFloat(v.volume || 0)
-        }));
-        res.json({ candles: out });
+        res.json({ candles: json.values.map(v => ({ t: tdTs(v.datetime), o: parseFloat(v.open), h: parseFloat(v.high), l: parseFloat(v.low), c: parseFloat(v.close), v: parseFloat(v.volume || 0) })) });
       } catch(e) { res.json({ candles: [] }); }
     });
   });
@@ -1657,50 +684,33 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
 // Subscribe SSE — max 5 concurrent connections per IP
 const _sseConnCount = new Map();
 app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
-  const ip = getClientIp(req);
+  const ip  = getClientIp(req);
   const cur = _sseConnCount.get(ip) || 0;
-  if (cur >= 5) return res.status(429).json({ error:'Too many SSE connections' });
-  if (!validSymbol(req.params.symbol.toUpperCase())) return res.status(400).json({ error: 'Invalid symbol' });
-  _sseConnCount.set(ip, cur + 1);
+  if (cur >= 5) return res.status(429).json({ error: 'Too many SSE connections' });
   const sym = req.params.symbol.toUpperCase().replace('-', '/');
-  connectTD(sym);
-  ensureSymbol(sym);
+  if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
 
-  const _oandaKey = sym.replace('/', '');
-  const _oandaHasDataSSE = !!_maSymMap[_oandaKey] &&
-    oandaCandles[_oandaKey] &&
-    Object.values(oandaCandles[_oandaKey]).some(arr => arr.length > 0);
-  res.reqSource = _oandaHasDataSSE ? 'oanda' : req.query.source;
+  const source = req.query.source || getSymSource(sym);
+  if (source === 'td') { td.subscribe(sym); td.fetchHistory(sym).catch(() => {}); }
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  sseClients[sym].add(res);
+  _sseConnCount.set(ip, cur + 1);
+  const cleanup = sse.addClient(source, sym, res);
   res.on('close', () => {
-    sseClients[sym].delete(res);
+    cleanup();
     const n = (_sseConnCount.get(ip) || 1) - 1;
     if (n <= 0) _sseConnCount.delete(ip); else _sseConnCount.set(ip, n);
-    /* Unsubscribe from dynamic WS3 when no users are watching this symbol */
-    if (sseClients[sym].size === 0) tdWSUnsubscribe(sym);
+    if (source === 'td' && sse.clientCount(source, sym) === 0) td.unsubscribe(sym);
   });
-  
-  const _oKey = sym.replace('/', '');
-  /* OANDA: skip initial candle snapshot — frontend loads via REST /candles. Sending full oandaCandles would be several MB. */
-  const initialCandles = res.reqSource === 'oanda' ? {} : (candles[sym] || {});
-  res.write(`data: ${JSON.stringify({ symbol: sym, candles: initialCandles })}\n\n`);
 });
 
 // Current price endpoint
 app.get('/price/:symbol', rateLimit(30, 60000), (req, res) => {
-  const sym = req.params.symbol.toUpperCase().replace('-', '/');
+  const sym    = req.params.symbol.toUpperCase().replace('-', '/');
   if (!validSymbol(sym)) return res.status(400).json({ price: 0 });
-  connectTD(sym);
-  ensureSymbol(sym);
-  const tf = '1m';
-  const arr = candles[sym][tf] || [];
-  const lastCandle = arr[arr.length - 1];
-  res.json({ price: lastCandle ? lastCandle.c : 0 });
+  const source = getSymSource(sym);
+  const arr    = store.readCandles(source, sym, '1m');
+  const last   = arr[arr.length - 1];
+  res.json({ price: last ? last.c : 0 });
 });
 
 // Symbol Search endpoint proxying TwelveData
@@ -1778,17 +788,15 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',          instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
           { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
           { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
-          /* Forex exotic — TwelveData cached */
-          { symbol:'USDBRL', instrument_name:'US Dollar / Brazilian Real', instrument_type:'Physical Currency', exchange:'TwelveData', source:'oanda' },
-          /* Crypto — TwelveData cached */
-          { symbol:'BNBUSDT',   instrument_name:'BNB / US Dollar',           instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
-          { symbol:'XRPUSDT',   instrument_name:'XRP / US Dollar',           instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
-          { symbol:'DOGEUSDT',  instrument_name:'Dogecoin / US Dollar',      instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
-          { symbol:'DOTUSDT',   instrument_name:'Polkadot / US Dollar',      instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
-          { symbol:'LINKUSDT',  instrument_name:'Chainlink / US Dollar',     instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
-          { symbol:'AVAXUSDT',  instrument_name:'Avalanche / US Dollar',     instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
-          { symbol:'MATICUSDT', instrument_name:'Polygon / US Dollar',       instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
-          { symbol:'ATOMUSDT',  instrument_name:'Cosmos / US Dollar',        instrument_type:'Digital Currency',  exchange:'TwelveData',  source:'oanda' },
+          /* Crypto — Binance direct */
+          { symbol:'BNBUSDT',   instrument_name:'BNB / US Dollar',           instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+          { symbol:'XRPUSDT',   instrument_name:'XRP / US Dollar',           instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+          { symbol:'DOGEUSDT',  instrument_name:'Dogecoin / US Dollar',      instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+          { symbol:'DOTUSDT',   instrument_name:'Polkadot / US Dollar',      instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+          { symbol:'LINKUSDT',  instrument_name:'Chainlink / US Dollar',     instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+          { symbol:'AVAXUSDT',  instrument_name:'Avalanche / US Dollar',     instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+          { symbol:'MATICUSDT', instrument_name:'Polygon / US Dollar',       instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+          { symbol:'ATOMUSDT',  instrument_name:'Cosmos / US Dollar',        instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
           /* Equity CFDs */
           { symbol:'TSLA',    instrument_name:'Tesla Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
           { symbol:'NVDA',    instrument_name:'NVIDIA Corp',                 instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
@@ -1806,9 +814,7 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
         ];
         const q = query.toUpperCase().replace('/','');
         const oandaMatches = _oandaCatalog.filter(o => {
-          const matchesQuery = o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
-          const hasData = _maReady || (oandaCandles[o.symbol] && Object.keys(oandaCandles[o.symbol]).length > 0);
-          return matchesQuery && hasData;
+          return o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
         });
         res.json({ data: [...oandaMatches, ...filtered] });
       } catch (e) {
@@ -3242,15 +2248,15 @@ app.get('/api/crossovers/live', requireAdmin, async (_req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── Broker symbol diagnostic — shows current _maSymMap + full OANDA symbol list ── */
+/* ── Broker symbol diagnostic ── */
 app.get('/api/admin/broker-symbols', requireAdmin, async (_req, res) => {
-  res.json({
-    symMap: _maSymMap,
-    brokerList: _lastBrokerSymbolList,
-    unmapped: Object.entries(_maSymMap)
-      .filter(([, v]) => !_lastBrokerSymbolList.includes(v))
-      .map(([k, v]) => ({ internal: k, brokerName: v }))
-  });
+  const s = oanda.getStatus();
+  res.json({ symMap: s.symbolMap, brokerList: s.brokerList, unmapped: s.unmapped });
+});
+
+/* ── Candle store stats ── */
+app.get('/api/admin/candle-stats', requireAdmin, (_req, res) => {
+  res.json({ stats: store.getStats(), sse: sse.listSubscriptions() });
 });
 
 /* ── Purge all crossover history ── */
@@ -3740,21 +2746,19 @@ setInterval(poll, 2000);
 });
 
 app.post('/admin/cache-refresh', requireAdmin, (_req, res) => {
-  refreshAllOandaCache().catch(e => console.error('[Cache] Manual refresh error:', e.message));
-  res.json({ ok: true, message: 'Refresh started' });
+  oanda.refreshAllCache().catch(e => console.error('[Cache] Manual refresh error:', e.message));
+  res.json({ ok: true, message: 'OANDA cache refresh started' });
 });
 
 app.post('/admin/cache-purge-all', requireAdmin, async (_req, res) => {
   try {
-    const fs = require('fs');
-    if (fs.existsSync('oanda_cache')) fs.rmSync('oanda_cache', { recursive: true, force: true });
-    if (fs.existsSync('td_cache')) fs.rmSync('td_cache', { recursive: true, force: true });
-    if (fs.existsSync('td_forex_cache')) fs.rmSync('td_forex_cache', { recursive: true, force: true });
-    for (const k of Object.keys(oandaCandles)) delete oandaCandles[k];
-    for (const k of Object.keys(candles)) delete candles[k];
-    for (const k of Object.keys(_oandaLoaded)) delete _oandaLoaded[k];
-    for (const k of Object.keys(_oandaLastFetch)) delete _oandaLastFetch[k];
-    res.json({ ok: true, message: 'All caches purged. Will recache on demand.' });
+    const cacheDir = path.join(__dirname, 'candle_cache');
+    if (fs.existsSync(cacheDir)) fs.rmSync(cacheDir, { recursive: true, force: true });
+    // Also remove old cache dirs for backward compat
+    for (const d of ['oanda_cache', 'td_cache', 'td_forex_cache']) {
+      const p = path.join(__dirname, d); if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+    }
+    res.json({ ok: true, message: 'All caches purged. Restart server to recache.' });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -3762,21 +2766,14 @@ app.post('/admin/cache-purge-all', requireAdmin, async (_req, res) => {
 
 app.post('/admin/cache-purge/:symbol', requireAdmin, async (req, res) => {
   try {
-    let sym = req.params.symbol;
-    if (sym.includes('/')) sym = sym.replace('/', '');
-    const fs = require('fs');
-    const files = [
-      `oanda_cache/${sym}.json`, 
-      `td_cache/${sym}.json`, 
-      `td_forex_cache/${sym}.json`
-    ];
-    for (const f of files) { if (fs.existsSync(f)) fs.unlinkSync(f); }
-    delete oandaCandles[sym];
-    const slashSym = req.params.symbol.includes('/') ? req.params.symbol : req.params.symbol.replace(/^(...)(...)$/, '$1/$2');
-    delete candles[slashSym];
-    delete candles[sym];
-    delete _oandaLoaded[sym];
-    delete _oandaLastFetch[sym];
+    const sym    = req.params.symbol.toUpperCase().replace('/', '');
+    const source = getSymSource(sym);
+    const f      = path.join(__dirname, 'candle_cache', source, `${sym}.json`);
+    if (fs.existsSync(f)) fs.unlinkSync(f);
+    // Also try old cache dirs
+    for (const d of ['oanda_cache', 'td_cache', 'td_forex_cache']) {
+      const op = path.join(__dirname, d, `${sym}.json`); if (fs.existsSync(op)) fs.unlinkSync(op);
+    }
     res.json({ ok: true, message: `Purged ${sym}` });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -3784,13 +2781,12 @@ app.post('/admin/cache-purge/:symbol', requireAdmin, async (req, res) => {
 });
 
 app.post('/admin/td-crypto-refresh', requireAdmin, (_req, res) => {
-  refreshTDCryptoCache(false).catch(e => console.error('[TDCrypto] Manual refresh error:', e.message));
-  res.json({ ok: true, message: 'TD Crypto full refresh started' });
+  binance.fetchAllHistory().catch(e => console.error('[Binance] Manual refresh error:', e.message));
+  res.json({ ok: true, message: 'Binance alt-crypto refresh started' });
 });
 
 app.post('/admin/td-forex-refresh', requireAdmin, (_req, res) => {
-  refreshTDForexCache(false).catch(e => console.error('[TDForex] Manual refresh error:', e.message));
-  res.json({ ok: true, message: 'TD Forex full refresh started' });
+  res.json({ ok: true, message: 'Forex data is served from OANDA — use cache-refresh instead.' });
 });
 
 app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
@@ -3804,17 +2800,20 @@ app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
 });
 
 app.get('/admin/cache-status', requireAdmin, (_req, res) => {
-  const buildSymList = (syms, tfsToCheck) => {
+  const oandaStatus  = oanda.getStatus();
+  const binanceStatus = binance.getStatus();
+  const tdStatus     = td.getStatus();
+  const stats        = store.getStats();
+
+  const buildSymList = (syms, src, tfs) => {
     const done = [], empty = [];
     for (const sym of syms) {
-      const d = oandaCandles[sym];
-      if (!d) { empty.push(sym); continue; }
       const tfInfo = {};
       let hasAny = false;
-      for (const tf of tfsToCheck) {
-        const len = (d[tf] || []).length;
-        const lastT = len ? d[tf][len - 1].t : null;
-        tfInfo[tf] = { candles: len, lastCandle: lastT ? new Date(lastT).toISOString() : null };
+      for (const tf of tfs) {
+        const arr = store.readCandles(src, sym, tf);
+        const len = arr.length;
+        tfInfo[tf] = { candles: len, lastCandle: len ? new Date(arr[len - 1].t).toISOString() : null };
         if (len > 0) hasAny = true;
       }
       if (hasAny) done.push({ sym, tfs: tfInfo }); else empty.push(sym);
@@ -3822,39 +2821,14 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
     return { done, empty };
   };
 
-  const oanda    = buildSymList(Object.keys(_maSymMap), TIMEFRAMES);
-  const tdCrypto = buildSymList(TD_CRYPTO_SYMBOLS.map(s => s.symbol), TD_CRYPTO_TFS);
-  const tdForex  = buildSymList(TD_FOREX_SYMBOLS.map(s => s.symbol),  TD_CRYPTO_TFS);
+  const oandaList   = buildSymList(oanda.getSymbols(),   'oanda',   TIMEFRAMES);
+  const binanceList = buildSymList(binance.getSymbols(), 'binance', TIMEFRAMES);
 
   res.json({
-    metaapi: { status: _maStatus, lastSeen: _maLastSeen ? new Date(_maLastSeen).toISOString() : null, retryCount: _maRetry },
-    stream: {
-      subscribed: Object.values(_streamStatus).filter(v => v === 'subscribed').length,
-      failed:     Object.values(_streamStatus).filter(v => v.startsWith('failed')).length,
-      pending:    Object.values(_streamStatus).filter(v => v === 'pending').length,
-      details:    _streamStatus,
-    },
-    refreshing:         _cacheRefreshing,
-    tdCryptoRefreshing: _tdCryptoRefreshing,
-    tdForexRefreshing:  _tdForexRefreshing,
-    total:   Object.keys(_maSymMap).length,
-    loaded:  oanda.done.length,
-    empty:   oanda.empty.length,
-    progress: _cacheProgress,
-    symbols:    oanda.done,
-    notStarted: oanda.empty,
-    tdCrypto: {
-      total:      TD_CRYPTO_SYMBOLS.length,
-      loaded:     tdCrypto.done.length,
-      symbols:    tdCrypto.done,
-      notStarted: tdCrypto.empty,
-    },
-    tdForex: {
-      total:      TD_FOREX_SYMBOLS.length,
-      loaded:     tdForex.done.length,
-      symbols:    tdForex.done,
-      notStarted: tdForex.empty,
-    },
+    oanda:   { ...oandaStatus, ...oandaList, total: oanda.getSymbols().length },
+    binance: { ...binanceStatus, ...binanceList, total: binance.SYMBOLS.length },
+    td:      tdStatus,
+    storeStats: stats,
   });
 });
 
@@ -4298,44 +3272,37 @@ app.post('/stripe-webhook', async (req, res) => {
    START SERVER + CRON JOB
    ═══════════════════════════════════════════════════ */
 app.listen(PORT, () => {
-  console.log(`\n=== Fractal AI Agent v3.2 — port ${PORT} ===`);
+  console.log(`\n=== Fractal AI Agent v4.0 — port ${PORT} ===`);
   console.log('Anthropic key:', !!process.env.ANTHROPIC_API_KEY);
   console.log('Stripe:',        !!stripe);
   console.log('Supabase:',      !!sbAdmin);
 
-  /* Subscribe all TD cached symbols (crypto + forex) to the live WebSocket */
-  if (_tdRootWS) {
-    TD_CRYPTO_SYMBOLS.forEach(s => _tdRootWS.subscribe(s.td));
-    TD_FOREX_SYMBOLS.forEach(s  => _tdRootWS.subscribe(s.td));
-    console.log('[TDws] Subscribed ' + (TD_CRYPTO_SYMBOLS.length + TD_FOREX_SYMBOLS.length) + ' TD cached symbols for live ticks');
-  }
-
   /* Condition weights — load from historical signal outcomes */
   refreshConditionWeights();
 
-  /* OANDA — load disk cache immediately, then full refresh after MetaApi ready */
-  loadCacheFromDisk();
+  /* Load all disk caches immediately */
+  oanda.loadCache();
+  binance.loadCache();
 
-  /* TwelveData crypto — load from disk, then fetch fresh in background */
-  setTimeout(() => refreshTDCryptoCache(false), 5000);
+  /* Start live feeds */
+  binance.connect();  // Binance WS — always-on, free, no auth
+  td.connect();       // TwelveData WS — on-demand subscriptions
 
-  /* TwelveData forex — staggered 10s after crypto to avoid API rate limit overlap */
-  setTimeout(() => refreshTDForexCache(false), 10000);
-
+  /* OANDA MetaAPI — connect after 30s (MetaAPI SDK needs some warmup time) */
   if (METAAPI_TOKEN) {
     setTimeout(() => {
-      console.log('[MetaApi] Initializing OANDA connection...');
-      initMetaApi().then(() => {
-        if (_maReady) {
-          refreshAllOandaCache();
-          /* Refresh again every 12 hours */
-          setInterval(() => refreshAllOandaCache(), 12 * 3600 * 1000);
-        } else {
-          console.warn('[MetaApi] Not ready — OANDA unavailable');
+      console.log('[OANDA] Initializing MetaAPI connection...');
+      oanda.connect().then(() => {
+        if (oanda.isReady()) {
+          oanda.refreshAllCache();
+          setInterval(() => oanda.refreshAllCache(), 12 * 3600 * 1000);
         }
-      });
+      }).catch(e => console.error('[OANDA] Connect error:', e.message));
     }, 30000);
   }
+
+  /* Binance alt-crypto history — fetch 5s after start */
+  setTimeout(() => binance.fetchAllHistory().catch(e => console.error('[Binance] History error:', e.message)), 5000);
 
   cron.schedule('0 2 * * *', () => {
     console.log('\n⏰ [Scheduled] Running daily prediction check...');
@@ -4349,32 +3316,30 @@ app.listen(PORT, () => {
   });
   /* Scanner — runs every 30 minutes */
   cron.schedule('*/30 * * * *', () => {
-    if (Object.keys(oandaCandles).length > 0) {
+    if (oanda.getSymbols().length > 0) {
       console.log('\n🔄 [Scheduled] Running sniper scanner...');
       runSniperScanner();
     }
   });
   /* SMA crossover scanner — runs every 10 minutes */
   cron.schedule('*/10 * * * *', () => {
-    if (Object.keys(oandaCandles).length > 0) {
-      runCrossoverScanner();
-    }
+    if (oanda.getSymbols().length > 0) runCrossoverScanner();
   });
-  /* TwelveData crypto — incremental refresh every 12 hours */
+  /* Binance alt-crypto — incremental refresh every 12 hours */
   cron.schedule('0 */12 * * *', () => {
-    console.log('\n📊 [Scheduled] Refreshing TwelveData crypto cache...');
-    refreshTDCryptoCache(true);
+    console.log('\n📊 [Scheduled] Refreshing Binance alt-crypto cache...');
+    binance.fetchAllHistory().catch(e => console.error('[Binance] Cron error:', e.message));
   });
-  /* TwelveData forex — incremental refresh every 12 hours (offset 30min to avoid collision) */
+  /* OANDA incremental refresh every 12 hours (offset 30min) */
   cron.schedule('30 */12 * * *', () => {
-    console.log('\n📊 [Scheduled] Refreshing TwelveData forex cache...');
-    refreshTDForexCache(true);
+    console.log('\n📊 [Scheduled] OANDA incremental refresh...');
+    oanda.refreshAllCache().catch(e => console.error('[OANDA] Cron error:', e.message));
   });
 
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
   console.log('🔄 Sniper scanner: Every 30 minutes');
   console.log('📈 SMA crossover scanner: Every 10 minutes');
-  console.log('📊 TwelveData crypto cache: Every 12 hours');
-  console.log('📊 TwelveData forex cache:  Every 12 hours (offset 30m)');
+  console.log('📊 Binance alt-crypto cache: Every 12 hours');
+  console.log('📊 OANDA incremental refresh: Every 12 hours (offset 30m)');
 });

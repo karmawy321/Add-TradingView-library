@@ -1,0 +1,16 @@
+{"ts":1776453509827,"level":"info","msg":"writeCandles","source":"binance","sym":"BNBUSDT","tf":"1m","added":999,"total":1000}
+{"ts":1776453510810,"level":"info","msg":"writeCandles","source":"binance","sym":"BNBUSDT","tf":"5m","added":1999,"total":2000}
+{"ts":1776453512113,"level":"info","msg":"writeCandles","source":"binance","sym":"BNBUSDT","tf":"15m","added":1999,"total":2000}
+{"ts":1776453513516,"level":"info","msg":"writeCandles","source":"binance","sym":"BNBUSDT","tf":"30m","added":1999,"total":2000}
+{"ts":1776453518577,"level":"info","msg":"writeCandles","source":"binance","sym":"BNBUSDT","tf":"1h","added":4999,"total":2000}
+{"ts":1776453522618,"level":"info","msg":"writeCandles","source":"binance","sym":"BNBUSDT","tf":"4h","added":4999,"total":2000}
+{"ts":1776453526012,"level":"info","msg":"writeCandles","source":"binance","sym":"BNBUSDT","tf":"1d","added":3084,"total":2000}
+{"ts":1776453526550,"level":"info","msg":"writeCandles","source":"binance","sym":"BNBUSDT","tf":"1w","added":441,"total":442}
+{"ts":1776453527836,"level":"info","msg":"writeCandles","source":"binance","sym":"XRPUSDT","tf":"1m","added":998,"total":1000}
+{"ts":1776453528825,"level":"info","msg":"writeCandles","source":"binance","sym":"XRPUSDT","tf":"5m","added":1999,"total":2000}
+{"ts":1776453530582,"level":"info","msg":"writeCandles","source":"binance","sym":"XRPUSDT","tf":"15m","added":1999,"total":2000}
+{"ts":1776453532096,"level":"info","msg":"writeCandles","source":"binance","sym":"XRPUSDT","tf":"30m","added":1999,"total":2000}
+{"ts":1776453536162,"level":"info","msg":"writeCandles","source":"binance","sym":"XRPUSDT","tf":"1h","added":4999,"total":2000}
+{"ts":1776453539911,"level":"info","msg":"writeCandles","source":"binance","sym":"XRPUSDT","tf":"4h","added":4999,"total":2000}
+{"ts":1776453542390,"level":"info","msg":"writeCandles","source":"binance","sym":"XRPUSDT","tf":"1d","added":2905,"total":2000}
+{"ts":1776453542672,"level":"info","msg":"writeCandles","source":"binance","sym":"XRPUSDT","tf":"1w","added":416,"total":417}

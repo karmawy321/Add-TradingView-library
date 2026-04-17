@@ -4475,6 +4475,7 @@ var chartCandles      = [];
 var currentSymbol     = '';
 var currentInterval   = '4h';
 var currentDataSource = 'twelvedata'; /* 'twelvedata' | 'oanda' */
+/* Symbols served natively (OANDA or Binance) — no TwelveData fallback for these */
 var _OANDA_SYMBOLS    = new Set([
   /* Metals / Commodities */
   'XAUUSD','XAU/USD','XAGUSD','XAG/USD','OILWTI','OILBRNT','NATGAS','COPPER','PLATIN','PALLAD',
@@ -4491,8 +4492,10 @@ var _OANDA_SYMBOLS    = new Set([
   'US500','US30','US100','DE30','GB100','JP225','AU200','EU50','FR40',
   /* Equity CFDs */
   'TSLA','NVDA','AAPL',
-  /* Crypto */
+  /* Crypto — OANDA broker */
   'BTCUSDT','ETHUSDT','SOLUSDT','ADAUSDT','LTCUSD',
+  /* Crypto — Binance direct (new data layer) */
+  'BNBUSDT','XRPUSDT','DOGEUSDT','DOTUSDT','LINKUSDT','AVAXUSDT','MATICUSDT','ATOMUSDT',
 ]);
 var _historyLoading   = false;
 var _historyDepleted  = false;
