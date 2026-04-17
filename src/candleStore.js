@@ -186,6 +186,16 @@ function subscribe(source, sym, cb) {
 }
 
 /**
+ * Remove a symbol from memory and mark its disk entry for deletion.
+ * Does NOT delete the file — caller handles that.
+ */
+function purge(source, sym) {
+  const k = _key(source, sym);
+  delete _store[k];
+  _dirty.delete(k);
+}
+
+/**
  * List all keys currently in the store.
  */
 function listKeys() { return Object.keys(_store); }
@@ -268,6 +278,7 @@ module.exports = {
   readCandles,
   highWaterMark,
   subscribe,
+  purge,
   listKeys,
   getStats,
   saveToDisk,

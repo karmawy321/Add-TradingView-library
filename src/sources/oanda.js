@@ -417,7 +417,8 @@ async function connect() {
     _lastSeen   = Date.now();
     _retryCount = 0;
     console.log('[OANDA] Connection ready');
-    _discoverBrokerSymbols().catch(e => console.warn('[OANDA] Symbol discovery failed:', e.message));
+    // Await symbol discovery so refreshAllCache() sees correct broker names
+    await _discoverBrokerSymbols().catch(e => console.warn('[OANDA] Symbol discovery failed:', e.message));
     _startWatchdog();
     startStream(); // non-blocking
   } catch(e) {

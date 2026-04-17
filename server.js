@@ -2768,7 +2768,10 @@ app.post('/admin/cache-purge/:symbol', requireAdmin, async (req, res) => {
   try {
     const sym    = req.params.symbol.toUpperCase().replace('/', '');
     const source = getSymSource(sym);
-    const f      = path.join(__dirname, 'candle_cache', source, `${sym}.json`);
+    // Clear in-memory store first
+    store.purge(source, sym);
+    // Delete disk file
+    const f = path.join(__dirname, 'candle_cache', source, `${sym}.json`);
     if (fs.existsSync(f)) fs.unlinkSync(f);
     // Also try old cache dirs
     for (const d of ['oanda_cache', 'td_cache', 'td_forex_cache']) {
