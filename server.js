@@ -2824,7 +2824,28 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
   const oandaList   = buildSymList(oanda.getSymbols(),   'oanda',   TIMEFRAMES);
   const binanceList = buildSymList(binance.getSymbols(), 'binance', TIMEFRAMES);
 
+  // Flatten to match admin HTML's expected field names
+  const binanceTDShape = (list, total) => ({
+    symbols:    list.done,
+    notStarted: list.empty,
+    loaded:     list.done.length,
+    total,
+  });
+
   res.json({
+    // Top-level fields expected by admin HTML
+    progress:   oandaStatus.progress,
+    metaapi:    { status: oandaStatus.status, lastSeen: oandaStatus.lastSeen, retryCount: oandaStatus.retryCount },
+    symbols:    oandaList.done,
+    notStarted: oandaList.empty,
+    loaded:     oandaList.done.length,
+    total:      oanda.getSymbols().length,
+    refreshing: oandaStatus.progress && oandaStatus.progress.active,
+    tdCrypto:          binanceTDShape(binanceList, binance.SYMBOLS.length),
+    tdCryptoRefreshing: false,
+    tdForex:           { symbols: [], notStarted: [], loaded: 0, total: 0 },
+    tdForexRefreshing:  false,
+    // Full data for future use
     oanda:   { ...oandaStatus, ...oandaList, total: oanda.getSymbols().length },
     binance: { ...binanceStatus, ...binanceList, total: binance.SYMBOLS.length },
     td:      tdStatus,

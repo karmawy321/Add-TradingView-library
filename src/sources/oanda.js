@@ -1,6 +1,7 @@
 'use strict';
 
 const store = require('../candleStore');
+const sse   = require('../sse');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const SOURCE = 'oanda';
@@ -317,6 +318,14 @@ async function fetchHistory(internalSym, incremental) {
     console.log(`[OANDA] History ready for ${internalSym}`);
     _pLog(`Done: ${internalSym}`);
     store.saveToDisk(SOURCE, internalSym);
+
+    // Push snapshot to any SSE clients watching this symbol
+    const snap = {};
+    for (const tf of TIMEFRAMES) {
+      const arr = store.readCandles(SOURCE, internalSym, tf);
+      if (arr.length) snap[tf] = arr;
+    }
+    sse.pushEvent(SOURCE, internalSym, { type: 'snapshot', source: SOURCE, symbol: internalSym, candles: snap });
   } catch(e) {
     console.error('[OANDA] fetchHistory error:', e.message);
   }
