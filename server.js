@@ -759,7 +759,24 @@ function createTDSocket(name, initialSymbols) {
         if (msg.event === 'price') {
           const internalSym = fromTDSymbol(msg.symbol);
           const price = parseFloat(msg.price);
-          if (price && internalSym) processTick(internalSym, price, 0, (msg.timestamp || 0) * 1000 || Date.now());
+          const ts = (msg.timestamp || 0) * 1000 || Date.now();
+          if (price && internalSym) {
+            processTick(internalSym, price, 0, ts);
+            /* Also update oandaCandles for TD cached symbols — sniper scanner reads from there */
+            if (oandaCandles[internalSym]) {
+              TIMEFRAMES.forEach(tf => {
+                const arr = oandaCandles[internalSym][tf];
+                if (!arr || !arr.length) return;
+                const bucket = Math.floor(ts / TF_MS[tf]) * TF_MS[tf];
+                const cur = arr[arr.length - 1];
+                if (!cur || cur.t !== bucket) {
+                  arr.push({ t: bucket, o: price, h: price, l: price, c: price, v: 0 });
+                } else {
+                  cur.c = price; cur.h = Math.max(cur.h, price); cur.l = Math.min(cur.l, price);
+                }
+              });
+            }
+          }
         }
       } catch(e) {}
     });
@@ -798,7 +815,7 @@ function createTDSocket(name, initialSymbols) {
 }
 
 /* Initialise a single Master Socket to conserve TwelveData connection limits */
-const _tdRootWS = null; /* TD_DISABLED — re-enable: TD_KEY ? createTDSocket('master', ['XAU/USD', 'BTC/USD', 'ETH/USD', 'SOL/USD']) : null */
+const _tdRootWS = TD_KEY ? createTDSocket('master', ['XAU/USD', 'BTC/USD', 'ETH/USD', 'SOL/USD']) : null;
 
 /* Register reverse-map entries for always-on symbols */
 ['XAUUSD','BTCUSDT','ETHUSDT','SOLUSDT'].forEach(s => { _tdToInternal[toTDSymbol(s)] = s; });
@@ -915,6 +932,9 @@ const TD_FOREX_SYMBOLS = [
 /* Populate source-classification sets now that both arrays are defined */
 TD_CRYPTO_SYMBOLS.forEach(s => _tdCryptoSet.add(s.symbol));
 TD_FOREX_SYMBOLS.forEach(s  => _tdForexSet.add(s.symbol));
+/* Register reverse-map so fromTDSymbol() resolves cached symbols correctly */
+TD_CRYPTO_SYMBOLS.forEach(s => { _tdToInternal[s.td] = s.symbol; });
+TD_FOREX_SYMBOLS.forEach(s  => { _tdToInternal[s.td] = s.symbol; });
 
 let _maAccount  = null;
 let _maConn       = null;
@@ -1392,13 +1412,10 @@ function tdWSUnsubscribe(internalSym) {
 }
 
 function connectTD(symbol) {
-  /* TD_DISABLED — only OANDA active. Re-enable by restoring body below:
   const sym = symbol.toUpperCase();
   ensureSymbol(sym);
   if (!tdLoaded[sym]) { tdLoaded[sym] = true; fetchTDHistory(sym); }
   tdWSSubscribe(sym);
-  */
-  ensureSymbol(symbol.toUpperCase());
 }
 
 const app = express();
@@ -4286,7 +4303,12 @@ app.listen(PORT, () => {
   console.log('Stripe:',        !!stripe);
   console.log('Supabase:',      !!sbAdmin);
 
-  /* TD_DISABLED — prefetch skipped. Re-enable by restoring PREFETCH loop */
+  /* Subscribe all TD cached symbols (crypto + forex) to the live WebSocket */
+  if (_tdRootWS) {
+    TD_CRYPTO_SYMBOLS.forEach(s => _tdRootWS.subscribe(s.td));
+    TD_FOREX_SYMBOLS.forEach(s  => _tdRootWS.subscribe(s.td));
+    console.log('[TDws] Subscribed ' + (TD_CRYPTO_SYMBOLS.length + TD_FOREX_SYMBOLS.length) + ' TD cached symbols for live ticks');
+  }
 
   /* Condition weights — load from historical signal outcomes */
   refreshConditionWeights();
