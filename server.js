@@ -2752,13 +2752,18 @@ app.post('/admin/cache-refresh', requireAdmin, (_req, res) => {
 
 app.post('/admin/cache-purge-all', requireAdmin, async (_req, res) => {
   try {
+    // Clear every key from in-memory store
+    for (const k of store.listKeys()) {
+      const [source, ...rest] = k.split(':');
+      store.purge(source, rest.join(':'));
+    }
+    // Delete disk files
     const cacheDir = path.join(__dirname, 'candle_cache');
     if (fs.existsSync(cacheDir)) fs.rmSync(cacheDir, { recursive: true, force: true });
-    // Also remove old cache dirs for backward compat
     for (const d of ['oanda_cache', 'td_cache', 'td_forex_cache']) {
       const p = path.join(__dirname, d); if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
     }
-    res.json({ ok: true, message: 'All caches purged. Restart server to recache.' });
+    res.json({ ok: true, message: 'All caches purged.' });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

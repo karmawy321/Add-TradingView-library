@@ -332,21 +332,25 @@ async function fetchHistory(internalSym, incremental) {
 }
 
 // ─── Full cache refresh (called from admin endpoint) ─────────────────────────
-let _refreshing = false;
+let _refreshing        = false;
+let _initialRefreshDone = false; // first run = always full fetch
 
 async function refreshAllCache() {
   if (!_ready || _refreshing) return;
   _refreshing = true;
+  const fullFetch = !_initialRefreshDone; // ignore streaming ticks on first boot
   const syms = Object.keys(SYMBOL_MAP);
   Object.assign(progress, {
     active: true, symDone: 0, symTotal: syms.length,
     tfDone: 0, tfTotal: syms.length * TIMEFRAMES.length,
     pct: 0, startedAt: new Date().toISOString(), log: [],
   });
-  _pLog(`Started full refresh (${syms.length} symbols)`);
+  _pLog(`Started ${fullFetch ? 'full' : 'incremental'} refresh (${syms.length} symbols)`);
   for (const sym of syms) {
     progress.currentSym = sym;
-    const hasData = store.readCandles(SOURCE, sym, '1d').length > 0;
+    // incremental only when: not first run AND have substantial history already
+    const existing = store.readCandles(SOURCE, sym, '1d');
+    const hasData  = !fullFetch && existing.length >= FULL_LIMITS['1d'] * 0.5;
     try { await fetchHistory(sym, hasData); } catch(e) {
       console.error('[OANDA] Error refreshing ' + sym + ':', e.message);
       _pLog('ERROR ' + sym + ': ' + e.message);
@@ -355,6 +359,7 @@ async function refreshAllCache() {
     progress.pct = Math.round((progress.symDone / progress.symTotal) * 100);
     await _delay(1000);
   }
+  _initialRefreshDone = true;
   Object.assign(progress, { active: false, currentSym: null, currentTF: null });
   _refreshing = false;
   _pLog('Refresh complete');
