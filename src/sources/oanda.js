@@ -17,8 +17,8 @@ const TIMEFRAMES = Object.keys(TF_MS);
 
 // Full history targets per TF
 const FULL_LIMITS = {
-  '1w': 1100, '1d': 5000, '4h': 7800, '1h': 17520,
-  '30m': 2000, '15m': 2000, '5m': 2000, '1m': 10080,
+  '1w': 5000, '1d': 5000, '4h': 7000, '1h': 17000,
+  '30m': 3000, '15m': 3000, '5m': 3000, '1m': 11000,
 };
 
 const PAGE_SIZE = 1000; // max candles per MetaAPI call

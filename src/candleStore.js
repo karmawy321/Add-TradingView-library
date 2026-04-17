@@ -7,7 +7,7 @@ const path = require('path');
 const CACHE_DIR   = path.join(__dirname, '..', 'candle_cache');
 const LOG_FILE    = path.join(__dirname, '..', 'logs', 'candle_store.log');
 const FLUSH_MS    = 60_000;   // flush dirty entries to disk every 60s
-const MAX_CANDLES = 2000;     // max candles kept in memory per sym/tf
+const MAX_CANDLES = 20_000;   // max candles kept in memory per sym/tf
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 // Key: `${source}:${sym}`  e.g. "oanda:XAUUSD"  "binance:BTCUSDT"

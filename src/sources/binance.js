@@ -26,8 +26,8 @@ const SYMBOLS = [
 
 // History targets per TF (candle counts)
 const HISTORY_LIMITS = {
-  '1m': 1000, '5m': 2000, '15m': 2000, '30m': 2000,
-  '1h': 5000, '4h': 5000, '1d': 5000, '1w': 1000,
+  '1m': 11000, '5m': 3000, '15m': 3000, '30m': 3000,
+  '1h': 17000, '4h': 7000, '1d': 5000, '1w': 5000,
 };
 
 // Binance interval strings

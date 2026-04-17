@@ -74,13 +74,18 @@ function _aggregate(src, periodMs) {
 }
 
 // ─── REST single fetch ────────────────────────────────────────────────────────
+const _INTERVAL_MS = {
+  '1min':60000,'5min':300000,'15min':900000,'30min':1800000,
+  '1h':3600000,'4h':14400000,'1day':86400000,'1week':604800000,
+};
+
 function _fetchSingle(tdSym, tdInterval, extra) {
   return new Promise(resolve => {
     if (!TD_KEY) { resolve([]); return; }
     const params = new URLSearchParams({
       symbol:     tdSym,
       interval:   tdInterval,
-      outputsize: '1000',
+      outputsize: '5000',
       order:      'ASC',
       timezone:   'UTC',
       apikey:     TD_KEY,
@@ -111,6 +116,26 @@ function _fetchSingle(tdSym, tdInterval, extra) {
   });
 }
 
+// ─── Paginated REST fetch ─────────────────────────────────────────────────────
+async function _fetchPaginated(tdSym, tdInterval, target) {
+  const PAGE = 5000; // TwelveData max per call
+  let collected = [];
+  let endDate   = null;
+
+  while (collected.length < target) {
+    const need  = target - collected.length;
+    const extra = { outputsize: String(Math.min(PAGE, need)) };
+    if (endDate) extra.end_date = endDate;
+    const batch = await _fetchSingle(tdSym, tdInterval, extra);
+    if (!batch.length) break;
+    collected = [...batch, ...collected]; // prepend older candles
+    endDate   = _tdDateStr(batch[0].t - (_INTERVAL_MS[tdInterval] || 60000));
+    if (batch.length < Math.min(PAGE, need)) break;
+    await new Promise(r => setTimeout(r, 400));
+  }
+  return collected;
+}
+
 // ─── History fetch for on-demand symbol ──────────────────────────────────────
 const _loading = new Set(); // prevent concurrent fetches for same sym
 
@@ -121,34 +146,40 @@ async function fetchHistory(sym) {
   _registerSym(sym);
 
   try {
-    // 1. Daily (derive weekly from it)
-    const d1 = await _fetchSingle(tdSym, '1day');
+    // 1d → derive 1w
+    const d1 = await _fetchPaginated(tdSym, '1day', 5000);
     store.writeCandles(SOURCE, sym, '1d', d1);
-    if (d1.length) {
-      const weekly = _aggregate(d1, TF_MS['1w']);
-      store.writeCandles(SOURCE, sym, '1w', weekly);
-    }
+    if (d1.length) store.writeCandles(SOURCE, sym, '1w', _aggregate(d1, TF_MS['1w']));
     await new Promise(r => setTimeout(r, 400));
 
-    // 2. Hourly (derive 4h from it)
-    const h1 = await _fetchSingle(tdSym, '1h');
+    // 1h → derive 4h
+    const h1 = await _fetchPaginated(tdSym, '1h', 17000);
     store.writeCandles(SOURCE, sym, '1h', h1);
-    if (h1.length) {
-      const h4 = _aggregate(h1, TF_MS['4h']);
-      store.writeCandles(SOURCE, sym, '4h', h4);
-    }
+    if (h1.length) store.writeCandles(SOURCE, sym, '4h', _aggregate(h1, TF_MS['4h']));
     await new Promise(r => setTimeout(r, 400));
 
-    // 3. 1-minute (derive 5m, 15m, 30m)
-    const m1 = await _fetchSingle(tdSym, '1min');
-    store.writeCandles(SOURCE, sym, '1m', m1);
-    if (m1.length) {
-      store.writeCandles(SOURCE, sym, '5m',  _aggregate(m1, TF_MS['5m']));
-      store.writeCandles(SOURCE, sym, '15m', _aggregate(m1, TF_MS['15m']));
-      store.writeCandles(SOURCE, sym, '30m', _aggregate(m1, TF_MS['30m']));
+    // 30m, 15m, 5m — fetch directly (deriving from 1m would need 90k+ 1m candles)
+    for (const [tdInt, tf, target] of [['30min','30m',3000],['15min','15m',3000],['5min','5m',3000]]) {
+      const bars = await _fetchPaginated(tdSym, tdInt, target);
+      store.writeCandles(SOURCE, sym, tf, bars);
+      await new Promise(r => setTimeout(r, 400));
     }
+
+    // 1m
+    const m1 = await _fetchPaginated(tdSym, '1min', 11000);
+    store.writeCandles(SOURCE, sym, '1m', m1);
 
     console.log(`[TD] History ready for ${sym}`);
+    store.saveToDisk(SOURCE, sym);
+
+    // Push snapshot to any SSE clients watching this symbol
+    const sse = require('../sse');
+    const snap = {};
+    for (const tf of Object.keys(TF_MS)) {
+      const arr = store.readCandles(SOURCE, sym, tf);
+      if (arr.length) snap[tf] = arr;
+    }
+    sse.pushEvent(SOURCE, sym, { type: 'snapshot', source: SOURCE, symbol: sym, candles: snap });
   } catch(e) {
     console.error(`[TD] fetchHistory ${sym}:`, e.message);
   } finally {
