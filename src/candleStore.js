@@ -199,6 +199,41 @@ function purge(source, sym) {
 }
 
 /**
+ * Replace or insert a bar at the exact timestamp. Unlike writeBar (which skips
+ * overwrites of mid-array bars), this ALWAYS overwrites on timestamp match —
+ * authoritative source (REST broker history) wins over any locally aggregated
+ * live tick version.
+ */
+function replaceBar(source, sym, tf, candle) {
+  if (!source || !sym || !tf || !candle || candle.t == null) return;
+  const arr = _getArr(source, sym, tf);
+  const idx = arr.findIndex(c => c.t === candle.t);
+  if (idx >= 0) {
+    arr[idx] = { ...candle };
+  } else {
+    arr.push({ ...candle });
+    arr.sort((a, b) => a.t - b.t);
+    if (arr.length > MAX_CANDLES) arr.splice(0, arr.length - MAX_CANDLES);
+  }
+  _dirty.add(_key(source, sym));
+  _notify(source, sym, tf, arr[idx >= 0 ? idx : arr.findIndex(c => c.t === candle.t)]);
+}
+
+/**
+ * Remove candles in-place where predicate(candle) returns true.
+ * Returns number of candles removed. Marks entry dirty if any were removed.
+ */
+function removeWhere(source, sym, tf, predicate) {
+  const k = _key(source, sym);
+  if (!_store[k] || !_store[k][tf]) return 0;
+  const before = _store[k][tf].length;
+  _store[k][tf] = _store[k][tf].filter(c => !predicate(c));
+  const removed = before - _store[k][tf].length;
+  if (removed > 0) _dirty.add(k);
+  return removed;
+}
+
+/**
  * List all keys currently in the store.
  */
 function listKeys() { return Object.keys(_store); }
@@ -282,6 +317,8 @@ module.exports = {
   highWaterMark,
   subscribe,
   purge,
+  replaceBar,
+  removeWhere,
   listKeys,
   getStats,
   saveToDisk,

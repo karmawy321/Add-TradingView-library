@@ -366,6 +366,59 @@ async function refreshAllCache() {
   console.log('[OANDA] Full cache refresh complete');
 }
 
+// ─── Fast REST backfill ───────────────────────────────────────────────────────
+// Every 60s, pull last N bars from MetaAPI REST for 1m/5m/15m and OVERWRITE
+// the local copy (authoritative broker OHLC wins over live-aggregated bars).
+// Also purges any local bar in the refreshed window that REST did not return
+// (phantom flat bars from sparse-tick periods).
+const FAST_REFRESH_TFS   = ['1m', '5m', '15m'];
+const FAST_REFRESH_LIMIT = 5;        // bars per TF per call
+const FAST_REFRESH_MS    = 60_000;
+const FAST_REFRESH_GAP   = 100;      // ms delay between calls to respect MetaAPI rate limit
+let _fastRefreshTimer    = null;
+let _fastRefreshing      = false;
+
+async function _fastRefreshRecent() {
+  if (!_ready || _fastRefreshing) return;
+  _fastRefreshing = true;
+  let overwritten = 0, purged = 0, errors = 0;
+  try {
+    for (const internalSym of Object.keys(SYMBOL_MAP)) {
+      const maSym = SYMBOL_MAP[internalSym];
+      if (!maSym) continue;
+      for (const tf of FAST_REFRESH_TFS) {
+        try {
+          const batch = await _fetchRawCandles(maSym, tf, new Date(), FAST_REFRESH_LIMIT);
+          if (!batch.length) continue;
+          const firstTime = batch[0].t;
+          const validTimes = new Set(batch.map(c => c.t));
+          for (const c of batch) {
+            store.replaceBar(SOURCE, internalSym, tf, c);
+            overwritten++;
+          }
+          purged += store.removeWhere(SOURCE, internalSym, tf,
+            c => c.t >= firstTime && !validTimes.has(c.t));
+        } catch(e) { errors++; }
+        await _delay(FAST_REFRESH_GAP);
+      }
+    }
+  } finally {
+    _fastRefreshing = false;
+  }
+  if (overwritten || purged || errors) {
+    console.log(`[OANDA] Fast refresh: ${overwritten} bars overwritten, ${purged} phantom purged, ${errors} errors`);
+  }
+}
+
+function _startFastRefresh() {
+  if (_fastRefreshTimer) return;
+  _fastRefreshTimer = setInterval(() => {
+    _fastRefreshRecent().catch(e => console.warn('[OANDA] Fast refresh error:', e.message));
+  }, FAST_REFRESH_MS);
+  _fastRefreshTimer.unref && _fastRefreshTimer.unref();
+  console.log(`[OANDA] Fast REST backfill started (every ${FAST_REFRESH_MS/1000}s, TFs: ${FAST_REFRESH_TFS.join(',')})`);
+}
+
 // ─── Watchdog ─────────────────────────────────────────────────────────────────
 function _startWatchdog() {
   if (_watchdog) clearInterval(_watchdog);
@@ -425,6 +478,7 @@ async function connect() {
     // Await symbol discovery so refreshAllCache() sees correct broker names
     await _discoverBrokerSymbols().catch(e => console.warn('[OANDA] Symbol discovery failed:', e.message));
     _startWatchdog();
+    _startFastRefresh();
     startStream(); // non-blocking
   } catch(e) {
     _status = 'error';
