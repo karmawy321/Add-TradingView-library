@@ -4487,10 +4487,11 @@ var _OANDA_SYMBOLS    = new Set([
   'EURJPY','EUR/JPY','GBPJPY','GBP/JPY',
   /* Indices */
   'US500','US30','US100',
-  /* Equity CFDs */
-  'TSLA','NVDA','AAPL',
   /* Crypto — Binance direct (native, not OANDA) */
   'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','DOTUSDT','LINKUSDT','AVAXUSDT','MATICUSDT','ATOMUSDT','ADAUSDT',
+  /* NOTE: TSLA/NVDA/AAPL/MSFT/GOOGL/AMZN/META/AMD/NFLX/COIN/PLTR/SPY/QQQ/GLD/SLV are
+     TwelveData-only (no OANDA fallback) — intentionally NOT in this set so the
+     source switcher stays hidden and the chart defaults to TwelveData. */
 ]);
 var _historyLoading   = false;
 var _historyDepleted  = false;

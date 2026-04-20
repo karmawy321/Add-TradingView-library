@@ -50,10 +50,7 @@ const SYMBOL_MAP = {
   'US500':    'US500.pro',
   'US30':     'US30.pro',
   'US100':    'US100.pro',
-  /* Equity CFDs */
-  'TSLA':     'TSLA_CFD.US',
-  'NVDA':     'NVDA_CFD.US',
-  'AAPL':     'AAPL_CFD.US',
+  /* Equity CFDs — moved to TwelveData (real exchange data, avoids source conflict) */
 };
 
 // Reverse map: broker symbol → internal

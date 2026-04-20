@@ -1,12 +1,23 @@
 'use strict';
 
 const https     = require('https');
+const fs        = require('fs');
+const path      = require('path');
 const WebSocket = require('ws');
 const store     = require('../candleStore');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const SOURCE = 'td';
 const TD_KEY = process.env.TWELVEDATA_API_KEY || '';
+
+// Always-cached TD symbols — fetched at startup + auto-subscribed to WS.
+// US equities & ETFs only. Crypto → Binance; forex/metals/indices → OANDA.
+const PRECACHE_SYMBOLS = [
+  'TSLA','NVDA','AAPL','MSFT','GOOGL','AMZN','META',
+  'AMD','NFLX','COIN','PLTR',
+  'SPY','QQQ','GLD','SLV',
+];
+const _precacheSet = new Set(PRECACHE_SYMBOLS);
 
 const TF_MS = {
   '1m':60000, '5m':300000, '15m':900000, '30m':1800000,
@@ -224,6 +235,12 @@ function _connectWS() {
     _wsRetry = 0;
     _status  = 'connected';
     console.log('[TD WS] connected');
+    // Auto-subscribe precache symbols so live ticks flow without waiting for a client
+    for (const sym of PRECACHE_SYMBOLS) {
+      const tdSym = toTDSymbol(sym);
+      _registerSym(sym);
+      _subscribed.add(tdSym);
+    }
     if (_subscribed.size > 0) {
       _ws.send(JSON.stringify({ action: 'subscribe', params: { symbols: [..._subscribed].join(',') } }));
     }
@@ -280,6 +297,50 @@ function unsubscribe(sym) {
   }
 }
 
+// ─── Disk cache load ─────────────────────────────────────────────────────────
+function loadCache() {
+  const dir = path.join(__dirname, '..', '..', 'candle_cache', SOURCE);
+  if (!fs.existsSync(dir)) return;
+  try {
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    for (const f of files) {
+      const sym = f.replace(/\.json$/, '');
+      store.loadFromDisk(SOURCE, sym);
+      _registerSym(sym);
+    }
+    console.log(`[TD] loadCache — ${files.length} symbols restored`);
+  } catch (e) {
+    console.error('[TD] loadCache error:', e.message);
+  }
+}
+
+// ─── Boot-time precache fetch (sequential, rate-limit-friendly) ──────────────
+let _precacheRunning = false;
+async function fetchAllHistory() {
+  if (!TD_KEY) return;
+  if (_precacheRunning) return;
+  _precacheRunning = true;
+  console.log(`[TD] fetchAllHistory — starting ${PRECACHE_SYMBOLS.length} symbols`);
+  try {
+    for (const sym of PRECACHE_SYMBOLS) {
+      try {
+        await fetchHistory(sym);
+      } catch (e) {
+        console.error(`[TD] fetchAllHistory ${sym}:`, e.message);
+      }
+      // 2s gap between symbols to stay under rate limits even on lower tiers
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    console.log('[TD] fetchAllHistory — all symbols done');
+  } finally {
+    _precacheRunning = false;
+  }
+}
+
+function getSymbols() {
+  return PRECACHE_SYMBOLS.slice();
+}
+
 // ─── Init ────────────────────────────────────────────────────────────────────
 function connect() {
   if (!TD_KEY) {
@@ -302,7 +363,11 @@ function getStatus() {
 module.exports = {
   SOURCE,
   TF_MS,
+  PRECACHE_SYMBOLS,
   connect,
+  loadCache,
+  fetchAllHistory,
+  getSymbols,
   subscribe,
   unsubscribe,
   fetchHistory,

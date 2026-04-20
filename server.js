@@ -3314,10 +3314,11 @@ app.listen(PORT, () => {
   /* Load all disk caches immediately */
   oanda.loadCache();
   binance.loadCache();
+  td.loadCache();
 
   /* Start live feeds */
   binance.connect();  // Binance WS — always-on, free, no auth
-  td.connect();       // TwelveData WS — on-demand subscriptions
+  td.connect();       // TwelveData WS — auto-subs precache stocks on open
 
   /* OANDA MetaAPI — connect after 30s (MetaAPI SDK needs some warmup time) */
   if (METAAPI_TOKEN) {
@@ -3334,6 +3335,11 @@ app.listen(PORT, () => {
 
   /* Binance alt-crypto history — fetch 5s after start */
   setTimeout(() => binance.fetchAllHistory().catch(e => console.error('[Binance] History error:', e.message)), 5000);
+
+  /* TwelveData precache stocks — fetch 10s after start (offset from Binance to avoid burst) */
+  setTimeout(() => td.fetchAllHistory().catch(e => console.error('[TD] History error:', e.message)), 10000);
+  /* Refresh TD stocks every 12h in sync with other sources */
+  setInterval(() => td.fetchAllHistory().catch(() => {}), 12 * 3600 * 1000);
 
   cron.schedule('0 2 * * *', () => {
     console.log('\n⏰ [Scheduled] Running daily prediction check...');
