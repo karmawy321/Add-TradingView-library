@@ -90,6 +90,30 @@ const SYMBOL_MAP = {
 const _brokerToInternal = {};
 for (const [k, v] of Object.entries(SYMBOL_MAP)) _brokerToInternal[v] = k;
 
+// Crypto trades 24/7 — exempt from weekend market-closure gate
+const CRYPTO_SYMS = new Set(['BTCUSDT','ETHUSDT','SOLUSDT','ADAUSDT','LTCUSD']);
+
+// Intraday TFs subjected to weekend purge. 1d/1w bars are aggregated server-side
+// by OANDA and should not be rewritten here.
+const INTRADAY_TFS = ['1m','5m','15m','30m','1h','4h'];
+
+// Forex/metals/indices close Fri 21:00 UTC → Sun 21:00 UTC.
+// Any tick in this window from MetaAPI stream is stale-broker noise (phantom bar).
+function _inWeekendClosure(ts) {
+  const d    = new Date(ts);
+  const day  = d.getUTCDay();    // 0=Sun, 5=Fri, 6=Sat
+  const hour = d.getUTCHours();
+  if (day === 6) return true;                 // all Saturday
+  if (day === 5 && hour >= 21) return true;   // Fri ≥21:00
+  if (day === 0 && hour <  21) return true;   // Sun <21:00
+  return false;
+}
+
+function _isMarketOpen(internalSym, ts) {
+  if (CRYPTO_SYMS.has(internalSym)) return true;
+  return !_inWeekendClosure(ts);
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let _account     = null;
 let _rpcConn     = null;
@@ -213,6 +237,7 @@ async function startStream() {
         const sym  = _brokerToInternal[price.symbol];
         if (!sym) return;
         _lastSeen = Date.now();
+        if (!_isMarketOpen(sym, ts)) return; // skip phantom weekend ticks for forex/metals/indices
         for (const tf of TIMEFRAMES) {
           store.writeTick(SOURCE, sym, tf, TF_MS[tf], mid, 0);
         }
@@ -445,6 +470,32 @@ function loadCache() {
     }
   }
   console.log(`[OANDA] Loaded ${n} symbols from disk`);
+  _purgeWeekendCandles();
+}
+
+// One-time sweep: drop intraday candles whose timestamp lies in the Fri→Sun
+// closure window (phantom bars left behind before the streaming gate was added).
+// Crypto and higher TFs (1d/1w) are untouched.
+function _purgeWeekendCandles() {
+  let totalRemoved = 0, symsAffected = 0;
+  for (const sym of Object.keys(SYMBOL_MAP)) {
+    if (CRYPTO_SYMS.has(sym)) continue;
+    let symRemoved = 0;
+    for (const tf of INTRADAY_TFS) {
+      const removed = store.removeWhere(SOURCE, sym, tf, c => _inWeekendClosure(c.t));
+      symRemoved += removed;
+    }
+    if (symRemoved > 0) {
+      store.saveToDisk(SOURCE, sym);
+      totalRemoved += symRemoved;
+      symsAffected++;
+    }
+  }
+  if (totalRemoved > 0) {
+    console.log(`[OANDA] Weekend purge: removed ${totalRemoved} phantom candles across ${symsAffected} symbols`);
+  } else {
+    console.log('[OANDA] Weekend purge: no phantom candles found');
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

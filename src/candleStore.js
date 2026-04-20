@@ -196,6 +196,20 @@ function purge(source, sym) {
 }
 
 /**
+ * Remove candles in-place where predicate(candle) returns true.
+ * Returns number of candles removed. Marks entry dirty if any were removed.
+ */
+function removeWhere(source, sym, tf, predicate) {
+  const k = _key(source, sym);
+  if (!_store[k] || !_store[k][tf]) return 0;
+  const before = _store[k][tf].length;
+  _store[k][tf] = _store[k][tf].filter(c => !predicate(c));
+  const removed = before - _store[k][tf].length;
+  if (removed > 0) _dirty.add(k);
+  return removed;
+}
+
+/**
  * List all keys currently in the store.
  */
 function listKeys() { return Object.keys(_store); }
@@ -279,6 +293,7 @@ module.exports = {
   highWaterMark,
   subscribe,
   purge,
+  removeWhere,
   listKeys,
   getStats,
   saveToDisk,
