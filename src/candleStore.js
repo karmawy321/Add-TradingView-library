@@ -1,6 +1,7 @@
 'use strict';
 
 const fs   = require('fs');
+const fsp  = require('fs').promises;
 const path = require('path');
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -273,7 +274,7 @@ function _cacheFile(source, sym) {
   return path.join(_cacheDir(source), `${sym}.json`);
 }
 
-function saveToDisk(source, sym) {
+async function saveToDisk(source, sym) {
   const k = _key(source, sym);
   if (!_store[k]) return;
   try {
@@ -282,7 +283,7 @@ function saveToDisk(source, sym) {
       clean[tf] = _dedup(_store[k][tf]);
       _store[k][tf] = clean[tf]; // heal in-memory too
     }
-    fs.writeFileSync(_cacheFile(source, sym), JSON.stringify(clean));
+    await fsp.writeFile(_cacheFile(source, sym), JSON.stringify(clean));
     _dirty.delete(k);
   } catch (e) {
     _log('error', 'saveToDisk failed', { source, sym, err: e.message });
@@ -305,11 +306,13 @@ function loadFromDisk(source, sym) {
   }
 }
 
-function flushAllDirty() {
+async function flushAllDirty() {
+  // Write one at a time, awaiting each, so the event loop can process ticks
+  // between files instead of queueing up 40 concurrent writes.
   for (const k of Array.from(_dirty)) {
     const [source, ...rest] = k.split(':');
     const sym = rest.join(':');
-    saveToDisk(source, sym);
+    await saveToDisk(source, sym);
   }
 }
 
