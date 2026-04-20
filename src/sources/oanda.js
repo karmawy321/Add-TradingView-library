@@ -15,9 +15,10 @@ const TF_MS = {
 };
 const TIMEFRAMES = Object.keys(TF_MS);
 // Only these TFs are safe to bucket from live ticks using UTC alignment.
-// 4h/1d/1w align to broker-local midnight (OANDA MT5 runs UTC+2/+3), so
-// REST owns them exclusively to avoid duplicate bars at offset timestamps.
-const TICK_TFS = ['1m', '5m', '15m', '30m', '1h'];
+// 4h/1d/1w are derived from 1h via _aggregate (UTC-aligned) — MetaAPI REST
+// returns broker-offset timestamps for those TFs which caused wrong/duplicate bars.
+const TICK_TFS    = ['1m', '5m', '15m', '30m', '1h'];
+const DERIVED_TFS = new Set(['4h', '1d', '1w']); // built from 1h, never fetched from MetaAPI
 
 // Full history targets per TF
 const FULL_LIMITS = {
@@ -110,6 +111,22 @@ function _aggregate(src, periodMs) {
     }
   }
   return out;
+}
+
+// Derive 4h/1d/1w from stored 1h candles (UTC-aligned buckets).
+// Clears the slot first so stale MetaAPI-fetched data is replaced.
+function _deriveHigherTFs(sym) {
+  const h1 = store.readCandles(SOURCE, sym, '1h');
+  if (!h1.length) return;
+  store.clearTF(SOURCE, sym, '4h');
+  store.clearTF(SOURCE, sym, '1d');
+  store.clearTF(SOURCE, sym, '1w');
+  const d4 = _aggregate(h1, TF_MS['4h']);
+  const d1 = _aggregate(h1, TF_MS['1d']);
+  const w1 = _aggregate(d1, TF_MS['1w']);
+  store.writeCandles(SOURCE, sym, '4h', d4);
+  store.writeCandles(SOURCE, sym, '1d', d1);
+  store.writeCandles(SOURCE, sym, '1w', w1);
 }
 
 // ─── Broker symbol discovery ──────────────────────────────────────────────────
@@ -261,6 +278,7 @@ async function fetchRecent(internalSym) {
   try {
     for (const tf of TIMEFRAMES) {
       progress.currentTF = tf;
+      if (DERIVED_TFS.has(tf)) { progress.tfDone++; continue; } // derived from 1h below
       try {
         const batch = await _fetchRawCandles(maSym, tf, now, RECENT_SIZE);
         for (const c of batch) store.replaceBar(SOURCE, internalSym, tf, c);
@@ -269,6 +287,7 @@ async function fetchRecent(internalSym) {
       progress.tfDone++;
       await _delay(150);
     }
+    _deriveHigherTFs(internalSym);
     _pLog(`Recent: ${internalSym}`);
     store.saveToDisk(SOURCE, internalSym);
 
@@ -313,6 +332,9 @@ async function _backfillStep() {
   _backfillWorking = true;
   try {
     const { sym, tf } = _backfillQueue[0];
+    // Derived TFs are never fetched from MetaAPI — skip immediately
+    if (DERIVED_TFS.has(tf)) { _backfillQueue.shift(); return; }
+
     const maSym = SYMBOL_MAP[sym];
     if (!maSym) { _backfillQueue.shift(); return; }
 
@@ -332,6 +354,8 @@ async function _backfillStep() {
       _backfillQueue.shift();
       store.saveToDisk(SOURCE, sym);
     }
+    // After each 1h chunk, re-derive 4h/1d/1w so they stay in sync
+    if (tf === '1h' && batch.length) _deriveHigherTFs(sym);
   } catch(e) {
     _backfillQueue.shift(); // drop on error to unblock queue
   } finally {
@@ -402,11 +426,9 @@ async function refreshAllCache() {
 // the local copy (authoritative broker OHLC wins over live-aggregated bars).
 // Also purges any local bar in the refreshed window that REST did not return
 // (phantom flat bars from sparse-tick periods).
-// Per-TF bar counts for each refresh call. Intraday TFs get more bars
-// (streaming may have touched many); 4h/1d/1w only need the last 1-2 since
-// REST is the sole writer for them.
+// Per-TF bar counts for each refresh call. 4h/1d/1w are skipped (DERIVED_TFS).
 const FAST_REFRESH_LIMITS = {
-  '1m': 5, '5m': 5, '15m': 5, '30m': 3, '1h': 3, '4h': 2, '1d': 2, '1w': 2,
+  '1m': 5, '5m': 5, '15m': 5, '30m': 3, '1h': 3,
 };
 const FAST_REFRESH_TFS   = Object.keys(FAST_REFRESH_LIMITS);
 const FAST_REFRESH_MS    = 60_000;
@@ -423,6 +445,7 @@ async function _fastRefreshRecent() {
       const maSym = SYMBOL_MAP[internalSym];
       if (!maSym) continue;
       for (const tf of FAST_REFRESH_TFS) {
+        if (DERIVED_TFS.has(tf)) continue; // derived from 1h, not fetched
         try {
           const limit = FAST_REFRESH_LIMITS[tf];
           const batch = await _fetchRawCandles(maSym, tf, new Date(), limit);
@@ -438,6 +461,8 @@ async function _fastRefreshRecent() {
         } catch(e) { errors++; }
         await _delay(FAST_REFRESH_GAP);
       }
+      // Re-derive 4h/1d/1w from the freshly-corrected 1h data
+      _deriveHigherTFs(internalSym);
     }
   } finally {
     _fastRefreshing = false;

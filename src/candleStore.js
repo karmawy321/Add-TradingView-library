@@ -244,6 +244,15 @@ function removeWhere(source, sym, tf, predicate) {
 }
 
 /**
+ * Clear all candles for a single timeframe slot (used to wipe stale derived data
+ * before re-deriving from a lower TF).
+ */
+function clearTF(source, sym, tf) {
+  const k = _key(source, sym);
+  if (_store[k]) { _store[k][tf] = []; _dirty.add(k); }
+}
+
+/**
  * List all keys currently in the store.
  */
 function listKeys() { return Object.keys(_store); }
@@ -329,6 +338,7 @@ module.exports = {
   highWaterMark,
   subscribe,
   purge,
+  clearTF,
   replaceBar,
   removeWhere,
   listKeys,
