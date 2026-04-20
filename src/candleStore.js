@@ -87,14 +87,20 @@ function writeTick(source, sym, tf, tfMs, price, vol, tickTs) {
   const arr    = _getArr(source, sym, tf);
   const cur    = arr.length ? arr[arr.length - 1] : null;
 
-  if (!cur || cur.t !== bucket) {
+  if (!cur) {
+    arr.push({ t: bucket, o: price, h: price, l: price, c: price, v: vol || 0 });
+  } else if (bucket > cur.t) {
     arr.push({ t: bucket, o: price, h: price, l: price, c: price, v: vol || 0 });
     if (arr.length > MAX_CANDLES) arr.splice(0, arr.length - MAX_CANDLES);
-  } else {
+  } else if (bucket === cur.t) {
     cur.c = price;
     if (price > cur.h) cur.h = price;
     if (price < cur.l) cur.l = price;
     if (vol) cur.v += vol;
+  } else {
+    // bucket < cur.t — out-of-order tick for an already-closed bar; REST
+    // backfill owns that bar, so drop instead of creating a duplicate.
+    return;
   }
 
   _dirty.add(_key(source, sym));
@@ -206,17 +212,20 @@ function purge(source, sym) {
  */
 function replaceBar(source, sym, tf, candle) {
   if (!source || !sym || !tf || !candle || candle.t == null) return;
+  const k   = _key(source, sym);
   const arr = _getArr(source, sym, tf);
-  const idx = arr.findIndex(c => c.t === candle.t);
-  if (idx >= 0) {
-    arr[idx] = { ...candle };
-  } else {
-    arr.push({ ...candle });
-    arr.sort((a, b) => a.t - b.t);
-    if (arr.length > MAX_CANDLES) arr.splice(0, arr.length - MAX_CANDLES);
+  // Remove ALL bars at this timestamp (heals any Layer-1 duplicates), then
+  // insert the authoritative bar exactly once.
+  let changed = false;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (arr[i].t === candle.t) { arr.splice(i, 1); changed = true; }
   }
-  _dirty.add(_key(source, sym));
-  _notify(source, sym, tf, arr[idx >= 0 ? idx : arr.findIndex(c => c.t === candle.t)]);
+  arr.push({ ...candle });
+  arr.sort((a, b) => a.t - b.t);
+  if (arr.length > MAX_CANDLES) arr.splice(0, arr.length - MAX_CANDLES);
+  _dirty.add(k);
+  const idx = arr.findIndex(c => c.t === candle.t);
+  _notify(source, sym, tf, arr[idx]);
 }
 
 /**
