@@ -14,6 +14,10 @@ const TF_MS = {
   '1h':3600000, '4h':14400000, '1d':86400000, '1w':604800000,
 };
 const TIMEFRAMES = Object.keys(TF_MS);
+// Only these TFs are safe to bucket from live ticks using UTC alignment.
+// 4h/1d/1w align to broker-local midnight (OANDA MT5 runs UTC+2/+3), so
+// REST owns them exclusively to avoid duplicate bars at offset timestamps.
+const TICK_TFS = ['1m', '5m', '15m', '30m', '1h'];
 
 // Full history targets per TF
 const FULL_LIMITS = {
@@ -213,8 +217,13 @@ async function startStream() {
         const sym  = _brokerToInternal[price.symbol];
         if (!sym) return;
         _lastSeen = Date.now();
-        for (const tf of TIMEFRAMES) {
-          store.writeTick(SOURCE, sym, tf, TF_MS[tf], mid, 0, ts); // use broker tick time for bucket placement
+        // Only tick-aggregate TFs whose broker alignment matches UTC (<= 1h).
+        // 4h/1d/1w use broker-local midnight alignment (UTC±2/3), so local
+        // UTC bucketing would place tick-built bars at different timestamps
+        // than MetaAPI REST bars → duplicate bars every 2h. REST backfill
+        // owns 4h/1d/1w exclusively.
+        for (const tf of TICK_TFS) {
+          store.writeTick(SOURCE, sym, tf, TF_MS[tf], mid, 0, ts);
         }
       } catch(e) { /* ignore per-tick errors */ }
     }
@@ -371,8 +380,13 @@ async function refreshAllCache() {
 // the local copy (authoritative broker OHLC wins over live-aggregated bars).
 // Also purges any local bar in the refreshed window that REST did not return
 // (phantom flat bars from sparse-tick periods).
-const FAST_REFRESH_TFS   = ['1m', '5m', '15m'];
-const FAST_REFRESH_LIMIT = 5;        // bars per TF per call
+// Per-TF bar counts for each refresh call. Intraday TFs get more bars
+// (streaming may have touched many); 4h/1d/1w only need the last 1-2 since
+// REST is the sole writer for them.
+const FAST_REFRESH_LIMITS = {
+  '1m': 5, '5m': 5, '15m': 5, '30m': 3, '1h': 3, '4h': 2, '1d': 2, '1w': 2,
+};
+const FAST_REFRESH_TFS   = Object.keys(FAST_REFRESH_LIMITS);
 const FAST_REFRESH_MS    = 60_000;
 const FAST_REFRESH_GAP   = 100;      // ms delay between calls to respect MetaAPI rate limit
 let _fastRefreshTimer    = null;
@@ -388,7 +402,8 @@ async function _fastRefreshRecent() {
       if (!maSym) continue;
       for (const tf of FAST_REFRESH_TFS) {
         try {
-          const batch = await _fetchRawCandles(maSym, tf, new Date(), FAST_REFRESH_LIMIT);
+          const limit = FAST_REFRESH_LIMITS[tf];
+          const batch = await _fetchRawCandles(maSym, tf, new Date(), limit);
           if (!batch.length) continue;
           const firstTime = batch[0].t;
           const validTimes = new Set(batch.map(c => c.t));
