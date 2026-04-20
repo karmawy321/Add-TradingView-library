@@ -35,11 +35,6 @@ const SYMBOL_MAP = {
   'XAUUSD':   'GOLD.pro',
   'XAGUSD':   'SILVER.pro',
   'OILWTI':   'OILWTI.pro',
-  'OILBRNT':  'OILBRNT.pro',
-  'NATGAS':   'NATGAS.pro',
-  'COPPER':   'COPPER-US.pro',
-  'PLATIN':   'PLATIN.pro',
-  'PALLAD':   'PALLAD.pro',
   /* Forex majors */
   'EURUSD':   'EURUSD.pro',
   'GBPUSD':   'GBPUSD.pro',
@@ -48,46 +43,17 @@ const SYMBOL_MAP = {
   'AUDUSD':   'AUDUSD.pro',
   'NZDUSD':   'NZDUSD.pro',
   'USDCAD':   'USDCAD.pro',
-  /* Forex crosses */
+  /* Forex crosses (highest-volume JPY crosses) */
   'EURJPY':   'EURJPY.pro',
   'GBPJPY':   'GBPJPY.pro',
-  'EURGBP':   'EURGBP.pro',
-  'EURAUD':   'EURAUD.pro',
-  'EURCAD':   'EURCAD.pro',
-  'EURCHF':   'EURCHF.pro',
-  'EURNZD':   'EURNZD.pro',
-  'GBPAUD':   'GBPAUD.pro',
-  'GBPCAD':   'GBPCAD.pro',
-  'GBPCHF':   'GBPCHF.pro',
-  'GBPNZD':   'GBPNZD.pro',
-  'AUDCAD':   'AUDCAD.pro',
-  'AUDCHF':   'AUDCHF.pro',
-  'AUDJPY':   'AUDJPY.pro',
-  'AUDNZD':   'AUDNZD.pro',
-  'CADCHF':   'CADCHF.pro',
-  'CADJPY':   'CADJPY.pro',
-  'CHFJPY':   'CHFJPY.pro',
-  'NZDJPY':   'NZDJPY.pro',
-  /* Indices */
+  /* Indices (US majors) */
   'US500':    'US500.pro',
   'US30':     'US30.pro',
   'US100':    'US100.pro',
-  'DE30':     'DE30.pro',
-  'GB100':    'GB100.pro',
-  'JP225':    'JP225.pro',
-  'AU200':    'AU200.pro',
-  'EU50':     'EU50.pro',
-  'FR40':     'FR40.pro',
   /* Equity CFDs */
   'TSLA':     'TSLA_CFD.US',
   'NVDA':     'NVDA_CFD.US',
   'AAPL':     'AAPL_CFD.US',
-  /* Crypto (OANDA broker) */
-  'BTCUSDT':  'BTCUSD',
-  'ETHUSDT':  'ETHUSD',
-  'SOLUSDT':  'SOLUSD',
-  'ADAUSDT':  'ADAUSD',
-  'LTCUSD':   'LTCUSD',
 };
 
 // Reverse map: broker symbol → internal
@@ -106,6 +72,11 @@ let _lastSeen      = null;
 let _retryCount    = 0;
 let _watchdog      = null;
 let _lastBrokerList = [];
+
+// Last known bid per internal symbol — used by forward-fill timer to open
+// new bars at minute boundary even if MetaAPI relay lag delays first tick.
+const _lastPrice = {};
+let _fwdFillTimer = null;
 
 // Cache progress (exposed for admin endpoint)
 const progress = {
@@ -212,18 +183,21 @@ async function startStream() {
       try {
         const bid = price.bid, ask = price.ask;
         if (!bid && !ask) return;
-        const mid  = ((bid || ask) + (ask || bid)) / 2;
+        // Use bid price (MT5 default chart price) — mid diverges from bid
+        // when spread widens and causes red/green inversions vs MT5.
+        const px   = bid || ask;
         const ts   = price.time ? new Date(price.time).getTime() : Date.now();
         const sym  = _brokerToInternal[price.symbol];
         if (!sym) return;
         _lastSeen = Date.now();
+        _lastPrice[sym] = px; // for forward-fill synth bars
         // Only tick-aggregate TFs whose broker alignment matches UTC (<= 1h).
         // 4h/1d/1w use broker-local midnight alignment (UTC±2/3), so local
         // UTC bucketing would place tick-built bars at different timestamps
         // than MetaAPI REST bars → duplicate bars every 2h. REST backfill
         // owns 4h/1d/1w exclusively.
         for (const tf of TICK_TFS) {
-          store.writeTick(SOURCE, sym, tf, TF_MS[tf], mid, 0, ts);
+          store.writeTick(SOURCE, sym, tf, TF_MS[tf], px, 0, ts);
         }
       } catch(e) { /* ignore per-tick errors */ }
     }
@@ -277,55 +251,28 @@ async function _fetchRawCandles(maSym, tf, startTime, limit) {
   }
 }
 
-async function fetchHistory(internalSym, incremental) {
+// ─── Phase 1: recent fetch (fast, priority) ──────────────────────────────────
+// Pull last N canonical bars per TF. Uses replaceBar so any tick-built bars
+// get corrected with broker-authoritative OHLC.
+const RECENT_SIZE = 200;
+
+async function fetchRecent(internalSym) {
   if (!_ready) return;
   const maSym = SYMBOL_MAP[internalSym];
   if (!maSym) return;
-
+  const now = new Date();
   try {
     for (const tf of TIMEFRAMES) {
       progress.currentTF = tf;
-      const hwm    = store.highWaterMark(SOURCE, internalSym, tf);
-      const target = FULL_LIMITS[tf] || 1000;
-
-      if (incremental && hwm > 0) {
-        const elapsed = Date.now() - hwm;
-        const limit   = Math.min(PAGE_SIZE, Math.ceil(elapsed / TF_MS[tf]) + 20);
-        const batch   = await _fetchRawCandles(maSym, tf, new Date(), limit);
-        const fresh   = batch.filter(c => c.t > hwm);
-        for (const c of fresh) store.writeBar(SOURCE, internalSym, tf, c);
-        if (fresh.length) console.log(`[OANDA] ${internalSym} ${tf}: +${fresh.length} (incremental)`);
-      } else {
-        let collected = [];
-        let fromTime  = new Date();
-        while (collected.length < target) {
-          const limit = Math.min(PAGE_SIZE, target - collected.length);
-          const batch = await _fetchRawCandles(maSym, tf, fromTime, limit);
-          if (!batch.length) break;
-          collected = [...batch, ...collected];
-          fromTime  = new Date(batch[0].t - 1);
-          if (batch.length < limit) break;
-          await _delay(500);
-        }
-        // Derive higher TFs from 1m if needed
-        if (tf === '1m' && collected.length) {
-          for (const higherTf of ['5m', '15m', '30m']) {
-            const existing = store.readCandles(SOURCE, internalSym, higherTf);
-            if (!existing.length) {
-              const derived = _aggregate(collected, TF_MS[higherTf]);
-              store.writeCandles(SOURCE, internalSym, higherTf, derived);
-            }
-          }
-        }
-        store.writeCandles(SOURCE, internalSym, tf, collected);
-        console.log(`[OANDA] ${internalSym} ${tf}: ${collected.length} candles`);
-      }
-
+      try {
+        const batch = await _fetchRawCandles(maSym, tf, now, RECENT_SIZE);
+        for (const c of batch) store.replaceBar(SOURCE, internalSym, tf, c);
+        if (batch.length) console.log(`[OANDA] ${internalSym} ${tf}: ${batch.length} recent`);
+      } catch(e) { /* ignore per-TF errors */ }
       progress.tfDone++;
-      await _delay(500);
+      await _delay(150);
     }
-    console.log(`[OANDA] History ready for ${internalSym}`);
-    _pLog(`Done: ${internalSym}`);
+    _pLog(`Recent: ${internalSym}`);
     store.saveToDisk(SOURCE, internalSym);
 
     // Push snapshot to any SSE clients watching this symbol
@@ -336,8 +283,76 @@ async function fetchHistory(internalSym, incremental) {
     }
     sse.pushEvent(SOURCE, internalSym, { type: 'snapshot', source: SOURCE, symbol: internalSym, candles: snap });
   } catch(e) {
-    console.error('[OANDA] fetchHistory error:', e.message);
+    console.error('[OANDA] fetchRecent error:', e.message);
   }
+}
+
+// ─── Phase 2: lazy backfill queue ────────────────────────────────────────────
+// Pulls older bars in background chunks. Yields to fast-refresh (Layer 2
+// priority). A user opening a chart for a sym promotes that sym to the front
+// of the queue via promoteBackfill().
+const _backfillQueue = []; // items: { sym, tf }
+let _backfillWorking = false;
+let _backfillTimer   = null;
+const BACKFILL_GAP   = 2000; // ms between chunks
+const BACKFILL_CHUNK = 1000; // bars per chunk
+
+function _enqueueBackfill(sym, tf) {
+  if (_backfillQueue.some(q => q.sym === sym && q.tf === tf)) return;
+  _backfillQueue.push({ sym, tf });
+}
+
+function promoteBackfill(sym) {
+  const mine = _backfillQueue.filter(q => q.sym === sym);
+  if (!mine.length) return;
+  const rest = _backfillQueue.filter(q => q.sym !== sym);
+  _backfillQueue.length = 0;
+  _backfillQueue.push(...mine, ...rest);
+}
+
+async function _backfillStep() {
+  if (_backfillWorking || !_ready || _fastRefreshing) return;
+  if (!_backfillQueue.length) return;
+  _backfillWorking = true;
+  try {
+    const { sym, tf } = _backfillQueue[0];
+    const maSym = SYMBOL_MAP[sym];
+    if (!maSym) { _backfillQueue.shift(); return; }
+
+    const existing = store.readCandles(SOURCE, sym, tf);
+    const target   = FULL_LIMITS[tf] || 1000;
+    if (existing.length >= target) { _backfillQueue.shift(); return; }
+
+    // Fetch backward from the oldest bar we already have
+    const oldestT  = existing.length ? existing[0].t : Date.now();
+    const fromTime = new Date(oldestT - 1);
+    const limit    = Math.min(BACKFILL_CHUNK, target - existing.length);
+    const batch    = await _fetchRawCandles(maSym, tf, fromTime, limit);
+
+    if (batch.length) store.writeCandles(SOURCE, sym, tf, batch);
+    // Source exhausted or target reached → drop from queue
+    if (!batch.length || batch.length < limit) {
+      _backfillQueue.shift();
+      store.saveToDisk(SOURCE, sym);
+    }
+  } catch(e) {
+    _backfillQueue.shift(); // drop on error to unblock queue
+  } finally {
+    _backfillWorking = false;
+  }
+}
+
+function _startBackfillWorker() {
+  if (_backfillTimer) return;
+  _backfillTimer = setInterval(() => {
+    _backfillStep().catch(e => console.warn('[OANDA] Backfill step error:', e.message));
+  }, BACKFILL_GAP);
+  _backfillTimer.unref && _backfillTimer.unref();
+  console.log(`[OANDA] Backfill worker started (${BACKFILL_GAP}ms cadence, ${BACKFILL_CHUNK} bars/chunk)`);
+}
+
+function getBackfillStatus() {
+  return { queued: _backfillQueue.length, working: _backfillWorking };
 }
 
 // ─── Full cache refresh (called from admin endpoint) ─────────────────────────
@@ -347,32 +362,42 @@ let _initialRefreshDone = false; // first run = always full fetch
 async function refreshAllCache() {
   if (!_ready || _refreshing) return;
   _refreshing = true;
-  const fullFetch = !_initialRefreshDone; // ignore streaming ticks on first boot
   const syms = Object.keys(SYMBOL_MAP);
   Object.assign(progress, {
     active: true, symDone: 0, symTotal: syms.length,
     tfDone: 0, tfTotal: syms.length * TIMEFRAMES.length,
     pct: 0, startedAt: new Date().toISOString(), log: [],
   });
-  _pLog(`Started ${fullFetch ? 'full' : 'incremental'} refresh (${syms.length} symbols)`);
+  _pLog(`Phase 1 started: recent bars (${syms.length} symbols)`);
+
+  // PHASE 1 — pull last 200 bars per sym/TF (fast, charts usable within seconds)
   for (const sym of syms) {
     progress.currentSym = sym;
-    // incremental only when: not first run AND have substantial history already
-    const existing = store.readCandles(SOURCE, sym, '1d');
-    const hasData  = !fullFetch && existing.length >= FULL_LIMITS['1d'] * 0.5;
-    try { await fetchHistory(sym, hasData); } catch(e) {
-      console.error('[OANDA] Error refreshing ' + sym + ':', e.message);
+    try { await fetchRecent(sym); }
+    catch(e) {
+      console.error('[OANDA] Error fetching recent ' + sym + ':', e.message);
       _pLog('ERROR ' + sym + ': ' + e.message);
     }
     progress.symDone++;
     progress.pct = Math.round((progress.symDone / progress.symTotal) * 100);
-    await _delay(1000);
+    await _delay(200);
   }
+
+  // PHASE 2 — enqueue lazy backfill for every sym×TF that's under target
+  for (const sym of syms) {
+    for (const tf of TIMEFRAMES) {
+      const existing = store.readCandles(SOURCE, sym, tf);
+      const target   = FULL_LIMITS[tf] || 1000;
+      if (existing.length < target) _enqueueBackfill(sym, tf);
+    }
+  }
+  _pLog(`Phase 2 queued: ${_backfillQueue.length} sym×TF pairs for backfill`);
+
   _initialRefreshDone = true;
   Object.assign(progress, { active: false, currentSym: null, currentTF: null });
   _refreshing = false;
-  _pLog('Refresh complete');
-  console.log('[OANDA] Full cache refresh complete');
+  _pLog('Phase 1 complete — backfill running in background');
+  console.log(`[OANDA] Phase 1 complete, backfill queue: ${_backfillQueue.length} items`);
 }
 
 // ─── Fast REST backfill ───────────────────────────────────────────────────────
@@ -432,6 +457,31 @@ function _startFastRefresh() {
   }, FAST_REFRESH_MS);
   _fastRefreshTimer.unref && _fastRefreshTimer.unref();
   console.log(`[OANDA] Fast REST backfill started (every ${FAST_REFRESH_MS/1000}s, TFs: ${FAST_REFRESH_TFS.join(',')})`);
+}
+
+// ─── Forward-fill (mask MetaAPI relay latency) ───────────────────────────────
+// MetaAPI adds 1-3s of latency between broker and us. A new minute opens on
+// MT5 instantly but our first tick for that minute may arrive 2-3s late.
+// Every second, check if any symbol has crossed into a new 1m bucket and
+// synthesize an opening bar from the last known price. Real ticks fill it in
+// as they arrive; REST backfill corrects any drift within 60s.
+function _forwardFillTick() {
+  if (!_ready) return;
+  const now = Date.now();
+  for (const sym of Object.keys(_lastPrice)) {
+    const px = _lastPrice[sym];
+    if (!px) continue;
+    for (const tf of TICK_TFS) {
+      store.writeTick(SOURCE, sym, tf, TF_MS[tf], px, 0, now);
+    }
+  }
+}
+
+function _startForwardFill() {
+  if (_fwdFillTimer) return;
+  _fwdFillTimer = setInterval(_forwardFillTick, 1000);
+  _fwdFillTimer.unref && _fwdFillTimer.unref();
+  console.log('[OANDA] Forward-fill started (1s cadence, masks relay latency)');
 }
 
 // ─── Watchdog ─────────────────────────────────────────────────────────────────
@@ -494,6 +544,8 @@ async function connect() {
     await _discoverBrokerSymbols().catch(e => console.warn('[OANDA] Symbol discovery failed:', e.message));
     _startWatchdog();
     _startFastRefresh();
+    _startForwardFill();
+    _startBackfillWorker();
     startStream(); // non-blocking
   } catch(e) {
     _status = 'error';
@@ -546,8 +598,10 @@ module.exports = {
   TF_MS,
   connect,
   loadCache,
-  fetchHistory,
+  fetchRecent,
   refreshAllCache,
+  promoteBackfill,
+  getBackfillStatus,
   getStatus,
   getSymbols,
   isReady,

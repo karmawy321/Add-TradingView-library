@@ -599,7 +599,8 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
 
   if (source === 'oanda' && oanda.isReady()) {
     const hwm = store.highWaterMark('oanda', sym, tf);
-    if (!hwm) oanda.fetchHistory(sym, false).catch(() => {});
+    if (!hwm) oanda.fetchRecent(sym).catch(() => {});
+    oanda.promoteBackfill(sym); // user viewed it → bump to front of backfill queue
   }
   if (source === 'td') {
     const hwm = store.highWaterMark('td', sym, tf);
@@ -2849,6 +2850,7 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
     loaded:     oandaList.done.length,
     total:      oanda.getSymbols().length,
     refreshing: oandaStatus.progress && oandaStatus.progress.active,
+    backfill:   oanda.getBackfillStatus(),
     tdCrypto:          binanceTDShape(binanceList, binance.SYMBOLS.length),
     tdCryptoRefreshing: false,
     tdForex:           { symbols: [], notStarted: [], loaded: 0, total: 0 },
