@@ -353,10 +353,11 @@ function connect() {
 // ─── Status ───────────────────────────────────────────────────────────────────
 function getStatus() {
   return {
-    status:      _status,
-    subscribed:  [..._subscribed],
-    retryCount:  _wsRetry,
-    hasKey:      !!TD_KEY,
+    status:         _status,
+    subscribed:     [..._subscribed],
+    retryCount:     _wsRetry,
+    hasKey:         !!TD_KEY,
+    backfillActive: _precacheRunning,
   };
 }
 

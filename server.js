@@ -1875,7 +1875,11 @@ async function runSniperScanner() {
   const startTime = Date.now();
   console.log('\n🔄 [Scanner] Starting scan across all symbols...');
 
-  const symbols = Object.keys(oandaCandles);
+  const symbols = [
+    ...oanda.getSymbols(),
+    ...binance.getSymbols(),
+    ...td.getSymbols(),
+  ];
   let scanned = 0, saved = 0, skipped = 0, errors = 0;
 
   /* Fetch recent scanner signals for de-duplication */
@@ -1892,11 +1896,10 @@ async function runSniperScanner() {
   const recentKeys = new Set(recentSignals.map(s => `${s.pair}|${s.timeframe}|${s.direction}`));
 
   for (const sym of symbols) {
-    const symData = oandaCandles[sym];
-    if (!symData) continue;
+    const source = getSymSource(sym);
 
     for (const tf of SCANNER_TFS) {
-      const candles = symData[tf];
+      const candles = store.readCandles(source, sym, tf);
       if (!candles || candles.length < SCANNER_MIN_CANDLES) continue;
 
       scanned++;
@@ -2190,7 +2193,11 @@ async function runCrossoverScanner() {
   const startTime = Date.now();
   console.log('\n📈 [CrossoverScanner] Starting SMA200/400 scan...');
 
-  const symbols = Object.keys(oandaCandles);
+  const symbols = [
+    ...oanda.getSymbols(),
+    ...binance.getSymbols(),
+    ...td.getSymbols(),
+  ];
   let scanned = 0, saved = 0, skipped = 0, errors = 0;
 
   /* Pre-load existing cross_times for dedup (last 1000 minutes window) */
@@ -2204,7 +2211,8 @@ async function runCrossoverScanner() {
   } catch(e) { /* proceed without dedup */ }
 
   for (const sym of symbols) {
-    const m1 = (oandaCandles[sym] || {})['1m'];
+    const source = getSymSource(sym);
+    const m1 = store.readCandles(source, sym, '1m');
     if (!m1 || m1.length < 400) { skipped++; continue; }
     scanned++;
     try {
@@ -2553,11 +2561,10 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
 </div>
 <div class="card" style="border-color:rgba(37,99,235,0.3)">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <h2 style="color:rgba(96,165,250,0.85);margin:0">TwelveData Crypto Cache</h2>
+    <h2 style="color:rgba(96,165,250,0.85);margin:0">Binance Crypto Cache (WS live)</h2>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="td-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
       <span id="td-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Refreshing…</span>
-      <button id="td-refresh-btn" onclick="triggerTDRefresh()">Force TD Crypto Refresh</button>
     </div>
   </div>
   <table>
@@ -2567,11 +2574,10 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
 </div>
 <div class="card" style="border-color:rgba(22,163,74,0.3)">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <h2 style="color:rgba(74,222,128,0.85);margin:0">TwelveData Forex Cache</h2>
+    <h2 style="color:rgba(74,222,128,0.85);margin:0">TwelveData Stocks Cache (WS live)</h2>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="td-forex-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
-      <span id="td-forex-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Refreshing…</span>
-      <button id="td-forex-refresh-btn" onclick="triggerTDForexRefresh()">Force TD Forex Refresh</button>
+      <span id="td-forex-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Fetching…</span>
     </div>
   </div>
   <table>
@@ -2650,24 +2656,15 @@ async function poll() {
 
     document.getElementById('refresh-btn').disabled = p.active || d.refreshing;
 
-    /* TD Crypto section */
-    const td = d.tdCrypto || {};
+    /* Crypto (Binance) + Stocks (TD) sections */
     const TD_TFS = ['1m','1h','4h','1d'];
-    const tdLoaded = td.loaded || 0;
-    const tdTotal  = td.total  || 0;
-    document.getElementById('td-stats').textContent = tdLoaded + ' / ' + tdTotal + ' symbols loaded';
-    const tdActiveInfo = document.getElementById('td-active-info');
-    if (d.tdCryptoRefreshing) { tdActiveInfo.style.display = 'inline-flex'; }
-    else { tdActiveInfo.style.display = 'none'; }
-    document.getElementById('td-refresh-btn').disabled = !!d.tdCryptoRefreshing;
 
-    function renderTDTable(section, tableId, accentColor, refreshingFlag, statsId, activeInfoId, refreshBtnId) {
+    function renderTDTable(section, tableId, accentColor, refreshingFlag, statsId, activeInfoId) {
       const loaded = section.loaded || 0;
       const total  = section.total  || 0;
       document.getElementById(statsId).textContent = loaded + ' / ' + total + ' symbols loaded';
       const activeEl = document.getElementById(activeInfoId);
       if (refreshingFlag) { activeEl.style.display = 'inline-flex'; } else { activeEl.style.display = 'none'; }
-      document.getElementById(refreshBtnId).disabled = !!refreshingFlag;
 
       const allRows = [...(section.symbols || []), ...(section.notStarted || []).map(s => ({ sym: s, tfs: {} }))];
       document.getElementById(tableId).innerHTML = allRows.map(entry => {
@@ -2691,9 +2688,8 @@ async function poll() {
       }).join('') || '<tr><td colspan="8" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No data yet</td></tr>';
     }
 
-    const tdAllSyms = [...(td.symbols || []), ...(td.notStarted || []).map(s => ({ sym: s, tfs: {} }))];
-    renderTDTable(d.tdCrypto || {}, 'td-table',       '#60a5fa', d.tdCryptoRefreshing, 'td-stats',       'td-active-info',       'td-refresh-btn');
-    renderTDTable(d.tdForex  || {}, 'td-forex-table', '#4ade80', d.tdForexRefreshing,  'td-forex-stats', 'td-forex-active-info', 'td-forex-refresh-btn');
+    renderTDTable(d.tdCrypto || {}, 'td-table',       '#60a5fa', d.tdCryptoRefreshing,  'td-stats',       'td-active-info');
+    renderTDTable(d.tdStocks || {}, 'td-forex-table', '#4ade80', d.tdStocksRefreshing,  'td-forex-stats', 'td-forex-active-info');
 
   } catch(e) { console.error(e); }
 }
@@ -2832,6 +2828,7 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
 
   const oandaList   = buildSymList(oanda.getSymbols(),   'oanda',   TIMEFRAMES);
   const binanceList = buildSymList(binance.getSymbols(), 'binance', TIMEFRAMES);
+  const tdStocksList = buildSymList(td.getSymbols(),     'td',      TIMEFRAMES);
 
   // Flatten to match admin HTML's expected field names
   const binanceTDShape = (list, total) => ({
@@ -2853,8 +2850,8 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
     backfill:   oanda.getBackfillStatus(),
     tdCrypto:          binanceTDShape(binanceList, binance.SYMBOLS.length),
     tdCryptoRefreshing: false,
-    tdForex:           { symbols: [], notStarted: [], loaded: 0, total: 0 },
-    tdForexRefreshing:  false,
+    tdStocks:          binanceTDShape(tdStocksList, td.getSymbols().length),
+    tdStocksRefreshing: !!(tdStatus && tdStatus.backfillActive),
     // Full data for future use
     oanda:   { ...oandaStatus, ...oandaList, total: oanda.getSymbols().length },
     binance: { ...binanceStatus, ...binanceList, total: binance.SYMBOLS.length },
