@@ -239,7 +239,7 @@ async function startStream() {
         _lastSeen = Date.now();
         if (!_isMarketOpen(sym, ts)) return; // skip phantom weekend ticks for forex/metals/indices
         for (const tf of TIMEFRAMES) {
-          store.writeTick(SOURCE, sym, tf, TF_MS[tf], mid, 0);
+          store.writeTick(SOURCE, sym, tf, TF_MS[tf], mid, 0, ts); // use broker tick time for bucket placement
         }
       } catch(e) { /* ignore per-tick errors */ }
     }

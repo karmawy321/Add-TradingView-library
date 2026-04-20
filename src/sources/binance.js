@@ -149,7 +149,7 @@ function _onKline(data) {
   // Propagate close price as tick to all other TFs
   for (const tf of Object.keys(TF_MS)) {
     if (tf === '1m') continue;
-    store.writeTick(SOURCE, sym, tf, TF_MS[tf], bar.c, bar.v);
+    store.writeTick(SOURCE, sym, tf, TF_MS[tf], bar.c, bar.v, bar.t);
   }
 }
 

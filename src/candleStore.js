@@ -73,13 +73,16 @@ function _notify(source, sym, tf, candle) {
  * tf: timeframe string  e.g. '1m' '4h' '1d'
  * tfMs: milliseconds per bar for that tf
  * price, vol: numbers
+ * tickTs (optional): broker-provided tick timestamp in ms. Use this to place
+ *   the tick in the correct bucket regardless of network/relay latency.
+ *   Falls back to Date.now() when not supplied.
  */
-function writeTick(source, sym, tf, tfMs, price, vol) {
+function writeTick(source, sym, tf, tfMs, price, vol, tickTs) {
   if (!source || !sym || !tf || !tfMs || price == null) {
     _log('warn', 'writeTick: missing args', { source, sym, tf });
     return;
   }
-  const ts     = Date.now();
+  const ts     = (typeof tickTs === 'number' && tickTs > 0) ? tickTs : Date.now();
   const bucket = Math.floor(ts / tfMs) * tfMs;
   const arr    = _getArr(source, sym, tf);
   const cur    = arr.length ? arr[arr.length - 1] : null;

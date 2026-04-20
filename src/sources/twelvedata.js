@@ -239,7 +239,7 @@ function _connectWS() {
       if (!price) return;
       const ts = (msg.timestamp || 0) * 1000 || Date.now();
       for (const tf of Object.keys(TF_MS)) {
-        store.writeTick(SOURCE, internalSym, tf, TF_MS[tf], price, 0);
+        store.writeTick(SOURCE, internalSym, tf, TF_MS[tf], price, 0, ts);
       }
     } catch(_) {}
   });
