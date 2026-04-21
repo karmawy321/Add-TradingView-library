@@ -33,6 +33,7 @@ function runBacktest(candles, opts = {}) {
   // Defaults match typical retail FX: ~1-pip spread + $3.5/lot commission on a ~20-pip SL.
   const costR       = opts.costR       != null ? opts.costR       : 0.05;
   const slippageR   = opts.slippageR   != null ? opts.slippageR   : 0.02;
+  const requireConfirmedPattern = opts.requireConfirmedPattern === true;
 
   const MIN_CANDLES = LOOKBACK + 20;
   if (!candles || candles.length < MIN_CANDLES) {
@@ -85,6 +86,7 @@ function runBacktest(candles, opts = {}) {
     const window = candles.slice(i - LOOKBACK, i + 1);
     const sig    = sniperSignal(window, btPair, btTimeframe);
     if (sig.error || sig.confidence < minConf) continue;
+    if (requireConfirmedPattern && !(sig.patterns && sig.patterns.some(p => p.confirmed))) continue;
 
     /* ── Compute RR (sniperSignal gives raw prices) ── */
     const slDist = Math.abs(sig.entry - sig.sl);
