@@ -563,10 +563,11 @@ function sendPage(file, res) {
   } else res.status(404).send('Page not found: ' + file);
 }
 
-app.get('/',        (req, res) => sendPage('index.html',   res));
-app.get('/auth',    (req, res) => sendPage('auth.html',    res));
-app.get('/terms',   (req, res) => sendPage('terms.html',   res));
-app.get('/privacy', (req, res) => sendPage('privacy.html', res));
+app.get('/',              (req, res) => sendPage('index.html',         res));
+app.get('/auth',          (req, res) => sendPage('auth.html',          res));
+app.get('/terms',         (req, res) => sendPage('terms.html',         res));
+app.get('/privacy',       (req, res) => sendPage('privacy.html',       res));
+app.get('/sniper-engine', (req, res) => sendPage('sniper-engine.html', res));
 
 /* ═══════════════════════════════════════════════════
    API ENDPOINTS

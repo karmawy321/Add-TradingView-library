@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sniper Engine — How It Works — Fractal AI Agent</title>
+<meta name="description" content="A transparent look at the Sniper Engine: seven design decisions that separate it from typical SMC tools, and how it learns from its own outcomes.">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--dark:#06080d;--gold:#c9a84c;--light:#f0f4fa;--muted:#8a95a8;--border:rgba(255,255,255,.06)}
+body{background:var(--dark);color:var(--light);font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.8}
+nav{padding:20px 48px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.logo{font-family:'Cinzel',serif;font-size:13px;letter-spacing:.12em;color:var(--gold);text-decoration:none}
+.back{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);text-decoration:none;letter-spacing:.06em}
+.back:hover{color:var(--gold)}
+main{max-width:760px;margin:0 auto;padding:64px 24px}
+.eyebrow{font-family:'DM Mono',monospace;font-size:10px;color:var(--gold);letter-spacing:.14em;margin-bottom:14px;text-transform:uppercase}
+h1{font-family:'Cinzel',serif;font-size:32px;font-weight:600;color:var(--light);margin-bottom:12px;line-height:1.3}
+.subtitle{color:var(--muted);font-size:15px;margin-bottom:56px;line-height:1.7}
+h2{font-family:'Cinzel',serif;font-size:20px;font-weight:600;color:var(--gold);margin:48px 0 16px;letter-spacing:.04em}
+h3{font-family:'DM Sans',sans-serif;font-size:15px;font-weight:500;color:var(--light);margin:28px 0 10px}
+p{color:rgba(240,244,250,.8);margin-bottom:16px}
+ul,ol{color:rgba(240,244,250,.8);padding-left:22px;margin-bottom:16px}
+ul li,ol li{margin-bottom:8px}
+strong{color:var(--light);font-weight:500}
+.mono{font-family:'DM Mono',monospace;font-size:13px;color:var(--gold)}
+.quote{border-left:2px solid var(--gold);padding:14px 20px;margin:20px 0;font-family:'DM Mono',monospace;font-size:13px;color:rgba(240,244,250,.85);background:rgba(201,168,76,.04);line-height:1.6}
+.cta{display:inline-block;margin-top:20px;padding:12px 28px;background:var(--gold);color:var(--dark);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;border-radius:2px;transition:opacity .2s;font-weight:500}
+.cta:hover{opacity:.85;text-decoration:none}
+a{color:var(--gold);text-decoration:none}
+a:hover{text-decoration:underline}
+footer{text-align:center;padding:32px;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);border-top:1px solid var(--border);margin-top:80px}
+@media(max-width:600px){nav{padding:16px 20px}main{padding:40px 20px}h1{font-size:24px}h2{font-size:18px}}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">FRACTAL AI AGENT</a>
+  <a href="/" class="back">← Back to App</a>
+</nav>
+<main>
+  <div class="eyebrow">Under the Hood</div>
+  <h1>Sniper Engine: How It Actually Works</h1>
+  <div class="subtitle">A transparent look at the signal engine, the seven design decisions that separate it from typical SMC tools, and how it learns from its own outcomes.</div>
+
+  <h2>The Problem With Retail SMC Tools</h2>
+  <p>You've seen it a hundred times. A popular SMC indicator lights up your chart with a "BUY" arrow. You take the trade. Stop loss gets hit within minutes.</p>
+  <p>Why does this keep happening? Because most retail SMC tools cut corners on the parts of market structure analysis that actually matter. They draw pretty boxes, fire glowing arrows, and call it a signal. Meanwhile:</p>
+  <ul>
+    <li>Order blocks that price already broke through are still shown as valid</li>
+    <li>Confluence scores jump to 100% any time three indicators happen to overlap</li>
+    <li>Swing detection uses the same window size on a 1-minute chart as on a daily</li>
+    <li>"Entry" prices are fantasy levels the candle never actually traded at</li>
+    <li>Risk/reward ratios get pulled below 1:1 by nearby support that isn't a real target</li>
+  </ul>
+  <p>The Sniper Engine was built to fix this. Not with more features — with more rigor.</p>
+
+  <h2>What the Engine Does</h2>
+  <p>When you request a signal, it walks through nineteen analytical steps:</p>
+  <ol>
+    <li>Detect swing points using a window that scales with timeframe</li>
+    <li>Classify market structure (bullish / bearish / ranging) from recent swings</li>
+    <li>Compute Fibonacci retracement and extension levels from the most recent major swing</li>
+    <li>Find active order blocks — and skip any price has already broken through</li>
+    <li>Identify support and resistance levels from clustered swing touches</li>
+    <li>Score confluence at entry with ATR-normalized tolerance</li>
+    <li>Compute trend using both moving averages and a linear regression slope</li>
+    <li>Measure volatility as a percentage of price</li>
+    <li>Tag the trading session (Asia / London / New York / Late NY) from the candle's timestamp</li>
+    <li>Classify the setup type — breakout, reversal, range bounce, or continuation</li>
+    <li>Detect classical patterns — Head &amp; Shoulders, Double Tops and Bottoms, Triangles, Broadening</li>
+    <li>Detect candlestick patterns — pin bars, engulfing, inside bars, and more</li>
+    <li>Detect harmonic patterns — Gartley, Bat, Butterfly, Crab, with full XABCD Fibonacci ratio validation</li>
+    <li>Apply pattern confirmation rules — confirmed patterns override base classification</li>
+    <li>Pick direction — structure first, trend second, regression slope as final tiebreaker</li>
+    <li>Set entry at the last close price</li>
+    <li>Calculate stop loss beyond the most recent swing, buffered by ATR, with hard minimum and maximum bounds</li>
+    <li>Calculate TP1 and TP2 with enforced risk/reward floors, then snap to nearby resistance or Fibonacci extensions when doing so improves the target</li>
+    <li>Compute a confidence score combining structure, trend alignment, volatility regime, and pattern confirmation — with hard caps to prevent saturation</li>
+  </ol>
+  <p>The output is a single structured signal: direction, entry, stop loss, TP1, TP2, confidence, and a plain-English explanation of why.</p>
+
+  <h2>Seven Design Decisions That Make It Different</h2>
+  <p>Anyone can claim "we detect order blocks." Here's what actually separates the engine from typical retail tools.</p>
+
+  <h3>1. Order block mitigation tracking</h3>
+  <p>Most tools show an order block the moment they detect one — and keep showing it forever. In reality, once price breaks through an OB, it's no longer valid. The engine scans every candle after each OB forms; if price has closed past the zone, the OB is discarded. You never see a mitigated OB treated as a live signal.</p>
+
+  <h3>2. Timeframe-adaptive swing windows</h3>
+  <p>A 1-minute chart is noisier than a daily chart. Using the same swing-detection window on both is how retail tools invent phantom swings on scalping timeframes. The engine scales its swing window with the timeframe — wider on sub-hourly charts to filter micro-noise, tighter on 1H and above.</p>
+
+  <h3>3. ATR-normalized confluence tolerance</h3>
+  <p>Most tools use "within 0.5% of a level" as confluence. On a tight-range chart, this makes every Fibonacci level "near" every other, and confluence scores inflate to garbage. The engine uses Average True Range as a tolerance cap — "near" means something relative to actual recent volatility, not an arbitrary percentage.</p>
+
+  <h3>4. Capped pattern bonuses</h3>
+  <p>When three bullish patterns coincide, most engines stack their bonuses and hit a ceiling on what's often noise. The Sniper Engine caps total pattern contribution so no coincidence of patterns can single-handedly produce a maximum-confidence signal.</p>
+
+  <h3>5. Best-two Fibonacci hits only</h3>
+  <p>Instead of summing every Fib level within tolerance — which inflates scores on tight swings where all Fibs cluster together — the engine keeps only the two highest-value hits. Prevents score inflation without ignoring real confluence.</p>
+
+  <h3>6. Regression-based direction in ranging markets</h3>
+  <p>When market structure is ranging and moving-average trend is flat, most tools default to "long" — an arbitrary choice that tilts results. The engine runs a least-squares regression and uses the sign of the slope as its tiebreaker. Data-driven, not arbitrary.</p>
+
+  <h3>7. Hard risk/reward floors with smart targeting</h3>
+  <p>The engine enforces hard RR floors on TP1 and TP2. If a nearby resistance would pull the target below those floors, the engine ignores it. It also snaps targets to real S/R levels when doing so improves the target — you get both discipline and realism.</p>
+
+  <h2>How the Engine Learns From Itself</h2>
+  <p>Everything above is the static analysis — what the engine computes from the chart at the moment you request a signal. But the chart isn't the whole story. A confluence setup that won 70% of the time in a London-session bullish-trend regime is very different from the same setup in an extreme-volatility Asian-session range.</p>
+  <p>The engine tracks the outcome of every signal it issues. TP1 hit, TP2 hit, stop hit, expired — everything is graded against real price action. Those outcomes are bucketed by market condition: trend, session, volatility, setup type, direction, and the instrument itself.</p>
+  <p>When a new signal fires, the engine looks up how signals matching its current conditions have historically performed, and nudges the confidence score up or down accordingly. Signals in conditions that have historically won get a boost; signals in conditions that have historically failed get a penalty.</p>
+  <p>Two safeguards prevent this from overfitting to noise:</p>
+  <p><strong>A minimum-samples rule.</strong> A condition bucket only influences scoring after it has accumulated enough resolved signals. Below that threshold, the engine ignores it and falls back to the static confidence.</p>
+  <p><strong>A dual-window pulse.</strong> The engine tracks outcomes twice: over the full history (baseline) and over a recent rolling window (pulse). When the recent window deviates meaningfully from the baseline, an additional small adjustment kicks in — capped on both sides so a short hot streak can't single-handedly swing confidence to the ceiling.</p>
+  <p>The result: the engine is aware of which conditions it performs well in and which it struggles with, and it scores accordingly. New market regime? The pulse window catches it before the baseline would. Stable conditions? The full-history weights dominate. Either way, the adjustment is bounded — no runaway learning, no curve-fitting on a handful of recent trades.</p>
+  <p>This is the part most retail tools skip entirely. They score every signal with the same formula today as they did a year ago, blind to whether their own logic has actually been working.</p>
+
+  <h2>What a Signal Looks Like</h2>
+  <p>Every signal returns a structured object:</p>
+  <ul>
+    <li><span class="mono">direction</span> — long or short</li>
+    <li><span class="mono">setup_type</span> — breakout, reversal, range bounce, or continuation</li>
+    <li><span class="mono">entry</span> — the last close price, at proper asset precision</li>
+    <li><span class="mono">sl</span> — stop loss beyond the recent swing, ATR-buffered, bounded</li>
+    <li><span class="mono">tp1, tp2</span> — targets with enforced RR floors</li>
+    <li><span class="mono">confidence</span> — a bounded score combining structure, trend, volatility, and pattern signal</li>
+    <li><span class="mono">patterns</span> — every detected pattern with confirmation status</li>
+    <li><span class="mono">reasoning</span> — a plain-English explanation of why the signal fired</li>
+    <li><span class="mono">context</span> — trend, volatility, session, ATR percent</li>
+  </ul>
+  <p>The reasoning field is the core of the tool. You don't just get an arrow — you get something like:</p>
+  <div class="quote">"Long setup at 1.2385: bullish market structure, inside bullish order block, confluence at Fib 0.618 and 20-touch S/R, confirmed bullish engulfing, London session."</div>
+  <p>Every number on the chart is traceable to a specific reason.</p>
+
+  <h2>What It Will Not Do</h2>
+  <p>No backtest, no signal engine, no tool — nothing sold by anyone — can guarantee profitable trades. Here's what the Sniper Engine deliberately avoids claiming:</p>
+  <ul>
+    <li>It will not predict price direction with certainty</li>
+    <li>It will not replace risk management or psychological discipline</li>
+    <li>It will not perform equally on every pair or timeframe — some instruments suit the methodology, some don't</li>
+    <li>It does not use machine learning or neural networks — the learning is transparent, outcome-weighted scoring with bounded adjustments, not a black box</li>
+  </ul>
+  <p>What it will do is give you a transparent, repeatable signal with the mathematical reasoning spelled out. Whether that signal fits your strategy, your pair, and your risk profile is your decision.</p>
+
+  <h2>See It in Action</h2>
+  <p>Run the engine on any pair your platform supports. Every signal comes with the full reasoning. Backtest it on historical data. Compare it against what you see on your TradingView setup. Judge it on rigor, not marketing.</p>
+  <a href="/" class="cta">Try the Sniper Engine →</a>
+</main>
+<footer>© 2026 Fractal AI Agent · All rights reserved</footer>
+</body>
+</html>
