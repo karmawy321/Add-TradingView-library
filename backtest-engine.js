@@ -27,6 +27,13 @@ function runBacktest(candles, opts = {}) {
   const btPair      = opts.pair          || 'BT';
   const btTimeframe = opts.timeframe     || '1h';
 
+  // Cost model, expressed in R (multiples of SL distance) so it's instrument-agnostic.
+  // costR covers round-trip spread + commission; slippageR is extra loss only on SL fills
+  // (TPs are limit orders and fill at price, stops slip through in fast moves).
+  // Defaults match typical retail FX: ~1-pip spread + $3.5/lot commission on a ~20-pip SL.
+  const costR       = opts.costR       != null ? opts.costR       : 0.05;
+  const slippageR   = opts.slippageR   != null ? opts.slippageR   : 0.02;
+
   const MIN_CANDLES = LOOKBACK + 20;
   if (!candles || candles.length < MIN_CANDLES) {
     return { error: `Need at least ${MIN_CANDLES} candles for backtest (got ${candles ? candles.length : 0})` };
@@ -53,9 +60,10 @@ function runBacktest(candles, opts = {}) {
       else if (!isLong && c.l <= openTrade.tp1) outcome = 'tp1_hit';
 
       if (outcome) {
-        const pnlR = outcome === 'sl_hit'  ? -1.0
-                   : outcome === 'tp2_hit' ? openTrade.rr2
-                   : openTrade.rr1;
+        const grossR = outcome === 'sl_hit'  ? -1.0
+                     : outcome === 'tp2_hit' ? openTrade.rr2
+                     : openTrade.rr1;
+        const pnlR = grossR - costR - (outcome === 'sl_hit' ? slippageR : 0);
 
         trades.push({
           ...openTrade,
@@ -105,9 +113,10 @@ function runBacktest(candles, opts = {}) {
   if (openTrade) {
     const last   = candles[candles.length - 1];
     const isLong = openTrade.direction === 'long';
-    const pnlR   = isLong
+    const grossR = isLong
       ? (last.c - openTrade.entry) / (openTrade.entry - openTrade.sl)
       : (openTrade.entry - last.c) / (openTrade.sl    - openTrade.entry);
+    const pnlR  = grossR - costR;
 
     trades.push({
       ...openTrade,
@@ -119,7 +128,7 @@ function runBacktest(candles, opts = {}) {
     });
   }
 
-  return buildResults(trades, startEquity, riskPct);
+  return buildResults(trades, startEquity, riskPct, { costR, slippageR });
 }
 
 
@@ -127,7 +136,7 @@ function runBacktest(candles, opts = {}) {
    METRICS + EQUITY CURVE
    ═══════════════════════════════════════════════════════ */
 
-function buildResults(trades, startEquity, riskPct) {
+function buildResults(trades, startEquity, riskPct, costs = { costR: 0, slippageR: 0 }) {
   if (trades.length === 0) {
     return {
       trades:      [],
@@ -222,6 +231,8 @@ function buildResults(trades, startEquity, riskPct) {
       avgBarsHeld:      +avgBars.toFixed(1),
       patternWinRate:   patWR   != null ? +patWR.toFixed(4)   : null,
       noPatternWinRate: noPatWR != null ? +noPatWR.toFixed(4) : null,
+      costR:            costs.costR,
+      slippageR:        costs.slippageR,
     },
     equityCurve,
     monteCarlo: runMonteCarlo(closed, startEquity, riskPct),
