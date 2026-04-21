@@ -597,17 +597,28 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
 
   const source = req.query.source || getSymSource(sym);
 
-  if (source === 'oanda' && oanda.isReady()) {
-    const hwm = store.highWaterMark('oanda', sym, tf);
-    if (!hwm) oanda.fetchRecent(sym).catch(() => {});
-    oanda.promoteBackfill(sym); // user viewed it → bump to front of backfill queue
-  }
+  // BYPASS: oanda is stream-only — no fetchRecent / promoteBackfill REST triggers
   if (source === 'td') {
     const hwm = store.highWaterMark('td', sym, tf);
     if (!hwm) { td.fetchHistory(sym).catch(() => {}); td.subscribe(sym); }
   }
 
-  const arr = store.readCandles(source, sym, tf);
+  let arr;
+  if (source === 'oanda' && ['4h','1d','1w'].includes(tf)) {
+    // On-demand aggregation from 1h ticks (stream-only mode)
+    const h1 = store.readCandles('oanda', sym, '1h');
+    const periodMs = { '4h': 14400000, '1d': 86400000, '1w': 604800000 }[tf];
+    const out = [];
+    for (const c of h1) {
+      const bucket = Math.floor(c.t / periodMs) * periodMs;
+      const last = out[out.length - 1];
+      if (!last || last.t !== bucket) out.push({ t: bucket, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v });
+      else { last.h = Math.max(last.h, c.h); last.l = Math.min(last.l, c.l); last.c = c.c; last.v += c.v; }
+    }
+    arr = out;
+  } else {
+    arr = store.readCandles(source, sym, tf);
+  }
   if (!arr.length && source === 'oanda') return res.json({ candles: [], loading: true });
   res.json({ candles: arr });
 });
@@ -622,21 +633,19 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
   const source = req.query.source || getSymSource(sym);
 
   if (source === 'oanda') {
+    // BYPASS: stream-only mode — no REST historical fetch
     if (!endTime) return res.json({ candles: [] });
-    const existing = store.readCandles('oanda', sym, tf).filter(c => c.t < endTime);
-    if (existing.length < 50 && oanda.isReady()) {
-      const maSym = oanda.SYMBOL_MAP[sym];
-      const conn  = oanda.getRpcConn();
-      if (maSym && conn) {
-        try {
-          const raw = await conn.getHistoricalCandles(maSym, tf, new Date(endTime), 2000);
-          if (raw && raw.length) {
-            store.writeCandles('oanda', sym, tf,
-              raw.map(c => ({ t: new Date(c.time).getTime(), o: c.open, h: c.high, l: c.low, c: c.close, v: c.tickVolume || 0 }))
-                 .filter(c => c.t < endTime));
-          }
-        } catch(e) { console.error('[history] OANDA fetch:', e.message); }
+    if (['4h','1d','1w'].includes(tf)) {
+      const h1 = store.readCandles('oanda', sym, '1h');
+      const periodMs = { '4h': 14400000, '1d': 86400000, '1w': 604800000 }[tf];
+      const out = [];
+      for (const c of h1) {
+        const bucket = Math.floor(c.t / periodMs) * periodMs;
+        const last = out[out.length - 1];
+        if (!last || last.t !== bucket) out.push({ t: bucket, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v });
+        else { last.h = Math.max(last.h, c.h); last.l = Math.min(last.l, c.l); last.c = c.c; last.v += c.v; }
       }
+      return res.json({ candles: out.filter(c => c.t < endTime).slice(-2000) });
     }
     return res.json({ candles: store.readCandles('oanda', sym, tf).filter(c => c.t < endTime).slice(-2000) });
   }
@@ -3309,7 +3318,7 @@ app.listen(PORT, () => {
   refreshConditionWeights();
 
   /* Load all disk caches immediately */
-  oanda.loadCache();
+  // oanda.loadCache();  // BYPASS: stream-only mode, no disk cache load
   binance.loadCache();
   td.loadCache();
 
@@ -3321,12 +3330,8 @@ app.listen(PORT, () => {
   if (METAAPI_TOKEN) {
     setTimeout(() => {
       console.log('[OANDA] Initializing MetaAPI connection...');
-      oanda.connect().then(() => {
-        if (oanda.isReady()) {
-          oanda.refreshAllCache();
-          setInterval(() => oanda.refreshAllCache(), 12 * 3600 * 1000);
-        }
-      }).catch(e => console.error('[OANDA] Connect error:', e.message));
+      // BYPASS: stream-only mode — no refreshAllCache, no 12h interval
+      oanda.connect().catch(e => console.error('[OANDA] Connect error:', e.message));
     }, 30000);
   }
 
@@ -3365,10 +3370,11 @@ app.listen(PORT, () => {
     binance.fetchAllHistory().catch(e => console.error('[Binance] Cron error:', e.message));
   });
   /* OANDA incremental refresh every 12 hours (offset 30min) */
-  cron.schedule('30 */12 * * *', () => {
-    console.log('\n📊 [Scheduled] OANDA incremental refresh...');
-    oanda.refreshAllCache().catch(e => console.error('[OANDA] Cron error:', e.message));
-  });
+  // BYPASS: stream-only mode — no OANDA cron refresh
+  // cron.schedule('30 */12 * * *', () => {
+  //   console.log('\n📊 [Scheduled] OANDA incremental refresh...');
+  //   oanda.refreshAllCache().catch(e => console.error('[OANDA] Cron error:', e.message));
+  // });
 
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
