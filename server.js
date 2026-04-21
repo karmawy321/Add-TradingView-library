@@ -589,6 +589,35 @@ app.get('/profile', (req, res) => sendPage('profile.html', res));
 // Tracks in-flight lazy fetches to prevent polling loops from spamming TwelveData
 const _fetchingTF = {};
 
+// OANDA 1d Sunday-evening partial bars get folded into the following Monday bar
+// to match OANDA platform / TradingView / Capital.com display convention.
+// MetaAPI returns them as separate rows; we merge at read-time only (no mutation).
+function _mergeOandaSundayIntoMonday(bars) {
+  if (!bars || bars.length === 0) return bars;
+  const out = [];
+  let pendingSun = null;
+  for (const c of bars) {
+    if (new Date(c.t).getUTCDay() === 0) {
+      pendingSun = c;
+    } else {
+      if (pendingSun) {
+        out.push({
+          t: c.t,
+          o: pendingSun.o,
+          h: Math.max(pendingSun.h, c.h),
+          l: Math.min(pendingSun.l, c.l),
+          c: c.c,
+          v: (pendingSun.v || 0) + (c.v || 0),
+        });
+        pendingSun = null;
+      } else out.push(c);
+    }
+  }
+  // Last bar is Sunday with no Monday yet (current week forming) — keep it
+  if (pendingSun) out.push(pendingSun);
+  return out;
+}
+
 // Candles endpoint — 60 req/min per IP
 app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   const sym = req.params.symbol.toUpperCase().replace('-', '/');
@@ -607,7 +636,8 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
     if (!hwm) { td.fetchHistory(sym).catch(() => {}); td.subscribe(sym); }
   }
 
-  const arr = store.readCandles(source, sym, tf);
+  let arr = store.readCandles(source, sym, tf);
+  if (source === 'oanda' && tf === '1d') arr = _mergeOandaSundayIntoMonday(arr);
   if (!arr.length && source === 'oanda') return res.json({ candles: [], loading: true });
   res.json({ candles: arr });
 });
@@ -638,7 +668,9 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
         } catch(e) { console.error('[history] OANDA fetch:', e.message); }
       }
     }
-    return res.json({ candles: store.readCandles('oanda', sym, tf).filter(c => c.t < endTime).slice(-2000) });
+    let out = store.readCandles('oanda', sym, tf).filter(c => c.t < endTime);
+    if (tf === '1d') out = _mergeOandaSundayIntoMonday(out);
+    return res.json({ candles: out.slice(-2000) });
   }
 
   if (source === 'binance') {
