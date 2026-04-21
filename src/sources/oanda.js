@@ -540,9 +540,9 @@ async function connect() {
     // Await symbol discovery so refreshAllCache() sees correct broker names
     await _discoverBrokerSymbols().catch(e => console.warn('[OANDA] Symbol discovery failed:', e.message));
     _startWatchdog();
-    // _startFastRefresh();    // BYPASS: stream-only mode, no REST refresh
+    _startFastRefresh();
     _startForwardFill();
-    // _startBackfillWorker(); // BYPASS: stream-only mode, no REST backfill
+    _startBackfillWorker();
     startStream(); // non-blocking
   } catch(e) {
     _status = 'error';
