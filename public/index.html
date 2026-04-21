@@ -4748,21 +4748,13 @@ function renderTimeAxis(visible, px, W, H, PAD) {
     labelFn = function(d) { return d.getUTCDate()+' '+MO[d.getUTCMonth()]; };
     boundaryFn = function(d, prev) { return d.getUTCMonth() !== prev.getUTCMonth(); };
   } else if (spanDay > 1) {
-    /* Days visible — show day or HH:MM, mark day boundaries.
-       If avg bar spacing >= 20h (daily TF with broker-offset timestamps),
-       always show dates so 1d candles don't display as "21:00" labels. */
-    var avgBarMs = n > 1 ? spanMs / (n - 1) : 0;
-    var isDailyTF = avgBarMs >= 20 * 3600000;
+    /* Days visible — show day or HH:MM, mark day boundaries */
     tickUnit = 'day';
-    labelFn = isDailyTF
-      ? function(d) { return d.getUTCDate()+' '+MO[d.getUTCMonth()]; }
-      : function(d, isB) {
-          if (isB) return d.getUTCDate()+' '+MO[d.getUTCMonth()];
-          return d.getUTCHours().toString().padStart(2,'0')+':00';
-        };
-    boundaryFn = isDailyTF
-      ? function(d, prev) { return d.getUTCDate() !== prev.getUTCDate() || d.getUTCMonth() !== prev.getUTCMonth(); }
-      : function(d, prev) { return d.getUTCDate() !== prev.getUTCDate(); };
+    labelFn = function(d, isB) {
+      if (isB) return d.getUTCDate()+' '+MO[d.getUTCMonth()];
+      return d.getUTCHours().toString().padStart(2,'0')+':00';
+    };
+    boundaryFn = function(d, prev) { return d.getUTCDate() !== prev.getUTCDate(); };
   } else if (spanHr > 4) {
     /* Hours visible — show HH:MM, mark day boundary */
     tickUnit = 'hour';
