@@ -11,13 +11,29 @@ const SOURCE = 'td';
 const TD_KEY = process.env.TWELVEDATA_API_KEY || '';
 
 // Always-cached TD symbols — fetched at startup + auto-subscribed to WS.
-// US equities & ETFs only. Crypto → Binance; forex/metals/indices → OANDA.
+// Stocks/ETFs + non-OANDA forex (EM) + aggregated commodities (sniper training).
+// Broker-grade forex/metals (majors, gold, WTI) → OANDA; main crypto → Binance.
 const PRECACHE_SYMBOLS = [
+  /* US equities & ETFs */
   'TSLA','NVDA','AAPL','MSFT','GOOGL','AMZN','META',
   'AMD','NFLX','COIN','PLTR',
   'SPY','QQQ','GLD','SLV',
+  /* EM / exotic forex (not in OANDA SYMBOL_MAP) */
+  'USDBRL','USDMXN','USDZAR','USDTRY','USDSGD','USDCNH','USDINR',
+  /* Commodities (aggregated — TD is not broker-grade) */
+  'BRENT','NATGAS','COPPER','XPTUSD','XPDUSD',
 ];
 const _precacheSet = new Set(PRECACHE_SYMBOLS);
+
+// Commodity symbol mapping: internal code → TwelveData native symbol.
+// Kept separate from slash-based forex because commodities use mixed formats.
+const COMMODITY_MAP = {
+  'BRENT':  'BRENT',
+  'NATGAS': 'NG',
+  'COPPER': 'XCU/USD',
+  'XPTUSD': 'XPT/USD',
+  'XPDUSD': 'XPD/USD',
+};
 
 const TF_MS = {
   '1m':60000, '5m':300000, '15m':900000, '30m':1800000,
@@ -39,6 +55,7 @@ const STOCK_TICKERS = new Set([
 // ─── Symbol conversion ────────────────────────────────────────────────────────
 function toTDSymbol(sym) {
   const s = sym.toUpperCase();
+  if (COMMODITY_MAP[s]) return COMMODITY_MAP[s];
   if (s.includes('/')) return s;
   if (STOCK_TICKERS.has(s)) return s;
   if (s.endsWith('USDT')) return s.replace('USDT', '/USD');

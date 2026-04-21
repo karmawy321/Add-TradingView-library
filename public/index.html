@@ -7161,9 +7161,12 @@ function executeSearch() {
         var sym = r.symbol;
         if(r.currency && sym.indexOf(r.currency) === -1 && r.instrument_type === 'Physical Currency') sym += r.currency;
         var isOanda   = r.source === 'oanda';
+        var isBinance = r.source === 'binance';
         var isCrypto  = r.instrument_type === 'Digital Currency';
         var onclick = isOanda
           ? "selectPairWithSource('"+sym+"','oanda');closeSearchModal()"
+          : isBinance
+          ? "selectPairWithSource('"+sym+"','binance');closeSearchModal()"
           : "selectPair('"+sym+"');closeSearchModal()";
         /* Source badge — check OANDA first so crypto from OANDA gets OANDA badge */
         var badge;

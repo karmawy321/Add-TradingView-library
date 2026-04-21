@@ -782,11 +782,12 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           { symbol:'XAUUSD',  instrument_name:'Gold / US Dollar',            instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
           { symbol:'XAGUSD',  instrument_name:'Silver / US Dollar',          instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
           { symbol:'OILWTI',  instrument_name:'WTI Crude Oil',               instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
-          { symbol:'OILBRNT', instrument_name:'Brent Crude Oil',             instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
-          { symbol:'NATGAS',  instrument_name:'Natural Gas',                 instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
-          { symbol:'COPPER',  instrument_name:'Copper',                      instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
-          { symbol:'PLATIN',  instrument_name:'Platinum',                    instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
-          { symbol:'PALLAD',  instrument_name:'Palladium',                   instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+          /* Commodities — TwelveData (aggregated, not broker-grade) */
+          { symbol:'BRENT',   instrument_name:'Brent Crude Oil',             instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+          { symbol:'NATGAS',  instrument_name:'Natural Gas',                 instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+          { symbol:'COPPER',  instrument_name:'Copper',                      instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+          { symbol:'XPTUSD',  instrument_name:'Platinum / US Dollar',        instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+          { symbol:'XPDUSD',  instrument_name:'Palladium / US Dollar',       instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
           /* Forex majors */
           { symbol:'EURUSD',  instrument_name:'Euro / US Dollar',            instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'GBPUSD',  instrument_name:'British Pound / US Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
@@ -815,8 +816,16 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
           { symbol:'CADJPY',  instrument_name:'Canadian Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'CHFJPY',  instrument_name:'Swiss Franc / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
           { symbol:'NZDJPY',  instrument_name:'New Zealand Dollar / Japanese Yen', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-          /* Crypto — OANDA (broker-grade) */
-          { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+          /* EM / exotic forex — TwelveData (aggregated) */
+          { symbol:'USDBRL',  instrument_name:'US Dollar / Brazilian Real',      instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+          { symbol:'USDMXN',  instrument_name:'US Dollar / Mexican Peso',        instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+          { symbol:'USDZAR',  instrument_name:'US Dollar / South African Rand',  instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+          { symbol:'USDTRY',  instrument_name:'US Dollar / Turkish Lira',        instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+          { symbol:'USDSGD',  instrument_name:'US Dollar / Singapore Dollar',    instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+          { symbol:'USDCNH',  instrument_name:'US Dollar / Offshore Yuan',       instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+          { symbol:'USDINR',  instrument_name:'US Dollar / Indian Rupee',        instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+          /* Crypto — Binance (broker-grade) */
+          { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',         instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
           { symbol:'ETHUSDT', instrument_name:'Ethereum / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
           { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',          instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
           { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
@@ -2606,7 +2615,7 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
 </div>
 <div class="card" style="border-color:rgba(22,163,74,0.3)">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <h2 style="color:rgba(74,222,128,0.85);margin:0">TwelveData Stocks Cache (WS live)</h2>
+    <h2 style="color:rgba(74,222,128,0.85);margin:0">TwelveData Cache — Stocks + Forex + Commodities (WS live)</h2>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="td-forex-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
       <span id="td-forex-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Fetching…</span>

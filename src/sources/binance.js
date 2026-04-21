@@ -14,6 +14,7 @@ const TF_MS = {
 
 // Add or remove symbols here — no other file needs changing.
 const SYMBOLS = [
+  'BTCUSDT',
   'BNBUSDT',
   'XRPUSDT',
   'DOGEUSDT',
