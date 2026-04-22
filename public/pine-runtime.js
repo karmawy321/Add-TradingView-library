@@ -1,0 +1,1458 @@
+/* ═══════════════════════════════════════════════════════════════
+   PINE SCRIPT v5 SUBSET INTERPRETER
+   Lexer → Parser → AST → Bar-by-bar Evaluator → Draw Commands
+
+   Supported: ta.sma/ema/rma/atr/crossover/crossunder/highest/lowest,
+              plot/plotshape/hline/bgcolor, input.int/float/bool/string,
+              var persistence, if/else, for, ternary, history refs close[1],
+              math.*, color.*, na semantics.
+
+   Security: Pure AST interpreter — no eval(), no Function(), no DOM access.
+   Safety:   100k statement limit per run, version gate (v5 only).
+
+   Exports: window.PineRuntime = { compile, evaluate, run }
+   ═══════════════════════════════════════════════════════════════ */
+
+(function(global) {
+  'use strict';
+
+  var NA = Object.freeze({ __pine_na__: true });
+  function isNa(v)  { return v === NA || v === null || v === undefined || (typeof v === 'number' && isNaN(v)); }
+  function naNum(v)  { return isNa(v) ? NA : +v; }
+  function naArith(a, b, op) {
+    if (isNa(a) || isNa(b)) return NA;
+    return op(+a, +b);
+  }
+  function naCmp(a, b, op) {
+    if (isNa(a) || isNa(b)) return false;
+    return op(+a, +b);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     CONSTANTS & BUILTINS
+     ══════════════════════════════════════════════════════════════ */
+
+  var COLORS = {
+    aqua:'#00BCD4', black:'#000000', blue:'#2196F3', fuchsia:'#E91E63',
+    gray:'#9E9E9E', green:'#4CAF50', lime:'#8BC34A', maroon:'#800000',
+    navy:'#1A237E', olive:'#808000', orange:'#FF9800', purple:'#9C27B0',
+    red:'#F44336', silver:'#BDBDBD', teal:'#009688', white:'#FFFFFF',
+    yellow:'#FFEB3B',
+    // TradingView extra
+    new: function(r, g, b, t) {
+      t = (t !== undefined) ? t : 0;
+      var a = Math.max(0, Math.min(1, 1 - t / 100));
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
+    }
+  };
+
+  var SHAPES = {
+    triangleup: 'triangleup', triangledown: 'triangledown',
+    circle: 'circle', cross: 'cross', xcross: 'xcross',
+    diamond: 'diamond', square: 'square',
+    arrowup: 'arrowup', arrowdown: 'arrowdown',
+    labelup: 'labelup', labeldown: 'labeldown',
+    flag: 'flag'
+  };
+
+  var LOCATIONS = {
+    abovebar: 'abovebar', belowbar: 'belowbar',
+    top: 'top', bottom: 'bottom', absolute: 'absolute'
+  };
+
+  var SIZES = {
+    auto: 'auto', tiny: 'tiny', small: 'small',
+    normal: 'normal', large: 'large', huge: 'huge'
+  };
+
+  var MATH = {
+    abs: Math.abs, max: Math.max, min: Math.min,
+    round: Math.round, floor: Math.floor, ceil: Math.ceil,
+    sqrt: Math.sqrt, pow: Math.pow, log: Math.log, log10: Math.log10,
+    sign: Math.sign, avg: function() {
+      var s = 0, n = 0;
+      for (var i = 0; i < arguments.length; i++) {
+        if (!isNa(arguments[i])) { s += arguments[i]; n++; }
+      }
+      return n > 0 ? s / n : NA;
+    },
+    pi: Math.PI, e: Math.E
+  };
+
+  /* ══════════════════════════════════════════════════════════════
+     LEXER
+     ══════════════════════════════════════════════════════════════ */
+
+  var TT = {
+    NUMBER: 'NUMBER', STRING: 'STRING', IDENT: 'IDENT',
+    OP: 'OP', LPAREN: 'LPAREN', RPAREN: 'RPAREN',
+    LBRACKET: 'LBRACKET', RBRACKET: 'RBRACKET',
+    COMMA: 'COMMA', DOT: 'DOT', COLON: 'COLON',
+    ASSIGN: 'ASSIGN', REASSIGN: 'REASSIGN', QUESTION: 'QUESTION',
+    NEWLINE: 'NEWLINE', EOF: 'EOF',
+    // keywords
+    KW_IF: 'KW_IF', KW_ELSE: 'KW_ELSE', KW_FOR: 'KW_FOR',
+    KW_TO: 'KW_TO', KW_BY: 'KW_BY', KW_VAR: 'KW_VAR',
+    KW_TRUE: 'KW_TRUE', KW_FALSE: 'KW_FALSE', KW_NA: 'KW_NA',
+    KW_AND: 'KW_AND', KW_OR: 'KW_OR', KW_NOT: 'KW_NOT',
+    KW_INDICATOR: 'KW_INDICATOR',
+    KW_PLOT: 'KW_PLOT', KW_PLOTSHAPE: 'KW_PLOTSHAPE',
+    KW_BGCOLOR: 'KW_BGCOLOR', KW_HLINE: 'KW_HLINE'
+  };
+
+  var KEYWORDS = {
+    'if': TT.KW_IF, 'else': TT.KW_ELSE, 'for': TT.KW_FOR,
+    'to': TT.KW_TO, 'by': TT.KW_BY, 'var': TT.KW_VAR,
+    'true': TT.KW_TRUE, 'false': TT.KW_FALSE, 'na': TT.KW_NA,
+    'and': TT.KW_AND, 'or': TT.KW_OR, 'not': TT.KW_NOT,
+    'indicator': TT.KW_INDICATOR,
+    'plot': TT.KW_PLOT, 'plotshape': TT.KW_PLOTSHAPE,
+    'bgcolor': TT.KW_BGCOLOR, 'hline': TT.KW_HLINE
+  };
+
+  var OPS_2CHAR = [':=', '==', '!=', '>=', '<='];
+  var OPS_1CHAR = ['+', '-', '*', '/', '%', '>', '<'];
+
+  function tok(type, value, line, col) {
+    return { type: type, value: value, line: line, col: col };
+  }
+
+  function lexer(source) {
+    /* Version gate */
+    var versionMatch = source.match(/^[ \t]*\/\/@version=(\d+)/m);
+    if (!versionMatch) {
+      return { tokens: null, error: { line: 1, col: 1,
+        message: 'Missing //@version=5 declaration. Only Pine Script v5 is supported.' } };
+    }
+    if (versionMatch[1] !== '5') {
+      return { tokens: null, error: { line: 1, col: 1,
+        message: 'Only Pine Script v5 (//@version=5) is supported. Found v' + versionMatch[1] + '.' } };
+    }
+
+    var tokens = [];
+    var i = 0, line = 1, col = 1, len = source.length;
+
+    function advance() { var ch = source[i++]; if (ch === '\n') { line++; col = 1; } else { col++; } return ch; }
+    function peek()    { return i < len ? source[i] : ''; }
+    function peek2()   { return i + 1 < len ? source[i] + source[i + 1] : source[i] || ''; }
+
+    while (i < len) {
+      var ch = source[i];
+      var startLine = line, startCol = col;
+
+      /* Skip spaces and tabs (NOT newlines) */
+      if (ch === ' ' || ch === '\t') { advance(); continue; }
+
+      /* Newlines — significant in Pine */
+      if (ch === '\n') {
+        advance();
+        /* Collapse multiple newlines */
+        while (i < len && (source[i] === '\n' || source[i] === '\r' || source[i] === ' ' || source[i] === '\t')) {
+          if (source[i] === '\n') advance(); else advance();
+        }
+        /* Don't push newline after another newline or at start */
+        if (tokens.length > 0 && tokens[tokens.length - 1].type !== TT.NEWLINE) {
+          tokens.push(tok(TT.NEWLINE, '\\n', startLine, startCol));
+        }
+        continue;
+      }
+
+      /* Carriage return */
+      if (ch === '\r') { advance(); continue; }
+
+      /* Comments — // to end of line, and //@version already handled */
+      if (ch === '/' && peek() === '/') {
+        while (i < len && source[i] !== '\n') advance();
+        continue;
+      }
+
+      /* Numbers */
+      if (ch >= '0' && ch <= '9') {
+        var num = '';
+        while (i < len && ((source[i] >= '0' && source[i] <= '9') || source[i] === '.')) {
+          num += advance();
+        }
+        tokens.push(tok(TT.NUMBER, parseFloat(num), startLine, startCol));
+        continue;
+      }
+
+      /* Strings */
+      if (ch === '"' || ch === "'") {
+        var quote = advance(); // consume opening quote
+        var str = '';
+        while (i < len && source[i] !== quote && source[i] !== '\n') {
+          if (source[i] === '\\' && i + 1 < len) { advance(); str += advance(); }
+          else { str += advance(); }
+        }
+        if (i < len && source[i] === quote) advance(); // consume closing quote
+        tokens.push(tok(TT.STRING, str, startLine, startCol));
+        continue;
+      }
+
+      /* Identifiers and keywords */
+      if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_') {
+        var id = '';
+        while (i < len && ((source[i] >= 'a' && source[i] <= 'z') || (source[i] >= 'A' && source[i] <= 'Z') ||
+               (source[i] >= '0' && source[i] <= '9') || source[i] === '_')) {
+          id += advance();
+        }
+        var kwType = KEYWORDS[id];
+        tokens.push(tok(kwType || TT.IDENT, id, startLine, startCol));
+        continue;
+      }
+
+      /* Two-char operators first */
+      var two = peek2();
+      if (two === ':=') { advance(); advance(); tokens.push(tok(TT.REASSIGN, ':=', startLine, startCol)); continue; }
+      if (two === '==') { advance(); advance(); tokens.push(tok(TT.OP, '==', startLine, startCol)); continue; }
+      if (two === '!=') { advance(); advance(); tokens.push(tok(TT.OP, '!=', startLine, startCol)); continue; }
+      if (two === '>=') { advance(); advance(); tokens.push(tok(TT.OP, '>=', startLine, startCol)); continue; }
+      if (two === '<=') { advance(); advance(); tokens.push(tok(TT.OP, '<=', startLine, startCol)); continue; }
+
+      /* Single-char tokens */
+      if (ch === '(') { advance(); tokens.push(tok(TT.LPAREN, '(', startLine, startCol)); continue; }
+      if (ch === ')') { advance(); tokens.push(tok(TT.RPAREN, ')', startLine, startCol)); continue; }
+      if (ch === '[') { advance(); tokens.push(tok(TT.LBRACKET, '[', startLine, startCol)); continue; }
+      if (ch === ']') { advance(); tokens.push(tok(TT.RBRACKET, ']', startLine, startCol)); continue; }
+      if (ch === ',') { advance(); tokens.push(tok(TT.COMMA, ',', startLine, startCol)); continue; }
+      if (ch === '.') { advance(); tokens.push(tok(TT.DOT, '.', startLine, startCol)); continue; }
+      if (ch === ':') { advance(); tokens.push(tok(TT.COLON, ':', startLine, startCol)); continue; }
+      if (ch === '=') { advance(); tokens.push(tok(TT.ASSIGN, '=', startLine, startCol)); continue; }
+      if (ch === '?') { advance(); tokens.push(tok(TT.QUESTION, '?', startLine, startCol)); continue; }
+
+      /* Arithmetic / comparison */
+      if (OPS_1CHAR.indexOf(ch) >= 0) {
+        advance();
+        tokens.push(tok(TT.OP, ch, startLine, startCol));
+        continue;
+      }
+
+      /* Unknown char — skip */
+      advance();
+    }
+
+    /* Ensure we end with a newline + EOF */
+    if (tokens.length > 0 && tokens[tokens.length - 1].type !== TT.NEWLINE) {
+      tokens.push(tok(TT.NEWLINE, '\\n', line, col));
+    }
+    tokens.push(tok(TT.EOF, null, line, col));
+
+    return { tokens: tokens, error: null };
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     PARSER — Recursive Descent → AST
+     ══════════════════════════════════════════════════════════════ */
+
+  function parser(tokens) {
+    var pos = 0;
+
+    function cur()     { return tokens[pos] || tok(TT.EOF, null, 0, 0); }
+    function at(type)  { return cur().type === type; }
+    function atVal(type, val) { return cur().type === type && cur().value === val; }
+    function eat(type) {
+      if (!at(type)) {
+        var t = cur();
+        return { error: { line: t.line, col: t.col,
+          message: 'Expected ' + type + ', got ' + t.type + " ('" + t.value + "')" } };
+      }
+      return tokens[pos++];
+    }
+    function tryEat(type) { if (at(type)) { return tokens[pos++]; } return null; }
+    function skipNewlines() { while (at(TT.NEWLINE)) pos++; }
+    function loc() { var t = cur(); return { line: t.line, col: t.col }; }
+    function node(type, props) { var n = { type: type }; var l = loc(); n.line = l.line; n.col = l.col; for (var k in props) n[k] = props[k]; return n; }
+
+    function parseProgram() {
+      var stmts = [];
+      skipNewlines();
+      /* Skip //@version=5 line — already validated by lexer */
+      while (!at(TT.EOF)) {
+        skipNewlines();
+        if (at(TT.EOF)) break;
+        var s = parseStatement();
+        if (s && s.error) return s;
+        if (s) stmts.push(s);
+        skipNewlines();
+      }
+      return node('Program', { body: stmts });
+    }
+
+    function parseStatement() {
+      skipNewlines();
+      if (at(TT.EOF)) return null;
+
+      /* indicator() declaration */
+      if (at(TT.KW_INDICATOR)) return parseIndicator();
+
+      /* var declarations */
+      if (at(TT.KW_VAR)) return parseVarDecl();
+
+      /* if */
+      if (at(TT.KW_IF)) return parseIf();
+
+      /* for */
+      if (at(TT.KW_FOR)) return parseFor();
+
+      /* plot / plotshape / bgcolor / hline */
+      if (at(TT.KW_PLOT)) return parsePlotCall();
+      if (at(TT.KW_PLOTSHAPE)) return parsePlotShapeCall();
+      if (at(TT.KW_BGCOLOR)) return parseBgColorCall();
+      if (at(TT.KW_HLINE)) return parseHlineCall();
+
+      /* Assignment or expression */
+      return parseAssignmentOrExpr();
+    }
+
+    function parseIndicator() {
+      var l = loc(); pos++; // consume 'indicator'
+      var r = eat(TT.LPAREN); if (r && r.error) return r;
+      var args = parseArgList();
+      if (args.error) return args;
+      r = eat(TT.RPAREN); if (r && r.error) return r;
+      return { type: 'Indicator', args: args, line: l.line, col: l.col };
+    }
+
+    function parseVarDecl() {
+      var l = loc(); pos++; // consume 'var'
+      var name = eat(TT.IDENT); if (name.error) return name;
+      var r = eat(TT.ASSIGN); if (r && r.error) return r;
+      var value = parseExpression();
+      if (value && value.error) return value;
+      return { type: 'VarDecl', name: name.value, value: value, persistent: true, line: l.line, col: l.col };
+    }
+
+    function parseAssignmentOrExpr() {
+      var l = loc();
+      var expr = parseExpression();
+      if (expr && expr.error) return expr;
+
+      /* Check for = or := after identifier */
+      if (expr && expr.type === 'Identifier') {
+        if (at(TT.ASSIGN)) {
+          pos++;
+          var val = parseExpression();
+          if (val && val.error) return val;
+          return { type: 'VarDecl', name: expr.name, value: val, persistent: false, line: l.line, col: l.col };
+        }
+        if (at(TT.REASSIGN)) {
+          pos++;
+          var val2 = parseExpression();
+          if (val2 && val2.error) return val2;
+          return { type: 'Reassign', name: expr.name, value: val2, line: l.line, col: l.col };
+        }
+      }
+
+      return expr;
+    }
+
+    function parseIf() {
+      var l = loc(); pos++; // consume 'if'
+      var cond = parseExpression();
+      if (cond && cond.error) return cond;
+      skipNewlines();
+      var then = parseBlock();
+      if (then && then.error) return then;
+      var els = null;
+      skipNewlines();
+      if (at(TT.KW_ELSE)) {
+        pos++;
+        skipNewlines();
+        if (at(TT.KW_IF)) {
+          els = parseIf();
+        } else {
+          els = parseBlock();
+        }
+        if (els && els.error) return els;
+      }
+      return { type: 'If', condition: cond, then: then, else: els, line: l.line, col: l.col };
+    }
+
+    function parseFor() {
+      var l = loc(); pos++; // consume 'for'
+      var varName = eat(TT.IDENT); if (varName.error) return varName;
+      var r = eat(TT.ASSIGN); if (r && r.error) return r;
+      var start = parseExpression(); if (start && start.error) return start;
+      r = eat(TT.KW_TO); if (r && r.error) return r;
+      var end = parseExpression(); if (end && end.error) return end;
+      var step = null;
+      if (at(TT.KW_BY)) { pos++; step = parseExpression(); if (step && step.error) return step; }
+      skipNewlines();
+      var body = parseBlock(); if (body && body.error) return body;
+      return { type: 'For', varName: varName.value, start: start, end: end, step: step, body: body, line: l.line, col: l.col };
+    }
+
+    function parseBlock() {
+      /* Pine uses indentation — we simplify: collect indented statements until de-indent.
+         Since we strip tabs/spaces during lexing, we detect block end by:
+         - Next line starts at column <= previous statement's column
+         - Or we hit EOF, else, a top-level keyword at col 1 */
+      var stmts = [];
+      skipNewlines();
+      /* Read at least one statement */
+      var first = parseStatement();
+      if (first && first.error) return first;
+      if (first) stmts.push(first);
+
+      /* Try to read more indented statements — peek ahead for indentation */
+      while (!at(TT.EOF)) {
+        skipNewlines();
+        if (at(TT.EOF)) break;
+        /* Stop if we see a de-indented keyword */
+        var t = cur();
+        if (t.col <= 1 && (t.type === TT.KW_ELSE || t.type === TT.KW_IF || t.type === TT.KW_FOR ||
+            t.type === TT.KW_VAR || t.type === TT.KW_PLOT || t.type === TT.KW_PLOTSHAPE ||
+            t.type === TT.KW_BGCOLOR || t.type === TT.KW_HLINE || t.type === TT.KW_INDICATOR ||
+            t.type === TT.IDENT)) break;
+        if (t.col <= 1) break;
+        var s = parseStatement();
+        if (s && s.error) return s;
+        if (s) stmts.push(s);
+      }
+
+      if (stmts.length === 1) return stmts[0];
+      return { type: 'Block', body: stmts, line: stmts[0].line, col: stmts[0].col };
+    }
+
+    function parsePlotCall() {
+      var l = loc(); pos++; // consume 'plot'
+      var r = eat(TT.LPAREN); if (r && r.error) return r;
+      var args = parseArgList(); if (args.error) return args;
+      r = eat(TT.RPAREN); if (r && r.error) return r;
+      return { type: 'Plot', args: args, line: l.line, col: l.col };
+    }
+
+    function parsePlotShapeCall() {
+      var l = loc(); pos++; // consume 'plotshape'
+      var r = eat(TT.LPAREN); if (r && r.error) return r;
+      var args = parseArgList(); if (args.error) return args;
+      r = eat(TT.RPAREN); if (r && r.error) return r;
+      return { type: 'PlotShape', args: args, line: l.line, col: l.col };
+    }
+
+    function parseBgColorCall() {
+      var l = loc(); pos++; // consume 'bgcolor'
+      var r = eat(TT.LPAREN); if (r && r.error) return r;
+      var args = parseArgList(); if (args.error) return args;
+      r = eat(TT.RPAREN); if (r && r.error) return r;
+      return { type: 'Bgcolor', args: args, line: l.line, col: l.col };
+    }
+
+    function parseHlineCall() {
+      var l = loc(); pos++; // consume 'hline'
+      var r = eat(TT.LPAREN); if (r && r.error) return r;
+      var args = parseArgList(); if (args.error) return args;
+      r = eat(TT.RPAREN); if (r && r.error) return r;
+      return { type: 'Hline', args: args, line: l.line, col: l.col };
+    }
+
+    function parseArgList() {
+      var args = [];
+      if (at(TT.RPAREN)) return args;
+      while (true) {
+        skipNewlines();
+        /* Named argument: name = expr */
+        var namedArg = null;
+        if (at(TT.IDENT) && pos + 1 < tokens.length && tokens[pos + 1].type === TT.ASSIGN) {
+          namedArg = tokens[pos].value;
+          pos += 2; // skip name and =
+        }
+        var val = parseExpression();
+        if (val && val.error) return val;
+        if (namedArg) {
+          args.push({ type: 'NamedArg', name: namedArg, value: val, line: val.line, col: val.col });
+        } else {
+          args.push(val);
+        }
+        skipNewlines();
+        if (!tryEat(TT.COMMA)) break;
+      }
+      return args;
+    }
+
+    /* ── Expression parsing (precedence climbing) ── */
+
+    function parseExpression() { return parseTernary(); }
+
+    function parseTernary() {
+      var expr = parseOr();
+      if (expr && expr.error) return expr;
+      if (at(TT.QUESTION)) {
+        var l = loc(); pos++;
+        var then = parseExpression();
+        if (then && then.error) return then;
+        var r = eat(TT.COLON); if (r && r.error) return r;
+        var els = parseExpression();
+        if (els && els.error) return els;
+        return { type: 'Ternary', condition: expr, then: then, else: els, line: l.line, col: l.col };
+      }
+      return expr;
+    }
+
+    function parseOr() {
+      var left = parseAnd();
+      if (left && left.error) return left;
+      while (at(TT.KW_OR)) {
+        var l = loc(); pos++;
+        var right = parseAnd(); if (right && right.error) return right;
+        left = { type: 'BinaryExpr', op: 'or', left: left, right: right, line: l.line, col: l.col };
+      }
+      return left;
+    }
+
+    function parseAnd() {
+      var left = parseComparison();
+      if (left && left.error) return left;
+      while (at(TT.KW_AND)) {
+        var l = loc(); pos++;
+        var right = parseComparison(); if (right && right.error) return right;
+        left = { type: 'BinaryExpr', op: 'and', left: left, right: right, line: l.line, col: l.col };
+      }
+      return left;
+    }
+
+    function parseComparison() {
+      var left = parseAddSub();
+      if (left && left.error) return left;
+      while (atVal(TT.OP, '==') || atVal(TT.OP, '!=') || atVal(TT.OP, '<') ||
+             atVal(TT.OP, '>') || atVal(TT.OP, '<=') || atVal(TT.OP, '>=')) {
+        var l = loc(); var op = cur().value; pos++;
+        var right = parseAddSub(); if (right && right.error) return right;
+        left = { type: 'BinaryExpr', op: op, left: left, right: right, line: l.line, col: l.col };
+      }
+      return left;
+    }
+
+    function parseAddSub() {
+      var left = parseMulDiv();
+      if (left && left.error) return left;
+      while (atVal(TT.OP, '+') || atVal(TT.OP, '-')) {
+        var l = loc(); var op = cur().value; pos++;
+        var right = parseMulDiv(); if (right && right.error) return right;
+        left = { type: 'BinaryExpr', op: op, left: left, right: right, line: l.line, col: l.col };
+      }
+      return left;
+    }
+
+    function parseMulDiv() {
+      var left = parseUnary();
+      if (left && left.error) return left;
+      while (atVal(TT.OP, '*') || atVal(TT.OP, '/') || atVal(TT.OP, '%')) {
+        var l = loc(); var op = cur().value; pos++;
+        var right = parseUnary(); if (right && right.error) return right;
+        left = { type: 'BinaryExpr', op: op, left: left, right: right, line: l.line, col: l.col };
+      }
+      return left;
+    }
+
+    function parseUnary() {
+      if (at(TT.KW_NOT)) {
+        var l = loc(); pos++;
+        var expr = parseUnary(); if (expr && expr.error) return expr;
+        return { type: 'UnaryExpr', op: 'not', operand: expr, line: l.line, col: l.col };
+      }
+      if (atVal(TT.OP, '-')) {
+        var l2 = loc(); pos++;
+        var expr2 = parseUnary(); if (expr2 && expr2.error) return expr2;
+        return { type: 'UnaryExpr', op: '-', operand: expr2, line: l2.line, col: l2.col };
+      }
+      return parsePostfix();
+    }
+
+    function parsePostfix() {
+      var expr = parsePrimary();
+      if (expr && expr.error) return expr;
+
+      while (true) {
+        /* History reference: expr[n] */
+        if (at(TT.LBRACKET)) {
+          var l = loc(); pos++;
+          var index = parseExpression(); if (index && index.error) return index;
+          var r = eat(TT.RBRACKET); if (r && r.error) return r;
+          expr = { type: 'HistoryRef', series: expr, offset: index, line: l.line, col: l.col };
+          continue;
+        }
+        /* Member access: expr.member */
+        if (at(TT.DOT)) {
+          var l2 = loc(); pos++;
+          var member = eat(TT.IDENT); if (member.error) return member;
+          expr = { type: 'MemberAccess', object: expr, member: member.value, line: l2.line, col: l2.col };
+          continue;
+        }
+        /* Function call: expr(...) */
+        if (at(TT.LPAREN) && expr.type === 'MemberAccess' || (at(TT.LPAREN) && expr.type === 'Identifier')) {
+          var l3 = loc(); pos++; // consume (
+          var args = parseArgList(); if (args.error) return args;
+          var r2 = eat(TT.RPAREN); if (r2 && r2.error) return r2;
+          expr = { type: 'Call', callee: expr, args: args, line: l3.line, col: l3.col };
+          continue;
+        }
+        break;
+      }
+      return expr;
+    }
+
+    function parsePrimary() {
+      var t = cur();
+
+      /* Number */
+      if (at(TT.NUMBER)) { pos++; return { type: 'NumLiteral', value: t.value, line: t.line, col: t.col }; }
+      /* String */
+      if (at(TT.STRING)) { pos++; return { type: 'StrLiteral', value: t.value, line: t.line, col: t.col }; }
+      /* Boolean */
+      if (at(TT.KW_TRUE))  { pos++; return { type: 'BoolLiteral', value: true, line: t.line, col: t.col }; }
+      if (at(TT.KW_FALSE)) { pos++; return { type: 'BoolLiteral', value: false, line: t.line, col: t.col }; }
+      /* na */
+      if (at(TT.KW_NA)) { pos++; return { type: 'NaLiteral', value: NA, line: t.line, col: t.col }; }
+
+      /* Identifier */
+      if (at(TT.IDENT)) { pos++; return { type: 'Identifier', name: t.value, line: t.line, col: t.col }; }
+
+      /* Parenthesized expression */
+      if (at(TT.LPAREN)) {
+        pos++;
+        var expr = parseExpression();
+        if (expr && expr.error) return expr;
+        var r = eat(TT.RPAREN); if (r && r.error) return r;
+        return expr;
+      }
+
+      return { error: { line: t.line, col: t.col,
+        message: 'Unexpected token: ' + t.type + " ('" + t.value + "')" } };
+    }
+
+    return parseProgram();
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     ta.* HELPERS — Stateful per-run caches
+     ══════════════════════════════════════════════════════════════ */
+
+  function createTaContext() {
+    /* Each ta function gets a cache keyed by a unique call-site ID.
+       This ensures ta.sma(close, 14) and ta.sma(close, 28) maintain separate state. */
+    var callCounter = 0;
+    var caches = {};
+
+    function getCache(id, init) {
+      if (!caches[id]) caches[id] = init();
+      return caches[id];
+    }
+
+    function nextId() { return ++callCounter; }
+
+    return {
+      reset: function() { callCounter = 0; caches = {}; },
+      resetCounter: function() { callCounter = 0; },  // reset per bar-pass to re-use IDs
+
+      sma: function(source, length, id) {
+        var c = getCache(id, function() { return { sum: 0, buf: [], ready: false }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        c.sum += source;
+        if (c.buf.length > length) { c.sum -= c.buf.shift(); }
+        return c.buf.length >= length ? c.sum / length : NA;
+      },
+
+      ema: function(source, length, id) {
+        var c = getCache(id, function() { return { prev: NA, count: 0, sum: 0 }; });
+        if (isNa(source)) return isNa(c.prev) ? NA : c.prev;
+        c.count++;
+        if (c.count <= length) {
+          c.sum += source;
+          if (c.count === length) { c.prev = c.sum / length; return c.prev; }
+          return NA;
+        }
+        var k = 2 / (length + 1);
+        c.prev = source * k + c.prev * (1 - k);
+        return c.prev;
+      },
+
+      rma: function(source, length, id) {
+        var c = getCache(id, function() { return { prev: NA, count: 0, sum: 0 }; });
+        if (isNa(source)) return isNa(c.prev) ? NA : c.prev;
+        c.count++;
+        if (c.count <= length) {
+          c.sum += source;
+          if (c.count === length) { c.prev = c.sum / length; return c.prev; }
+          return NA;
+        }
+        var alpha = 1 / length;
+        c.prev = alpha * source + (1 - alpha) * c.prev;
+        return c.prev;
+      },
+
+      atr: function(high, low, close, prevClose, length, id) {
+        /* ATR = RMA of True Range */
+        var tr;
+        if (isNa(prevClose)) {
+          tr = isNa(high) || isNa(low) ? NA : high - low;
+        } else {
+          if (isNa(high) || isNa(low)) { tr = NA; }
+          else { tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)); }
+        }
+        var c = getCache(id, function() { return { prev: NA, count: 0, sum: 0 }; });
+        if (isNa(tr)) return isNa(c.prev) ? NA : c.prev;
+        c.count++;
+        if (c.count <= length) {
+          c.sum += tr;
+          if (c.count === length) { c.prev = c.sum / length; return c.prev; }
+          return NA;
+        }
+        var alpha = 1 / length;
+        c.prev = alpha * tr + (1 - alpha) * c.prev;
+        return c.prev;
+      },
+
+      crossover: function(a, b, id) {
+        var c = getCache(id, function() { return { prevA: NA, prevB: NA }; });
+        var result = false;
+        if (!isNa(a) && !isNa(b) && !isNa(c.prevA) && !isNa(c.prevB)) {
+          result = c.prevA <= c.prevB && a > b;
+        }
+        c.prevA = a; c.prevB = b;
+        return result;
+      },
+
+      crossunder: function(a, b, id) {
+        var c = getCache(id, function() { return { prevA: NA, prevB: NA }; });
+        var result = false;
+        if (!isNa(a) && !isNa(b) && !isNa(c.prevA) && !isNa(c.prevB)) {
+          result = c.prevA >= c.prevB && a < b;
+        }
+        c.prevA = a; c.prevB = b;
+        return result;
+      },
+
+      highest: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        var max = -Infinity;
+        for (var i = 0; i < c.buf.length; i++) {
+          if (!isNa(c.buf[i]) && c.buf[i] > max) max = c.buf[i];
+        }
+        return max === -Infinity ? NA : max;
+      },
+
+      lowest: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        var min = Infinity;
+        for (var i = 0; i < c.buf.length; i++) {
+          if (!isNa(c.buf[i]) && c.buf[i] < min) min = c.buf[i];
+        }
+        return min === Infinity ? NA : min;
+      }
+    };
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     EVALUATOR — Bar-by-bar execution
+     ══════════════════════════════════════════════════════════════ */
+
+  var STMT_LIMIT = 100000;
+
+  function evaluate(ast, candles, inputOverrides) {
+    if (!ast || ast.error) return { error: ast ? ast.error : { line: 0, col: 0, message: 'No AST' } };
+    if (!candles || candles.length === 0) return emptyResult();
+
+    var N = candles.length;
+    var ta = createTaContext();
+    var stmtCount = 0;
+
+    /* Result collectors */
+    var plots = [];       // {label, values: [], colors: [], color, lineWidth}
+    var shapes = [];      // {barIndex, price, style, location, color, size}
+    var hlines = [];      // {price, color, lineWidth}
+    var bgcolors = [];    // {barIndex, color}
+    var inputs = [];      // {name, type, default, value}
+
+    /* Plot registry — maps plot call-site index to plot entry */
+    var plotRegistry = {};
+    var plotCounter = 0;
+
+    /* Variable scopes */
+    var persistentVars = {};  // var x = ...  (survives across bars)
+    var barVars = {};         // x = ...      (resets each bar)
+
+    /* History buffers for series variables */
+    var seriesHistory = {};   // varName -> [val_at_bar0, val_at_bar1, ...]
+
+    /* Candle data for current bar */
+    var barIndex = 0;
+    var curCandle = null;
+    var prevCandle = null;
+
+    /* Extract inputs first (single pass) */
+    extractInputs(ast, inputOverrides);
+
+    /* Bar-by-bar execution */
+    for (barIndex = 0; barIndex < N; barIndex++) {
+      curCandle = candles[barIndex];
+      prevCandle = barIndex > 0 ? candles[barIndex - 1] : null;
+      barVars = {};
+      ta.resetCounter();
+      plotCounter = 0;
+
+      /* Execute all statements */
+      var body = ast.type === 'Program' ? ast.body : [ast];
+      for (var si = 0; si < body.length; si++) {
+        var result = execNode(body[si]);
+        if (result && result.__error__) return { error: result.__error__ };
+      }
+
+      /* Record series history for history refs */
+      for (var vn in persistentVars) {
+        if (!seriesHistory[vn]) seriesHistory[vn] = [];
+        seriesHistory[vn].push(persistentVars[vn]);
+      }
+      for (var vn2 in barVars) {
+        if (!seriesHistory[vn2]) seriesHistory[vn2] = [];
+        seriesHistory[vn2].push(barVars[vn2]);
+      }
+    }
+
+    /* Build Float64Array for plot values */
+    var finalPlots = [];
+    for (var pk in plotRegistry) {
+      var p = plotRegistry[pk];
+      var vals = new Float64Array(N);
+      var cols = new Array(N);
+      for (var vi = 0; vi < N; vi++) {
+        var v = p.values[vi];
+        vals[vi] = (v !== undefined && !isNa(v)) ? v : NaN;
+        cols[vi] = p.colors[vi] || null;
+      }
+      finalPlots.push({
+        label: p.label || ('Plot ' + (parseInt(pk) + 1)),
+        values: vals,
+        colors: cols,
+        color: p.color || '#2196F3',
+        lineWidth: p.lineWidth || 1
+      });
+    }
+
+    return {
+      plots: finalPlots,
+      shapes: shapes,
+      hlines: hlines,
+      bgcolors: bgcolors,
+      inputs: inputs,
+      errors: []
+    };
+
+    /* ── Helper: extract input() calls from AST ── */
+    function extractInputs(node, overrides) {
+      if (!node) return;
+      overrides = overrides || {};
+      walkAST(node, function(n) {
+        if (n.type === 'Call' && n.callee) {
+          var callName = getCallName(n.callee);
+          if (callName === 'input.int' || callName === 'input.float' ||
+              callName === 'input.bool' || callName === 'input.string' || callName === 'input') {
+            var defVal = n.args[0] ? n.args[0] : null;
+            var title = '';
+            for (var ai = 0; ai < n.args.length; ai++) {
+              var a = n.args[ai];
+              if (a.type === 'NamedArg') {
+                if (a.name === 'title') title = a.value.value || '';
+                if (a.name === 'defval' && defVal === null) defVal = a.value;
+              }
+            }
+            if (!title && n.args.length > 1) {
+              var secondArg = n.args[1];
+              if (secondArg && secondArg.type !== 'NamedArg' && secondArg.type === 'StrLiteral') {
+                title = secondArg.value;
+              }
+            }
+            var itype = callName.replace('input.', '') || 'int';
+            var dv = defVal ? (defVal.type === 'NamedArg' ? defVal.value.value : defVal.value) : 0;
+            var actualVal = overrides[title] !== undefined ? overrides[title] : dv;
+            inputs.push({ name: title || ('Input ' + (inputs.length + 1)), type: itype, default: dv, value: actualVal });
+          }
+        }
+      });
+    }
+
+    function walkAST(node, fn) {
+      if (!node || typeof node !== 'object') return;
+      fn(node);
+      if (Array.isArray(node)) { for (var i = 0; i < node.length; i++) walkAST(node[i], fn); return; }
+      for (var k in node) {
+        if (k === 'line' || k === 'col' || k === 'type') continue;
+        if (typeof node[k] === 'object') walkAST(node[k], fn);
+      }
+    }
+
+    function getCallName(callee) {
+      if (callee.type === 'Identifier') return callee.name;
+      if (callee.type === 'MemberAccess') {
+        var obj = getCallName(callee.object);
+        return obj + '.' + callee.member;
+      }
+      return '';
+    }
+
+    /* ── Core execution ── */
+    function execNode(node) {
+      if (!node) return NA;
+      if (++stmtCount > STMT_LIMIT) {
+        return { __error__: { line: node.line, col: node.col,
+          message: 'Execution limit exceeded (100,000 statements). Possible infinite loop.' } };
+      }
+
+      switch (node.type) {
+        case 'Program':      return execProgram(node);
+        case 'Indicator':    return NA; // declaration only
+        case 'NumLiteral':   return node.value;
+        case 'StrLiteral':   return node.value;
+        case 'BoolLiteral':  return node.value;
+        case 'NaLiteral':    return NA;
+        case 'Identifier':   return resolveVar(node.name);
+        case 'VarDecl':      return execVarDecl(node);
+        case 'Reassign':     return execReassign(node);
+        case 'BinaryExpr':   return execBinary(node);
+        case 'UnaryExpr':    return execUnary(node);
+        case 'Ternary':      return execTernary(node);
+        case 'If':           return execIf(node);
+        case 'For':          return execFor(node);
+        case 'Block':        return execBlock(node);
+        case 'MemberAccess': return execMember(node);
+        case 'HistoryRef':   return execHistoryRef(node);
+        case 'Call':         return execCall(node);
+        case 'Plot':         return execPlot(node);
+        case 'PlotShape':    return execPlotShape(node);
+        case 'Bgcolor':      return execBgcolor(node);
+        case 'Hline':        return execHline(node);
+        case 'NamedArg':     return execNode(node.value);
+        default:             return NA;
+      }
+    }
+
+    function execProgram(node) {
+      var last = NA;
+      for (var i = 0; i < node.body.length; i++) {
+        last = execNode(node.body[i]);
+        if (last && last.__error__) return last;
+      }
+      return last;
+    }
+
+    function execBlock(node) {
+      var last = NA;
+      for (var i = 0; i < node.body.length; i++) {
+        last = execNode(node.body[i]);
+        if (last && last.__error__) return last;
+      }
+      return last;
+    }
+
+    function execVarDecl(node) {
+      var val = execNode(node.value);
+      if (val && val.__error__) return val;
+      if (node.persistent) {
+        /* var x = ... → only set on first bar, persist after */
+        if (barIndex === 0) persistentVars[node.name] = val;
+      } else {
+        barVars[node.name] = val;
+      }
+      return val;
+    }
+
+    function execReassign(node) {
+      var val = execNode(node.value);
+      if (val && val.__error__) return val;
+      if (node.name in persistentVars) { persistentVars[node.name] = val; }
+      else { barVars[node.name] = val; }
+      return val;
+    }
+
+    function resolveVar(name) {
+      /* Built-in series */
+      if (name === 'close')  return +curCandle.c;
+      if (name === 'open')   return +curCandle.o;
+      if (name === 'high')   return +curCandle.h;
+      if (name === 'low')    return +curCandle.l;
+      if (name === 'volume') return curCandle.v || 0;
+      if (name === 'hl2')    return (+curCandle.h + +curCandle.l) / 2;
+      if (name === 'hlc3')   return (+curCandle.h + +curCandle.l + +curCandle.c) / 3;
+      if (name === 'ohlc4')  return (+curCandle.o + +curCandle.h + +curCandle.l + +curCandle.c) / 4;
+      if (name === 'bar_index') return barIndex;
+      if (name === 'na')     return NA;
+
+      /* User variables */
+      if (name in barVars) return barVars[name];
+      if (name in persistentVars) return persistentVars[name];
+
+      /* Resolve input values */
+      for (var ii = 0; ii < inputs.length; ii++) {
+        if (inputs[ii].name === name) return inputs[ii].value;
+      }
+
+      /* Namespace roots */
+      if (name === 'ta' || name === 'math' || name === 'color' || name === 'shape' ||
+          name === 'location' || name === 'size' || name === 'input') return name;
+
+      return NA;
+    }
+
+    function execBinary(node) {
+      var left = execNode(node.left);
+      if (left && left.__error__) return left;
+
+      /* Short-circuit for and/or */
+      if (node.op === 'and') { if (!left) return false; var r = execNode(node.right); return r && r.__error__ ? r : !!r; }
+      if (node.op === 'or')  { if (left) return true; var r2 = execNode(node.right); return r2 && r2.__error__ ? r2 : !!r2; }
+
+      var right = execNode(node.right);
+      if (right && right.__error__) return right;
+
+      switch (node.op) {
+        case '+':  return naArith(left, right, function(a,b){return a+b;});
+        case '-':  return naArith(left, right, function(a,b){return a-b;});
+        case '*':  return naArith(left, right, function(a,b){return a*b;});
+        case '/':  return naArith(left, right, function(a,b){return b===0?NA:a/b;});
+        case '%':  return naArith(left, right, function(a,b){return b===0?NA:a%b;});
+        case '==': return naCmp(left, right, function(a,b){return a===b;});
+        case '!=': return naCmp(left, right, function(a,b){return a!==b;});
+        case '<':  return naCmp(left, right, function(a,b){return a<b;});
+        case '>':  return naCmp(left, right, function(a,b){return a>b;});
+        case '<=': return naCmp(left, right, function(a,b){return a<=b;});
+        case '>=': return naCmp(left, right, function(a,b){return a>=b;});
+        default:   return NA;
+      }
+    }
+
+    function execUnary(node) {
+      var val = execNode(node.operand);
+      if (val && val.__error__) return val;
+      if (node.op === '-') return isNa(val) ? NA : -val;
+      if (node.op === 'not') return isNa(val) ? NA : !val;
+      return NA;
+    }
+
+    function execTernary(node) {
+      var cond = execNode(node.condition);
+      if (cond && cond.__error__) return cond;
+      return cond ? execNode(node.then) : execNode(node.else);
+    }
+
+    function execIf(node) {
+      var cond = execNode(node.condition);
+      if (cond && cond.__error__) return cond;
+      if (cond) return execNode(node.then);
+      if (node.else) return execNode(node.else);
+      return NA;
+    }
+
+    function execFor(node) {
+      var start = execNode(node.start);
+      var end = execNode(node.end);
+      var step = node.step ? execNode(node.step) : 1;
+      if (isNa(start) || isNa(end) || isNa(step) || step === 0) return NA;
+      var last = NA;
+      for (var i = start; step > 0 ? i <= end : i >= end; i += step) {
+        barVars[node.varName] = i;
+        last = execNode(node.body);
+        if (last && last.__error__) return last;
+      }
+      return last;
+    }
+
+    function execMember(node) {
+      var obj = execNode(node.object);
+      if (obj && obj.__error__) return obj;
+
+      /* Namespace resolution */
+      if (obj === 'color') return COLORS[node.member] !== undefined ? COLORS[node.member] : NA;
+      if (obj === 'shape') return SHAPES[node.member] || NA;
+      if (obj === 'location') return LOCATIONS[node.member] || NA;
+      if (obj === 'size') return SIZES[node.member] || NA;
+      if (obj === 'math') return MATH[node.member] !== undefined ? MATH[node.member] : NA;
+      if (obj === 'ta') return 'ta.' + node.member;
+      if (obj === 'input') return 'input.' + node.member;
+
+      return NA;
+    }
+
+    function execHistoryRef(node) {
+      var offset = execNode(node.offset);
+      if (isNa(offset)) return NA;
+      offset = Math.round(offset);
+
+      /* Built-in series history */
+      var series = node.series;
+      if (series.type === 'Identifier') {
+        var name = series.name;
+        var targetBar = barIndex - offset;
+        if (targetBar < 0 || targetBar >= N) return NA;
+        var tc = candles[targetBar];
+        if (name === 'close')  return +tc.c;
+        if (name === 'open')   return +tc.o;
+        if (name === 'high')   return +tc.h;
+        if (name === 'low')    return +tc.l;
+        if (name === 'volume') return tc.v || 0;
+        if (name === 'hl2')    return (+tc.h + +tc.l) / 2;
+        if (name === 'hlc3')   return (+tc.h + +tc.l + +tc.c) / 3;
+        if (name === 'ohlc4')  return (+tc.o + +tc.h + +tc.l + +tc.c) / 4;
+
+        /* User variable history */
+        if (seriesHistory[name]) {
+          var hi = seriesHistory[name].length - 1 - (offset - (barIndex - seriesHistory[name].length));
+          var idx = barIndex - offset;
+          if (idx >= 0 && idx < seriesHistory[name].length) return seriesHistory[name][idx];
+        }
+      }
+      return NA;
+    }
+
+    function execCall(node) {
+      var callName = getCallName(node.callee);
+
+      /* ta.* functions */
+      if (callName.indexOf('ta.') === 0) {
+        return execTaCall(callName, node.args, node);
+      }
+
+      /* input.* functions */
+      if (callName.indexOf('input.') === 0 || callName === 'input') {
+        return execInputCall(callName, node.args);
+      }
+
+      /* math.* functions */
+      if (callName.indexOf('math.') === 0) {
+        var fn = MATH[callName.replace('math.', '')];
+        if (typeof fn === 'function') {
+          var mathArgs = [];
+          for (var i = 0; i < node.args.length; i++) {
+            var a = node.args[i];
+            var v = execNode(a.type === 'NamedArg' ? a.value : a);
+            if (v && v.__error__) return v;
+            if (isNa(v)) return NA;
+            mathArgs.push(v);
+          }
+          return fn.apply(null, mathArgs);
+        }
+        return NA;
+      }
+
+      /* na() test function */
+      if (callName === 'na') {
+        if (node.args.length > 0) {
+          var testVal = execNode(node.args[0].type === 'NamedArg' ? node.args[0].value : node.args[0]);
+          return isNa(testVal);
+        }
+        return NA;
+      }
+
+      /* nz() — replace na with default */
+      if (callName === 'nz') {
+        var v1 = node.args[0] ? execNode(node.args[0].type === 'NamedArg' ? node.args[0].value : node.args[0]) : NA;
+        var v2 = node.args[1] ? execNode(node.args[1].type === 'NamedArg' ? node.args[1].value : node.args[1]) : 0;
+        return isNa(v1) ? v2 : v1;
+      }
+
+      /* fixnan — persist last non-na */
+      if (callName === 'fixnan') {
+        var src = node.args[0] ? execNode(node.args[0].type === 'NamedArg' ? node.args[0].value : node.args[0]) : NA;
+        if (!isNa(src)) { persistentVars['__fixnan__'] = src; return src; }
+        return persistentVars['__fixnan__'] !== undefined ? persistentVars['__fixnan__'] : NA;
+      }
+
+      /* color.new() */
+      if (callName === 'color.new') {
+        var cArgs = [];
+        for (var ci = 0; ci < node.args.length; ci++) {
+          var ca = node.args[ci];
+          cArgs.push(execNode(ca.type === 'NamedArg' ? ca.value : ca));
+        }
+        if (cArgs.length >= 2 && typeof cArgs[0] === 'string') {
+          /* color.new(color.red, 50) — apply transparency to existing color */
+          return applyTransparency(cArgs[0], cArgs[1]);
+        }
+        return NA;
+      }
+
+      /* str.tostring etc — just return the value */
+      if (callName === 'str.tostring') {
+        var sv = node.args[0] ? execNode(node.args[0].type === 'NamedArg' ? node.args[0].value : node.args[0]) : '';
+        return String(sv);
+      }
+
+      return NA;
+    }
+
+    function applyTransparency(color, transp) {
+      if (isNa(transp)) return color;
+      var a = Math.max(0, Math.min(1, 1 - transp / 100));
+      /* If it's a hex color, convert to rgba */
+      if (typeof color === 'string' && color[0] === '#') {
+        var r = parseInt(color.slice(1, 3), 16);
+        var g = parseInt(color.slice(3, 5), 16);
+        var b = parseInt(color.slice(5, 7), 16);
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
+      }
+      return color;
+    }
+
+    function execTaCall(name, args, node) {
+      var id = 'ta_' + (plotCounter++) + '_' + name;
+
+      var evalArg = function(idx) {
+        if (idx >= args.length) return NA;
+        var a = args[idx];
+        return execNode(a.type === 'NamedArg' ? a.value : a);
+      };
+
+      var getNamedArg = function(argName, defaultIdx) {
+        for (var i = 0; i < args.length; i++) {
+          if (args[i].type === 'NamedArg' && args[i].name === argName) {
+            return execNode(args[i].value);
+          }
+        }
+        return defaultIdx !== undefined ? evalArg(defaultIdx) : NA;
+      };
+
+      switch (name) {
+        case 'ta.sma': {
+          var src = getNamedArg('source', 0);
+          var len = getNamedArg('length', 1);
+          if (isNa(len)) return NA;
+          return ta.sma(src, Math.round(len), id);
+        }
+        case 'ta.ema': {
+          var src2 = getNamedArg('source', 0);
+          var len2 = getNamedArg('length', 1);
+          if (isNa(len2)) return NA;
+          return ta.ema(src2, Math.round(len2), id);
+        }
+        case 'ta.rma': {
+          var src3 = getNamedArg('source', 0);
+          var len3 = getNamedArg('length', 1);
+          if (isNa(len3)) return NA;
+          return ta.rma(src3, Math.round(len3), id);
+        }
+        case 'ta.atr': {
+          var len4 = getNamedArg('length', 0);
+          if (isNa(len4)) return NA;
+          var pc = prevCandle ? +prevCandle.c : NA;
+          return ta.atr(+curCandle.h, +curCandle.l, +curCandle.c, pc, Math.round(len4), id);
+        }
+        case 'ta.crossover': {
+          var a = evalArg(0);
+          var b = evalArg(1);
+          return ta.crossover(a, b, id);
+        }
+        case 'ta.crossunder': {
+          var a2 = evalArg(0);
+          var b2 = evalArg(1);
+          return ta.crossunder(a2, b2, id);
+        }
+        case 'ta.highest': {
+          var src4 = getNamedArg('source', 0);
+          var len5 = getNamedArg('length', 1);
+          if (isNa(len5)) return NA;
+          return ta.highest(src4, Math.round(len5), id);
+        }
+        case 'ta.lowest': {
+          var src5 = getNamedArg('source', 0);
+          var len6 = getNamedArg('length', 1);
+          if (isNa(len6)) return NA;
+          return ta.lowest(src5, Math.round(len6), id);
+        }
+        default:
+          return { __error__: { line: node.line, col: node.col,
+            message: "Unknown function '" + name + "' — not supported in this interpreter" } };
+      }
+    }
+
+    function execInputCall(name, args) {
+      /* Return the current value from inputs array (already extracted) */
+      var title = '';
+      var defVal = NA;
+      for (var i = 0; i < args.length; i++) {
+        var a = args[i];
+        if (a.type === 'NamedArg') {
+          if (a.name === 'title') title = execNode(a.value);
+          if (a.name === 'defval') defVal = execNode(a.value);
+        } else if (i === 0) {
+          defVal = execNode(a);
+        } else if (i === 1 && a.type === 'StrLiteral') {
+          title = a.value;
+        }
+      }
+      /* Find matching input */
+      for (var j = 0; j < inputs.length; j++) {
+        if (inputs[j].name === title || (title === '' && j === inputs.length - 1)) {
+          return inputs[j].value;
+        }
+      }
+      return defVal;
+    }
+
+    /* ── Plot/shape/hline/bgcolor execution ── */
+
+    function execPlot(node) {
+      var args = node.args || [];
+      var series = args.length > 0 ? execNode(args[0].type === 'NamedArg' ? args[0].value : args[0]) : NA;
+      var label = '', color = '#2196F3', lineWidth = 1, dynamicColor = null;
+
+      for (var i = 0; i < args.length; i++) {
+        var a = args[i];
+        if (a.type === 'NamedArg') {
+          if (a.name === 'title') label = execNode(a.value);
+          if (a.name === 'color') {
+            var cv = execNode(a.value);
+            if (typeof cv === 'string') {
+              /* Check if this is a dynamic expression (contains ternary/if) */
+              dynamicColor = cv;
+              color = cv;
+            }
+          }
+          if (a.name === 'linewidth') lineWidth = execNode(a.value) || 1;
+          if (a.name === 'series') series = execNode(a.value);
+        } else if (i === 1 && a.type !== 'NamedArg') {
+          /* Second positional arg is often title */
+          var v = execNode(a);
+          if (typeof v === 'string') label = v;
+        }
+      }
+
+      /* Register or update plot entry */
+      var pid = plotCounter++;
+      if (!plotRegistry[pid]) {
+        plotRegistry[pid] = { label: label, values: new Array(N), colors: new Array(N), color: color, lineWidth: lineWidth };
+      }
+      plotRegistry[pid].values[barIndex] = series;
+      plotRegistry[pid].colors[barIndex] = dynamicColor;
+
+      return series;
+    }
+
+    function execPlotShape(node) {
+      var args = node.args || [];
+      var condition = args.length > 0 ? execNode(args[0].type === 'NamedArg' ? args[0].value : args[0]) : false;
+      if (!condition || isNa(condition)) return NA;
+
+      var style = 'triangleup', loc = 'belowbar', color = '#4CAF50', sz = 'small', title = '';
+      var price = NA;
+
+      for (var i = 0; i < args.length; i++) {
+        var a = args[i];
+        if (a.type === 'NamedArg') {
+          var v = execNode(a.value);
+          if (a.name === 'style') style = v || style;
+          if (a.name === 'location') loc = v || loc;
+          if (a.name === 'color') color = (typeof v === 'string') ? v : color;
+          if (a.name === 'size') sz = v || sz;
+          if (a.name === 'title') title = v || '';
+          if (a.name === 'series') { condition = v; if (!condition) return NA; }
+          if (a.name === 'price') price = v;
+        }
+      }
+
+      /* Determine price from location */
+      if (isNa(price)) {
+        if (loc === 'abovebar') price = +curCandle.h;
+        else if (loc === 'belowbar') price = +curCandle.l;
+        else price = +curCandle.c;
+      }
+
+      shapes.push({
+        barIndex: barIndex,
+        price: price,
+        style: style,
+        location: loc,
+        color: color,
+        size: sz,
+        title: title
+      });
+      return NA;
+    }
+
+    function execBgcolor(node) {
+      var args = node.args || [];
+      var color = args.length > 0 ? execNode(args[0].type === 'NamedArg' ? args[0].value : args[0]) : NA;
+      if (!color || isNa(color) || typeof color !== 'string') return NA;
+      bgcolors.push({ barIndex: barIndex, color: color });
+      return NA;
+    }
+
+    function execHline(node) {
+      var args = node.args || [];
+      var price = args.length > 0 ? execNode(args[0].type === 'NamedArg' ? args[0].value : args[0]) : NA;
+      if (isNa(price)) return NA;
+
+      /* hline only needs to be added once */
+      if (barIndex > 0) return NA;
+
+      var color = '#FF9800', lw = 1, title = '';
+      for (var i = 0; i < args.length; i++) {
+        var a = args[i];
+        if (a.type === 'NamedArg') {
+          var v = execNode(a.value);
+          if (a.name === 'color') color = (typeof v === 'string') ? v : color;
+          if (a.name === 'linewidth') lw = v || 1;
+          if (a.name === 'title') title = v || '';
+        }
+      }
+      hlines.push({ price: price, color: color, lineWidth: lw, title: title });
+      return NA;
+    }
+  }
+
+  function emptyResult() {
+    return { plots: [], shapes: [], hlines: [], bgcolors: [], inputs: [], errors: [] };
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     PUBLIC API
+     ══════════════════════════════════════════════════════════════ */
+
+  function compile(source) {
+    var lexResult = lexer(source);
+    if (lexResult.error) return { ast: null, inputs: [], error: lexResult.error };
+
+    var ast = parser(lexResult.tokens);
+    if (ast && ast.error) return { ast: null, inputs: [], error: ast.error };
+
+    return { ast: ast, inputs: [], error: null };
+  }
+
+  function run(source, candles, inputOverrides) {
+    var compiled = compile(source);
+    if (compiled.error) {
+      return {
+        plots: [], shapes: [], hlines: [], bgcolors: [],
+        inputs: [],
+        errors: [compiled.error]
+      };
+    }
+    var result = evaluate(compiled.ast, candles, inputOverrides || {});
+    if (result.error) {
+      return {
+        plots: [], shapes: [], hlines: [], bgcolors: [],
+        inputs: result.inputs || [],
+        errors: [result.error]
+      };
+    }
+    return result;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     EXPORT
+     ══════════════════════════════════════════════════════════════ */
+
+  global.PineRuntime = {
+    compile: compile,
+    evaluate: evaluate,
+    run: run,
+    NA: NA,
+    isNa: isNa
+  };
+
+})(typeof window !== 'undefined' ? window : this);

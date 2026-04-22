@@ -8,6 +8,7 @@
 <script src="https://js.stripe.com/v3/"></script>
 <script src="ma-cascade.js"></script>
 <script src="fractal-paths.js"></script>
+<script src="pine-runtime.js"></script>
 <!-- Fractal AI Agent v3.0 -->
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -4513,6 +4514,10 @@ var gbmOn            = false;
 var ouOn             = false;
 var kalmanOn         = false;
 var maCascadeOn      = false;
+var pineOverlayOn    = false;
+var pineResult       = null;
+var pineSource       = localStorage.getItem('pineSource') || '';
+var _pineRevalTimer  = null;
 var vpvrAnchorX      = null;  /* null = auto right edge (W-PAD.r-2); set by drag */
 var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
@@ -4977,6 +4982,88 @@ function renderChart() {
       worldToScreenX: worldToScreenX,
       worldToScreenY: worldToScreenY,
     });
+  }
+
+  /* ── Pine Script overlay ── */
+  if (pineOverlayOn && pineResult && pineResult.plots) {
+    var _pineLEdge = PAD.l, _pineREdge = W - PAD.r;
+    /* bgcolors */
+    if (pineResult.bgcolors) {
+      for (var _bi = 0; _bi < pineResult.bgcolors.length; _bi++) {
+        var _bg = pineResult.bgcolors[_bi];
+        var _bgGi = _bg.barIndex;
+        if (_bgGi < startIdx || _bgGi >= endIdx) continue;
+        var _bgX = worldToScreenX(_bgGi);
+        chartCtx.fillStyle = _bg.color;
+        chartCtx.fillRect(_bgX - barW/2, PAD.t, barW, CH);
+      }
+    }
+    /* plots — draw as lines */
+    for (var _pi = 0; _pi < pineResult.plots.length; _pi++) {
+      var _pp = pineResult.plots[_pi];
+      chartCtx.strokeStyle = _pp.color; chartCtx.lineWidth = _pp.lineWidth || 1;
+      chartCtx.setLineDash([]); chartCtx.beginPath();
+      var _ppDrew = false;
+      for (var _pj = 0; _pj < n; _pj++) {
+        var _pgi = startIdx + _pj;
+        if (_pgi < 0 || _pgi >= _pp.values.length) continue;
+        var _pv = _pp.values[_pgi];
+        if (isNaN(_pv)) { _ppDrew = false; continue; }
+        /* Dynamic per-bar color */
+        if (_pp.colors && _pp.colors[_pgi] && _pp.colors[_pgi] !== _pp.color) {
+          if (_ppDrew) chartCtx.stroke();
+          chartCtx.strokeStyle = _pp.colors[_pgi];
+          chartCtx.beginPath();
+          chartCtx.moveTo(px(_pj), py(_pv));
+          _ppDrew = true; continue;
+        }
+        var _ppY = py(_pv);
+        if (!_ppDrew) { chartCtx.moveTo(px(_pj), _ppY); _ppDrew = true; }
+        else { chartCtx.lineTo(px(_pj), _ppY); }
+      }
+      if (_ppDrew) chartCtx.stroke();
+    }
+    /* shapes */
+    if (pineResult.shapes) {
+      for (var _si2 = 0; _si2 < pineResult.shapes.length; _si2++) {
+        var _sh = pineResult.shapes[_si2];
+        if (_sh.barIndex < startIdx || _sh.barIndex >= endIdx) continue;
+        var _sx = worldToScreenX(_sh.barIndex);
+        var _sy = worldToScreenY(_sh.price);
+        var _sOff = _sh.location === 'abovebar' ? -10 : _sh.location === 'belowbar' ? 10 : 0;
+        _sy += _sOff;
+        chartCtx.fillStyle = _sh.color || '#4CAF50';
+        chartCtx.beginPath();
+        if (_sh.style === 'triangleup') {
+          chartCtx.moveTo(_sx, _sy - 6); chartCtx.lineTo(_sx + 5, _sy + 4); chartCtx.lineTo(_sx - 5, _sy + 4);
+        } else if (_sh.style === 'triangledown') {
+          chartCtx.moveTo(_sx, _sy + 6); chartCtx.lineTo(_sx + 5, _sy - 4); chartCtx.lineTo(_sx - 5, _sy - 4);
+        } else if (_sh.style === 'circle') {
+          chartCtx.arc(_sx, _sy, 4, 0, Math.PI * 2);
+        } else if (_sh.style === 'diamond') {
+          chartCtx.moveTo(_sx, _sy - 5); chartCtx.lineTo(_sx + 4, _sy); chartCtx.lineTo(_sx, _sy + 5); chartCtx.lineTo(_sx - 4, _sy);
+        } else if (_sh.style === 'cross' || _sh.style === 'xcross') {
+          chartCtx.moveTo(_sx - 4, _sy - 4); chartCtx.lineTo(_sx + 4, _sy + 4); chartCtx.moveTo(_sx + 4, _sy - 4); chartCtx.lineTo(_sx - 4, _sy + 4);
+          chartCtx.strokeStyle = _sh.color || '#4CAF50'; chartCtx.lineWidth = 2; chartCtx.stroke(); continue;
+        } else {
+          chartCtx.arc(_sx, _sy, 4, 0, Math.PI * 2);
+        }
+        chartCtx.closePath(); chartCtx.fill();
+      }
+    }
+    /* hlines */
+    if (pineResult.hlines) {
+      for (var _hi = 0; _hi < pineResult.hlines.length; _hi++) {
+        var _hl = pineResult.hlines[_hi];
+        var _hy = worldToScreenY(_hl.price);
+        if (_hy < PAD.t || _hy > H - PAD.b) continue;
+        chartCtx.strokeStyle = _hl.color || '#FF9800';
+        chartCtx.lineWidth = _hl.lineWidth || 1;
+        chartCtx.setLineDash([4, 4]);
+        chartCtx.beginPath(); chartCtx.moveTo(_pineLEdge, _hy); chartCtx.lineTo(_pineREdge, _hy); chartCtx.stroke();
+        chartCtx.setLineDash([]);
+      }
+    }
   }
 
   /* smaCrossZoneOn SMAs hidden — bar pattern drawing shows the result */
@@ -7261,6 +7348,7 @@ var GROUPS = [
       { id:'liqheatmap', label:'Liquidity Heatmap',    icon:S('<rect x="2" y="3" width="12" height="2" rx="0.4" fill="rgba(239,83,80,0.85)"/><rect x="2" y="7" width="12" height="2" rx="0.4" fill="rgba(201,168,76,0.7)"/><rect x="2" y="11" width="12" height="2" rx="0.4" fill="rgba(38,166,154,0.85)"/>'), toggle:true, liqheatmaptool:true, getState:function(){ return liqHeatmapOn; } },
       { id:'volbubbles', label:'Volume Bubbles',       icon:S('<ellipse cx="8" cy="5.5" rx="5.5" ry="3.2" fill="rgba(38,166,154,0.75)" stroke="rgba(38,166,154,1)" stroke-width="0.6"/><ellipse cx="8" cy="10.5" rx="5.5" ry="3.2" fill="rgba(239,83,80,0.75)" stroke="rgba(239,83,80,1)" stroke-width="0.6"/>'), toggle:true, volbubblestool:true, getState:function(){ return volBubblesOn; } },
       { id:'macascade', label:'Fractal Geometry',      icon:S('<line x1="2" y1="4" x2="14" y2="4" stroke-width="1" opacity=".9"/><line x1="3" y1="10" x2="9" y2="7" stroke-width="1"/><line x1="9" y1="7" x2="14" y2="7" stroke-width="0.9" stroke-dasharray="2 2" opacity=".75"/><line x1="3" y1="13" x2="8" y2="11" stroke-width="0.9" opacity=".6"/><line x1="8" y1="11" x2="14" y2="11" stroke-width="0.8" stroke-dasharray="2 2" opacity=".5"/>'), toggle:true, macascadetool:true, getState:function(){ return maCascadeOn; } },
+      { id:'pinescript', label:'Pine Script Overlay',   icon:S('<path d="M8 2 L4 7 L6 7 L3 13 L10 7 L7.5 7 L11 3 Z" fill="currentColor" stroke="none" opacity=".85"/>'), toggle:true, pinescripttool:true, getState:function(){ return pineOverlayOn; } },
     ]},
   /* ── Quantitative Analysis ── */
   { id:'quant_grp', quantgroup:true,
@@ -7379,7 +7467,7 @@ function buildToolbar() {
     }
     var wrap=document.createElement('div'); wrap.className='tb-group';
     var btn=document.createElement('button');
-    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||kalmanOn||fractalPathsOn))||(g.stochgroup&&(gbmOn||ouOn))||(g.overlaysgroup&&(vpvrOn||liqHeatmapOn||volBubblesOn||maCascadeOn))||(g.measuregroup&&(activeTool==='measure'||magnetOn)))?' active':'');
+    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||kalmanOn||fractalPathsOn))||(g.stochgroup&&(gbmOn||ouOn))||(g.overlaysgroup&&(vpvrOn||liqHeatmapOn||volBubblesOn||maCascadeOn||pineOverlayOn))||(g.measuregroup&&(activeTool==='measure'||magnetOn)))?' active':'');
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
@@ -7478,7 +7566,7 @@ function pickItem(item) {
   if(item.undotool)  { doUndo(); return; }
   if(item.redotool)  { doRedo(); return; }
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
-  if(item.clearalltools){ vpvrOn=liqHeatmapOn=volBubblesOn=hurstOn=garchBandsOn=fractalSignalOn=kalmanOn=gbmOn=ouOn=maCascadeOn=fractalPathsOn=false; buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.clearalltools){ vpvrOn=liqHeatmapOn=volBubblesOn=hurstOn=garchBandsOn=fractalSignalOn=kalmanOn=gbmOn=ouOn=maCascadeOn=fractalPathsOn=pineOverlayOn=false; pineResult=null; buildToolbar(); renderChart&&renderChart(); return; }
 
   /* ── Quantitative overlays — toggle on/off from dropdown ── */
   if(item.hursttool)        { hurstOn=!hurstOn;        buildToolbar(); renderChart&&renderChart(); return; }
@@ -7492,6 +7580,7 @@ function pickItem(item) {
   if(item.liqheatmaptool){ liqHeatmapOn=!liqHeatmapOn; buildToolbar(); renderChart&&renderChart(); return; }
   if(item.volbubblestool){ volBubblesOn=!volBubblesOn; buildToolbar(); renderChart&&renderChart(); return; }
   if(item.macascadetool) { maCascadeOn=!maCascadeOn;   buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.pinescripttool) { pineOverlayOn=!pineOverlayOn; if(pineOverlayOn && !pineResult && pineSource) { _runPineScript(); } if(pineOverlayOn && !pineResult) { _showPineModal(); } buildToolbar(); renderChart&&renderChart(); return; }
   if(item.measuretool)   { activeTool='measure'; activeItem=item; measuring=true; measurePts=[]; setCursor('crosshair'); buildToolbar(); return; }
   if(item.zoomtool)      { chartView.zoom=Math.min(8,chartView.zoom*1.5); renderChart&&renderChart(); return; }
   if(item.magnettool)    { magnetOn=!magnetOn; buildToolbar(); return; }
@@ -7527,6 +7616,7 @@ function handleSingle(g) {
   if (g.liqheatmaptool)    { liqHeatmapOn=!liqHeatmapOn; buildToolbar(); renderChart&&renderChart(); return; }
   if (g.volbubblestool)    { volBubblesOn=!volBubblesOn; buildToolbar(); renderChart&&renderChart(); return; }
   if (g.macascadetool)     { maCascadeOn=!maCascadeOn;   buildToolbar(); renderChart&&renderChart(); return; }
+  if (g.pinescripttool)    { pineOverlayOn=!pineOverlayOn; if(pineOverlayOn && !pineResult && pineSource) { _runPineScript(); } if(pineOverlayOn && !pineResult) { _showPineModal(); } buildToolbar(); renderChart&&renderChart(); return; }
 }
 
 function setCursor(cur) {
@@ -9685,7 +9775,7 @@ function showCanvas(x,y,idx){
   ));
   M.appendChild(btn(
     '<circle cx="8" cy="8" r="5.5"/><line x1="5.5" y1="5.5" x2="10.5" y2="10.5"/><line x1="10.5" y1="5.5" x2="5.5" y2="10.5"/>','Clear all tools','red',
-    function(){ window.vpvrOn=window.liqHeatmapOn=window.volBubblesOn=window.hurstOn=window.garchBandsOn=window.fractalSignalOn=window.kalmanOn=window.gbmOn=window.ouOn=window.maCascadeOn=window.fractalPathsOn=false; fx.buildToolbar(); fx.renderChart(); }
+    function(){ window.vpvrOn=window.liqHeatmapOn=window.volBubblesOn=window.hurstOn=window.garchBandsOn=window.fractalSignalOn=window.kalmanOn=window.gbmOn=window.ouOn=window.maCascadeOn=window.fractalPathsOn=window.pineOverlayOn=false; window.pineResult=null; fx.buildToolbar(); fx.renderChart(); }
   ));
   M.appendChild(sep());
 
@@ -9845,5 +9935,167 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     </div>
   </div>
 </div>
+
+<!-- PINE SCRIPT PASTE MODAL -->
+<style>
+#pineModal { display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:2147483647;backdrop-filter:blur(4px);align-items:center;justify-content:center; }
+#pineModal.show { display:flex; }
+#pineModalInner { background:#090b11;border:1px solid rgba(201,168,76,.3);width:92%;max-width:720px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.8);display:flex;flex-direction:column;max-height:85vh;overflow:hidden; }
+#pineTextarea { width:100%;min-height:220px;max-height:380px;background:#0d1018;color:#dde4ee;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:12px;font-family:'DM Mono','Courier New',monospace;font-size:12px;resize:vertical;outline:none;tab-size:4; }
+#pineTextarea:focus { border-color:rgba(201,168,76,0.4); }
+#pineErrors { color:#ef5350;font-family:'DM Mono',monospace;font-size:11px;padding:8px 12px;background:rgba(239,83,80,0.08);border:1px solid rgba(239,83,80,0.25);border-radius:4px;display:none;margin-top:8px;white-space:pre-wrap; }
+#pineInputsArea { display:flex;flex-wrap:wrap;gap:8px;margin-top:8px; }
+.pine-input-field { display:flex;flex-direction:column;gap:2px; }
+.pine-input-field label { font-size:10px;color:rgba(255,255,255,0.5);font-family:'DM Mono',monospace; }
+.pine-input-field input { width:80px;background:#131720;border:1px solid rgba(255,255,255,0.1);color:#dde4ee;border-radius:4px;padding:4px 8px;font-family:'DM Mono',monospace;font-size:12px;outline:none; }
+.pine-input-field input:focus { border-color:rgba(201,168,76,0.4); }
+</style>
+<div id="pineModal">
+  <div id="pineModalInner">
+    <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#c9a84c" stroke-width="1.2"><path d="M8 2 L4 7 L6 7 L3 13 L10 7 L7.5 7 L11 3 Z" fill="#c9a84c" stroke="none"/></svg>
+        <span style="font-family:'DM Sans',sans-serif;font-weight:600;color:#f0f4fa;font-size:15px;">Pine Script v5</span>
+        <span style="font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;">paste &amp; run</span>
+      </div>
+      <button onclick="_closePineModal()" style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div style="padding:16px 24px;flex:1;overflow-y:auto;">
+      <textarea id="pineTextarea" placeholder="//@version=5&#10;indicator(&quot;My Indicator&quot;, overlay=true)&#10;&#10;fast = ta.sma(close, 9)&#10;slow = ta.sma(close, 21)&#10;&#10;plot(fast, title=&quot;Fast&quot;, color=color.blue)&#10;plot(slow, title=&quot;Slow&quot;, color=color.orange)"></textarea>
+      <div id="pineErrors"></div>
+      <div id="pineInputsArea"></div>
+    </div>
+    <div style="padding:12px 24px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:11px;color:rgba(255,255,255,0.25);font-family:'DM Mono',monospace;">Only //@version=5 supported</span>
+      <div style="display:flex;gap:8px;">
+        <button onclick="_clearPineScript()" style="background:rgba(239,83,80,0.12);border:1px solid rgba(239,83,80,0.3);color:#ef5350;padding:8px 16px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,83,80,0.2)'" onmouseout="this.style.background='rgba(239,83,80,0.12)'">Clear</button>
+        <button onclick="_runPineFromModal()" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;padding:8px 20px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(201,168,76,0.25)'" onmouseout="this.style.background='rgba(201,168,76,0.15)'">▶ Run</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  var ta = document.getElementById('pineTextarea');
+  /* Restore from localStorage */
+  if (window.pineSource) ta.value = window.pineSource;
+
+  window._showPineModal = function() {
+    var m = document.getElementById('pineModal');
+    if (m) { m.classList.add('show'); ta.focus(); }
+  };
+  window._closePineModal = function() {
+    var m = document.getElementById('pineModal');
+    if (m) m.classList.remove('show');
+  };
+  window._runPineScript = function() {
+    var src = ta ? ta.value : window.pineSource;
+    if (!src || !src.trim()) return;
+    window.pineSource = src;
+    localStorage.setItem('pineSource', src);
+
+    /* Gather input overrides */
+    var overrides = {};
+    var fields = document.querySelectorAll('#pineInputsArea input');
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      overrides[f.dataset.name] = f.type === 'checkbox' ? f.checked : parseFloat(f.value) || f.value;
+    }
+
+    if (!window.PineRuntime) { _showPineError('PineRuntime not loaded'); return; }
+    var candles = window.chartCandles;
+    if (!candles || candles.length < 2) { _showPineError('No candle data available'); return; }
+
+    var result = window.PineRuntime.run(src, candles, overrides);
+    if (result.errors && result.errors.length > 0) {
+      var errMsg = result.errors.map(function(e) { return 'Line ' + e.line + ':' + e.col + ' — ' + e.message; }).join('\n');
+      _showPineError(errMsg);
+      /* Still show inputs if available */
+      if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
+      return;
+    }
+
+    window.pineResult = result;
+    window.pineOverlayOn = true;
+    _hidePineError();
+    if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
+    if (typeof buildToolbar === 'function') buildToolbar();
+    if (typeof renderChart === 'function') renderChart();
+  };
+  window._runPineFromModal = function() {
+    if (ta) window.pineSource = ta.value;
+    _runPineScript();
+  };
+  window._clearPineScript = function() {
+    if (ta) ta.value = '';
+    window.pineSource = '';
+    window.pineResult = null;
+    localStorage.removeItem('pineSource');
+    _hidePineError();
+    var ia = document.getElementById('pineInputsArea');
+    if (ia) ia.innerHTML = '';
+    if (typeof renderChart === 'function') renderChart();
+  };
+  function _showPineError(msg) {
+    var el = document.getElementById('pineErrors');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+  }
+  function _hidePineError() {
+    var el = document.getElementById('pineErrors');
+    if (el) { el.textContent = ''; el.style.display = 'none'; }
+  }
+  function _buildPineInputs(inputs) {
+    var area = document.getElementById('pineInputsArea');
+    if (!area) return;
+    area.innerHTML = '';
+    for (var i = 0; i < inputs.length; i++) {
+      var inp = inputs[i];
+      var div = document.createElement('div'); div.className = 'pine-input-field';
+      var lbl = document.createElement('label'); lbl.textContent = inp.name || ('Input ' + (i+1));
+      var field = document.createElement('input');
+      field.dataset.name = inp.name;
+      if (inp.type === 'bool') {
+        field.type = 'checkbox'; field.checked = !!inp.value; field.style.width = 'auto';
+      } else {
+        field.type = 'number'; field.value = inp.value; field.step = inp.type === 'float' ? '0.1' : '1';
+      }
+      field.addEventListener('change', function() { _runPineScript(); });
+      div.appendChild(lbl); div.appendChild(field); area.appendChild(div);
+    }
+  }
+
+  /* Auto re-run on candle changes (debounced 1s) */
+  var _origRender = window.renderChart;
+  if (typeof _origRender === 'function') {
+    /* We don't wrap renderChart itself — instead, use a MutationObserver-like approach.
+       Simply re-run every 5s if Pine is active and candles changed. */
+  }
+  setInterval(function() {
+    if (window.pineOverlayOn && window.pineSource && window.chartCandles && window.chartCandles.length > 2) {
+      /* Only re-run if candle count changed */
+      var key = window.chartCandles.length + '_' + (window.chartCandles[window.chartCandles.length-1] ? window.chartCandles[window.chartCandles.length-1].c : 0);
+      if (window._pineLastKey !== key) {
+        window._pineLastKey = key;
+        _runPineScript();
+      }
+    }
+  }, 2000);
+
+  /* Close modal on Escape */
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      var m = document.getElementById('pineModal');
+      if (m && m.classList.contains('show')) { _closePineModal(); e.stopPropagation(); }
+    }
+  });
+
+  /* Close modal on backdrop click */
+  var modal = document.getElementById('pineModal');
+  if (modal) {
+    modal.addEventListener('click', function(e) { if (e.target === modal) _closePineModal(); });
+  }
+})();
+</script>
 </body>
 </html>
