@@ -1052,7 +1052,6 @@ if (isEmbedded) {
               <option value="line">Line</option>
             </select>
 
-            <button id="fractalPathsBtn" onclick="toggleFractalPaths()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">FRACTAL PATTERN - SPECIALIZED PATHS</button>
             <button id="smaCrossZoneBtn" onclick="toggleSmaCrossZone()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA CROSS</button>
 
             <button id="sma200Btn" onclick="toggleSMA(200)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA 200</button>
@@ -6639,13 +6638,6 @@ function toggleSMA(period){
   if(!chart) renderChart();
 }
 
-function toggleFractalPaths(){
-  fractalPathsOn = !fractalPathsOn;
-  var b = document.getElementById('fractalPathsBtn');
-  if(b){ b.style.opacity = fractalPathsOn ? '1' : '0.35'; b.style.color = fractalPathsOn ? '#c9a84c' : '#8a95a8'; b.style.borderColor = fractalPathsOn ? 'rgba(201,168,76,.4)' : 'rgba(255,255,255,.08)'; }
-  renderChart();
-}
-
 function toggleSmaCrossZone(){
   smaCrossZoneOn = !smaCrossZoneOn;
   var b = document.getElementById('smaCrossZoneBtn');
@@ -7279,6 +7271,7 @@ var GROUPS = [
       { id:'garch',      label:'GARCH Volatility Bands', icon:S('<path d="M2 4 Q8 2.5 14 4" stroke-width="1.5"/><path d="M2 12 Q8 13.5 14 12" stroke-width="1.5"/><path d="M2 8 Q8 8 14 8" stroke-width="1" stroke-dasharray="3 2" opacity=".6"/>'),             toggle:true, garchbandstool:true,  getState:function(){ return garchBandsOn; } },
       { id:'fractalsig', label:'Fractal Signal Score',   icon:S('<circle cx="8" cy="10" r="5" stroke-width="1.2"/><path d="M8 10 L11 6" stroke-width="1.5"/><path d="M3.4 12.5 A5 5 0 0 1 12.6 12.5" stroke-width="1" stroke-dasharray="1.5 2" opacity=".6"/>'), toggle:true, fractalsignaltool:true, getState:function(){ return fractalSignalOn; } },
       { id:'kalman', label:'Kalman Filter', icon:S('<path d="M2 11 Q5 9 8 7 Q11 5 14 4" stroke-width="1.5" fill="none"/><path d="M2 13 Q5 11 8 9 Q11 7 14 6" stroke-width="0.8" stroke-dasharray="2 2" opacity=".5" fill="none"/><path d="M2 9 Q5 7 8 5 Q11 3 14 2" stroke-width="0.8" stroke-dasharray="2 2" opacity=".5" fill="none"/>'), toggle:true, kalmantool:true, getState:function(){ return kalmanOn; } },
+      { id:'fractalpaths', label:'Fractal Specialized Paths', icon:S('<path d="M2 8 L8 8 L14 4 M8 8 L14 12" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'), toggle:true, fractalpathstool:true, getState:function(){ return fractalPathsOn; } },
     ]},
   /* ── Stochastic Models ── */
   { id:'stoch_grp', stochgroup:true,
@@ -7386,7 +7379,7 @@ function buildToolbar() {
     }
     var wrap=document.createElement('div'); wrap.className='tb-group';
     var btn=document.createElement('button');
-    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||kalmanOn))||(g.stochgroup&&(gbmOn||ouOn))||(g.overlaysgroup&&(vpvrOn||liqHeatmapOn||volBubblesOn||maCascadeOn))||(g.measuregroup&&(activeTool==='measure'||magnetOn)))?' active':'');
+    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||kalmanOn||fractalPathsOn))||(g.stochgroup&&(gbmOn||ouOn))||(g.overlaysgroup&&(vpvrOn||liqHeatmapOn||volBubblesOn||maCascadeOn))||(g.measuregroup&&(activeTool==='measure'||magnetOn)))?' active':'');
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
@@ -7485,13 +7478,14 @@ function pickItem(item) {
   if(item.undotool)  { doUndo(); return; }
   if(item.redotool)  { doRedo(); return; }
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
-  if(item.clearalltools){ vpvrOn=liqHeatmapOn=volBubblesOn=hurstOn=garchBandsOn=fractalSignalOn=kalmanOn=gbmOn=ouOn=maCascadeOn=false; buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.clearalltools){ vpvrOn=liqHeatmapOn=volBubblesOn=hurstOn=garchBandsOn=fractalSignalOn=kalmanOn=gbmOn=ouOn=maCascadeOn=fractalPathsOn=false; buildToolbar(); renderChart&&renderChart(); return; }
 
   /* ── Quantitative overlays — toggle on/off from dropdown ── */
   if(item.hursttool)        { hurstOn=!hurstOn;        buildToolbar(); renderChart&&renderChart(); return; }
   if(item.garchbandstool)   { garchBandsOn=!garchBandsOn;  buildToolbar(); renderChart&&renderChart(); return; }
   if(item.fractalsignaltool){ fractalSignalOn=!fractalSignalOn; buildToolbar(); renderChart&&renderChart(); return; }
   if(item.kalmantool)       { kalmanOn=!kalmanOn;               buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.fractalpathstool) { fractalPathsOn=!fractalPathsOn; buildToolbar(); renderChart&&renderChart(); return; }
   if(item.gbmtool){ gbmOn=!gbmOn; buildToolbar(); renderChart&&renderChart(); return; }
   if(item.outool) { ouOn=!ouOn;   buildToolbar(); renderChart&&renderChart(); return; }
   if(item.vpvrtool)      { vpvrOn=!vpvrOn;           buildToolbar(); renderChart&&renderChart(); return; }
@@ -9698,7 +9692,7 @@ function showCanvas(x,y,idx){
   ));
   M.appendChild(btn(
     '<circle cx="8" cy="8" r="5.5"/><line x1="5.5" y1="5.5" x2="10.5" y2="10.5"/><line x1="10.5" y1="5.5" x2="5.5" y2="10.5"/>','Clear all tools','red',
-    function(){ window.vpvrOn=window.liqHeatmapOn=window.volBubblesOn=window.hurstOn=window.garchBandsOn=window.fractalSignalOn=window.kalmanOn=window.gbmOn=window.ouOn=window.maCascadeOn=false; fx.buildToolbar(); fx.renderChart(); }
+    function(){ window.vpvrOn=window.liqHeatmapOn=window.volBubblesOn=window.hurstOn=window.garchBandsOn=window.fractalSignalOn=window.kalmanOn=window.gbmOn=window.ouOn=window.maCascadeOn=window.fractalPathsOn=false; fx.buildToolbar(); fx.renderChart(); }
   ));
   M.appendChild(sep());
 
