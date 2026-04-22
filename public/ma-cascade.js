@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   MA CASCADE — alternating MA-cross bridge levels.
+   FRACTAL GEOMETRY — alternating MA-cross bridge levels.
    Port of the Pine Script "Machine Learning Level" idea:
      Event A = SMA(900) x SMA(1500)
      Event B = SMA(100) x SMA(200)
@@ -135,10 +135,6 @@
       ctx.moveTo(lEdge, y2500);
       ctx.lineTo(rEdge, y2500);
       ctx.stroke();
-      ctx.fillStyle   = COLORS.sma2500;
-      ctx.font        = '9px "DM Mono","Courier New",monospace';
-      ctx.textAlign   = 'left';
-      ctx.fillText('MA2500', lEdge + 4, y2500 - 3);
     }
 
     /* Bridge segments */
