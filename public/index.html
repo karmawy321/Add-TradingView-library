@@ -7,6 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://js.stripe.com/v3/"></script>
 <script src="ma-cascade.js"></script>
+<script src="fractal-paths.js"></script>
 <!-- Fractal AI Agent v3.0 -->
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -1051,6 +1052,7 @@ if (isEmbedded) {
               <option value="line">Line</option>
             </select>
 
+            <button id="fractalPathsBtn" onclick="toggleFractalPaths()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">FRACTAL PATTERN - SPECIALIZED PATHS</button>
             <button id="smaCrossZoneBtn" onclick="toggleSmaCrossZone()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA CROSS</button>
 
             <button id="sma200Btn" onclick="toggleSMA(200)" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA 200</button>
@@ -4501,6 +4503,7 @@ var sma200On        = false;
 var sma400On        = false;
 var sma900On        = false;
 var smaCrossZoneOn  = false;
+var fractalPathsOn  = false;
 var vpvrOn           = false;
 var liqHeatmapOn     = false;
 var volBubblesOn     = false;
@@ -4960,6 +4963,16 @@ function renderChart() {
   /* ── Fractal Geometry overlay — alternating MA-cross bridge levels ── */
   if (maCascadeOn && window.MACascade && typeof window.MACascade.draw === 'function') {
     window.MACascade.draw(chartCtx, candles, {
+      PAD: PAD,
+      W: W,
+      worldToScreenX: worldToScreenX,
+      worldToScreenY: worldToScreenY,
+    });
+  }
+
+  /* ── Fractal Pattern - Specialized Paths overlay ── */
+  if (fractalPathsOn && window.FractalPaths && typeof window.FractalPaths.draw === 'function') {
+    window.FractalPaths.draw(chartCtx, candles, {
       PAD: PAD,
       W: W,
       worldToScreenX: worldToScreenX,
@@ -6624,6 +6637,13 @@ function toggleSMA(period){
     var b=document.getElementById('sma900Btn');if(b){ b.style.opacity=sma900On?'1':'0.35'; b.style.color=sma900On?C.sma900:'#8a95a8'; b.style.borderColor=sma900On?'rgba(155,143,232,.4)':'rgba(255,255,255,.08)'; }
   }
   if(!chart) renderChart();
+}
+
+function toggleFractalPaths(){
+  fractalPathsOn = !fractalPathsOn;
+  var b = document.getElementById('fractalPathsBtn');
+  if(b){ b.style.opacity = fractalPathsOn ? '1' : '0.35'; b.style.color = fractalPathsOn ? '#c9a84c' : '#8a95a8'; b.style.borderColor = fractalPathsOn ? 'rgba(201,168,76,.4)' : 'rgba(255,255,255,.08)'; }
+  renderChart();
 }
 
 function toggleSmaCrossZone(){
