@@ -754,7 +754,7 @@
      EVALUATOR — Bar-by-bar execution
      ══════════════════════════════════════════════════════════════ */
 
-  var STMT_LIMIT = 100000;
+  var STMT_LIMIT = 5000000;
 
   function evaluate(ast, candles, inputOverrides) {
     if (!ast || ast.error) return { error: ast ? ast.error : { line: 0, col: 0, message: 'No AST' } };

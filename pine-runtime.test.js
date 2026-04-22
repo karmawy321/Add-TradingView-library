@@ -181,9 +181,9 @@ section('Evaluator');
   assert(r4.plots[0].values[0] === 1, 'Count at bar 0 should be 1');
   assert(r4.plots[0].values[49] === 50, 'Count at bar 49 should be 50, got ' + r4.plots[0].values[49]);
 
-  /* Statement limit */
+  /* Statement limit — use a huge loop that would exceed 5M */
   var r5 = PineRuntime.run(
-    '//@version=5\nindicator("test")\nfor i = 0 to 999999\n    x = i',
+    '//@version=5\nindicator("test")\nfor i = 0 to 9999999\n    x = i',
     makeCandles(5)
   );
   assert(r5.errors.length > 0, 'Infinite-ish loop should trigger statement limit');
