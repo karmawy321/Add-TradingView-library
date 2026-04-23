@@ -1326,11 +1326,31 @@
           if (isNa(len3)) return NA;
           return ta.rma(src3, Math.round(len3), id);
         }
+        case 'ta.macd': {
+          var srcM = evalArg(0);
+          var fastM = evalArg(1);
+          var slowM = evalArg(2);
+          var sigM = evalArg(3);
+          if (isNa(fastM) || isNa(slowM) || isNa(sigM)) return [NA, NA, NA];
+          return ta.macd(srcM, Math.round(fastM), Math.round(slowM), Math.round(sigM), id);
+        }
+        case 'ta.stoch': {
+          var srcS = evalArg(0);
+          var highS = evalArg(1);
+          var lowS = evalArg(2);
+          var lenS = evalArg(3);
+          if (isNa(lenS)) return NA;
+          return ta.stoch(srcS, highS, lowS, Math.round(lenS), id);
+        }
         case 'ta.atr': {
-          var len4 = getNamedArg('length', 0);
-          if (isNa(len4)) return NA;
+          var lenA = evalArg(0);
+          if (isNa(lenA)) return NA;
           var pc = prevCandle ? +prevCandle.c : NA;
-          return ta.atr(+curCandle.h, +curCandle.l, +curCandle.c, pc, Math.round(len4), id);
+          return ta.atr(+curCandle.h, +curCandle.l, +curCandle.c, pc, Math.round(lenA), id);
+        }
+        case 'ta.vwap': {
+          var srcV = evalArg(0);
+          return ta.vwap(srcV, +curCandle.v, id);
         }
         case 'ta.crossover': {
           var a = evalArg(0);
