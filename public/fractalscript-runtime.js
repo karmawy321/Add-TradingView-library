@@ -1128,15 +1128,21 @@
     }
 
     function execVarDecl(node) {
-      var val = execNode(node.value);
-      if (val && val.__error__) return val;
       if (node.persistent) {
-        /* var x = ... → only set on first bar, persist after */
-        if (barIndex === 0) persistentVars[node.name] = val;
+        /* var x = ... → only initialize on the first bar */
+        if (barIndex === 0) {
+          var val = execNode(node.value);
+          if (val && val.__error__) return val;
+          persistentVars[node.name] = val;
+          return val;
+        }
+        return persistentVars[node.name];
       } else {
+        var val = execNode(node.value);
+        if (val && val.__error__) return val;
         barVars[node.name] = val;
+        return val;
       }
-      return val;
     }
 
     function execReassign(node) {
