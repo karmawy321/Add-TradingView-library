@@ -105,9 +105,9 @@
 
 
 /* ══ LIVE PRICE BADGE ══ */
-.live-price-bar{display:none;align-items:center;gap:8px;padding:0 12px;
+.live-price-bar{display:none;align-items:center;gap:6px;padding:4px 10px;
   background:rgba(39,174,96,.08);border:1px solid rgba(39,174,96,.25);
-  border-radius:4px;white-space:nowrap;flex-shrink:0;height:34px;box-sizing:border-box}
+  border-radius:2px;white-space:nowrap;flex-shrink:0}
 .live-price-bar.show{display:flex}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#27ae60;animation:pulse 2s infinite;flex-shrink:0}
 .live-price-val{font-family:'Cinzel',serif;font-size:14px;font-weight:600;color:#f0f4fa}
@@ -1000,7 +1000,18 @@ if (isEmbedded) {
         <div class="az-dot" style="background:#c0392b"></div>
         <div class="az-dot" style="background:#f39c12"></div>
         <div class="az-dot" style="background:#27ae60"></div>
-        <span class="az-lbl">FRACTAL AI AGENT — UNIFIED ANALYSIS DASHBOARD</span>
+        <span class="az-lbl" style="margin-right:20px">FRACTAL AI AGENT — UNIFIED ANALYSIS DASHBOARD</span>
+
+        <!-- FractalScript Label & Logo (Beside Expand btn) -->
+        <div style="display:flex;align-items:center;gap:15px;margin-left:auto;margin-right:15px;">
+          <span id="fsLabelText" style="font-family:'Cinzel',serif;font-size:12px;font-weight:700;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:0.15em;pointer-events:none;user-select:none;transition:all 0.3s;text-shadow:0 0 8px rgba(201,168,76,0)">FractalScript</span>
+          <div id="fractalScriptBtn" onclick="_toggleFractalScript()" 
+               style="width:68px;height:68px;cursor:pointer;position:relative;border-radius:12px;transition:all 0.2s;background:#000;box-shadow:0 4px 20px rgba(0,0,0,0.6);" 
+               onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+            <img src="fractalscript-logo.svg" style="width:100%;height:100%;border-radius:12px;display:block;">
+            <div id="fsBtnGlow" style="position:absolute;inset:-3px;border:2px solid #c9a84c;border-radius:15px;opacity:0;transition:opacity 0.2s;box-shadow:0 0 20px rgba(201,168,76,0.4)"></div>
+          </div>
+        </div>
       </div>
 
       <!-- ══ LIVE CHART PANEL ══ -->
@@ -1009,7 +1020,7 @@ if (isEmbedded) {
         <!-- CHART AREA: full width -->
         <div style="position:relative">
           <!-- Chart toolbar — always visible -->
-          <div style="display:flex;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
             <div style="position:relative;display:inline-block">
               <input type="text" id="pairIn" placeholder="Search symbol… (/)" autocomplete="off" readonly
                 onclick="openSearchModal()"
@@ -1075,26 +1086,12 @@ if (isEmbedded) {
             <button id="clearUploadBtn" onclick="clearUploadedChart()" style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕ CLEAR PHOTO</button>
             <button id="terminateChartBtn" onclick="terminateChart()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em">⏹ STOP</button>
             
-            <!-- FractalScript & Live Price Group -->
-            <div style="display:flex;align-items:center;gap:12px;margin-left:auto">
-              <!-- Non-clickable label -->
-              <span style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:0.12em;pointer-events:none;user-select:none">FractalScript</span>
-              
-              <!-- Clickable Exact Logo -->
-              <div id="fractalScriptBtn" onclick="_toggleFractalScript()" 
-                   style="width:34px;height:34px;cursor:pointer;position:relative;border-radius:8px;transition:all 0.2s;background:#000;" 
-                   onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
-                <img src="fractalscript-logo.svg" style="width:100%;height:100%;border-radius:8px;display:block;">
-                <div id="fsBtnGlow" style="position:absolute;inset:-2px;border:1px solid #c9a84c;border-radius:10px;opacity:0;transition:opacity 0.2s;box-shadow:0 0 10px rgba(201,168,76,0.3)"></div>
-              </div>
-
-              <div class="live-price-bar" id="livePriceBar">
-                <div class="live-dot"></div>
-                <div class="live-price-val" id="livePriceVal">—</div>
-                <div class="live-price-change" id="livePriceChange"></div>
-                <div class="live-price-hl" id="livePriceHL" style="display:none"></div>
-                <div class="live-price-meta" id="livePriceMeta">LIVE</div>
-              </div>
+            <div class="live-price-bar" id="livePriceBar" style="margin-left:auto">
+              <div class="live-dot"></div>
+              <div class="live-price-val" id="livePriceVal">—</div>
+              <div class="live-price-change" id="livePriceChange"></div>
+              <div class="live-price-hl" id="livePriceHL" style="display:none"></div>
+              <div class="live-price-meta" id="livePriceMeta">LIVE</div>
             </div>
 
           </div>
@@ -10009,8 +10006,11 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
   window._toggleFractalScript = function() {
     window.pineOverlayOn = !window.pineOverlayOn;
     var glow = document.getElementById('fsBtnGlow');
-    if (glow) {
-      glow.style.opacity = window.pineOverlayOn ? '1' : '0';
+    var txt = document.getElementById('fsLabelText');
+    if (glow) glow.style.opacity = window.pineOverlayOn ? '1' : '0';
+    if (txt) {
+      txt.style.color = window.pineOverlayOn ? '#c9a84c' : 'rgba(255,255,255,0.2)';
+      txt.style.textShadow = window.pineOverlayOn ? '0 0 10px rgba(201,168,76,0.3)' : 'none';
     }
     
     if (window.pineOverlayOn) {
@@ -10059,11 +10059,16 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     
     /* Sync button state */
     var glow = document.getElementById('fsBtnGlow');
+    var txt = document.getElementById('fsLabelText');
 
     if (result.errors && result.errors.length > 0) {
       var errMsg = result.errors.map(function(e) { return 'Line ' + e.line + ':' + e.col + ' — ' + e.message; }).join('\n');
       _showPineError(errMsg);
       if (glow) glow.style.opacity = '1';
+      if (txt) {
+        txt.style.color = '#c9a84c';
+        txt.style.textShadow = '0 0 10px rgba(201,168,76,0.3)';
+      }
       /* Still show inputs if available */
       if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
       return;
@@ -10072,6 +10077,10 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     window.pineResult = result;
     window.pineOverlayOn = true;
     if (glow) glow.style.opacity = '1';
+    if (txt) {
+      txt.style.color = '#c9a84c';
+      txt.style.textShadow = '0 0 10px rgba(201,168,76,0.3)';
+    }
     _hidePineError();
     if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
     if (typeof buildToolbar === 'function') buildToolbar();
