@@ -105,9 +105,9 @@
 
 
 /* ══ LIVE PRICE BADGE ══ */
-.live-price-bar{display:none;align-items:center;gap:6px;padding:4px 10px;
+.live-price-bar{display:none;align-items:center;gap:8px;padding:0 12px;
   background:rgba(39,174,96,.08);border:1px solid rgba(39,174,96,.25);
-  border-radius:2px;white-space:nowrap;flex-shrink:0}
+  border-radius:4px;white-space:nowrap;flex-shrink:0;height:34px;box-sizing:border-box}
 .live-price-bar.show{display:flex}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#27ae60;animation:pulse 2s infinite;flex-shrink:0}
 .live-price-val{font-family:'Cinzel',serif;font-size:14px;font-weight:600;color:#f0f4fa}
@@ -1009,7 +1009,7 @@ if (isEmbedded) {
         <!-- CHART AREA: full width -->
         <div style="position:relative">
           <!-- Chart toolbar — always visible -->
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
             <div style="position:relative;display:inline-block">
               <input type="text" id="pairIn" placeholder="Search symbol… (/)" autocomplete="off" readonly
                 onclick="openSearchModal()"
@@ -1076,20 +1076,17 @@ if (isEmbedded) {
             <button id="terminateChartBtn" onclick="terminateChart()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em">⏹ STOP</button>
             
             <!-- FractalScript & Live Price Group -->
-            <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
-              <!-- FractalScript Premium Button -->
-              <button id="fractalScriptBtn" class="fractalscript-premium-btn" title="FractalScript (Pine-Compatible) Logic Engine" onclick="_toggleFractalScript()">
-                <div class="fractalscript-btn-icon">
-                  <svg viewBox="0 20 512 480" xmlns="http://www.w3.org/2000/svg">
-                    <defs><linearGradient id="gld" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5D76E"/><stop offset="100%" stop-color="#C9A227"/></linearGradient></defs>
-                    <path d="M 90 330 L 130 295 L 160 325 L 200 240 L 240 275 L 285 195 L 325 225 L 370 155 L 420 185 L 420 400 L 90 400 Z" fill="url(#gld)" opacity="0.15"/>
-                    <path d="M 90 330 L 130 295 L 160 325 L 200 240 L 240 275 L 285 195 L 325 225 L 370 155 L 420 185" fill="none" stroke="url(#gld)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"/>
-                    <text x="256" y="360" font-family="Cambria,Georgia,serif" font-size="280" font-style="italic" fill="url(#gld)" text-anchor="middle">∫</text>
-                    <text x="360" y="320" font-family="Cambria,Georgia,serif" font-size="120" font-style="italic" fill="url(#gld)" text-anchor="middle">f(x)</text>
-                  </svg>
-                </div>
-                <span class="fractalscript-btn-text">FractalScript</span>
-              </button>
+            <div style="display:flex;align-items:center;gap:12px;margin-left:auto">
+              <!-- Non-clickable label -->
+              <span style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:0.12em;pointer-events:none;user-select:none">FractalScript</span>
+              
+              <!-- Clickable Exact Logo -->
+              <div id="fractalScriptBtn" onclick="_toggleFractalScript()" 
+                   style="width:34px;height:34px;cursor:pointer;position:relative;border-radius:8px;transition:all 0.2s;background:#000;" 
+                   onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+                <img src="fractalscript-logo.svg" style="width:100%;height:100%;border-radius:8px;display:block;">
+                <div id="fsBtnGlow" style="position:absolute;inset:-2px;border:1px solid #c9a84c;border-radius:10px;opacity:0;transition:opacity 0.2s;box-shadow:0 0 10px rgba(201,168,76,0.3)"></div>
+              </div>
 
               <div class="live-price-bar" id="livePriceBar">
                 <div class="live-dot"></div>
@@ -10011,10 +10008,9 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
   /* Global toggle for the new header button */
   window._toggleFractalScript = function() {
     window.pineOverlayOn = !window.pineOverlayOn;
-    var btn = document.getElementById('fractalScriptBtn');
-    if (btn) {
-      if (window.pineOverlayOn) btn.classList.add('on');
-      else btn.classList.remove('on');
+    var glow = document.getElementById('fsBtnGlow');
+    if (glow) {
+      glow.style.opacity = window.pineOverlayOn ? '1' : '0';
     }
     
     if (window.pineOverlayOn) {
@@ -10062,12 +10058,12 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     var result = window.PineRuntime.run(src, candles, overrides);
     
     /* Sync button state */
-    var fsBtn = document.getElementById('fractalScriptBtn');
+    var glow = document.getElementById('fsBtnGlow');
 
     if (result.errors && result.errors.length > 0) {
       var errMsg = result.errors.map(function(e) { return 'Line ' + e.line + ':' + e.col + ' — ' + e.message; }).join('\n');
       _showPineError(errMsg);
-      if (fsBtn) fsBtn.classList.add('on');
+      if (glow) glow.style.opacity = '1';
       /* Still show inputs if available */
       if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
       return;
@@ -10075,7 +10071,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
 
     window.pineResult = result;
     window.pineOverlayOn = true;
-    if (fsBtn) fsBtn.classList.add('on');
+    if (glow) glow.style.opacity = '1';
     _hidePineError();
     if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
     if (typeof buildToolbar === 'function') buildToolbar();
