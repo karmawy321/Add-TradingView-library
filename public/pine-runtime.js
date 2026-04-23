@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   PINE SCRIPT v5 SUBSET INTERPRETER
+   FractalScript (v5-compatible subset)
    Lexer → Parser → AST → Bar-by-bar Evaluator → Draw Commands
 
    Supported: ta.sma/ema/rma/atr/crossover/crossunder/highest/lowest,
@@ -8,7 +8,7 @@
               math.*, color.*, na semantics.
 
    Security: Pure AST interpreter — no eval(), no Function(), no DOM access.
-   Safety:   100k statement limit per run, version gate (v5 only).
+   Safety:   100k statement limit per run, v5-compatible syntax only.
 
    Exports: window.PineRuntime = { compile, evaluate, run }
    ═══════════════════════════════════════════════════════════════ */
@@ -122,11 +122,11 @@
     var versionMatch = source.match(/^[ \t]*\/\/@version=(\d+)/m);
     if (!versionMatch) {
       return { tokens: null, error: { line: 1, col: 1,
-        message: 'Missing //@version=5 declaration. Only Pine Script v5 is supported.' } };
+        message: 'Missing v5-compatible declaration (//@version=5). Only v5 syntax is supported.' } };
     }
     if (versionMatch[1] !== '5') {
       return { tokens: null, error: { line: 1, col: 1,
-        message: 'Only Pine Script v5 (//@version=5) is supported. Found v' + versionMatch[1] + '.' } };
+        message: 'Only v5-compatible syntax (//@version=5) is supported. Found v' + versionMatch[1] + '.' } };
     }
 
     var tokens = [];
@@ -1408,6 +1408,21 @@
   function emptyResult() {
     return { plots: [], shapes: [], hlines: [], bgcolors: [], inputs: [], errors: [] };
   }
+
+  /* ── Register Fractal and AI Aliases ── */
+  var LIB_TA = BUILTINS.ta;
+  BUILTINS.f = LIB_TA; /* Fractal Alias */
+  BUILTINS.ai = {
+    sentiment: function(it) {
+      /* Dummy logic for sentiment: fluctuates between -1 and 1 based on price momentum */
+      var c = it.bar.c, o = it.bar.o;
+      return (c - o) / (it.bar.h - it.bar.l || 1);
+    },
+    structure: function(it) {
+      /* Dummy logic for BOS/CHoCH probability: 0 to 1 scale */
+      return Math.random();
+    }
+  };
 
   /* ══════════════════════════════════════════════════════════════
      PUBLIC API

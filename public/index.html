@@ -137,6 +137,14 @@
 .nd-wrap{display:flex;flex-direction:column;gap:0;border-top:1px solid rgba(255,255,255,.06)}
 /* Main chart row */
 .nd-main{display:grid;grid-template-columns:1fr 320px;min-height:360px;border-bottom:1px solid rgba(255,255,255,.06)}
+/* FractalScript Premium Button */
+.fractalscript-premium-btn { display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#0d111a,#06080d);border:1px solid rgba(201,168,76,.3);border-radius:4px;padding:6px 14px;cursor:pointer;transition:all .2s ease;box-shadow:0 4px 12px rgba(0,0,0,.5);height:32px;box-sizing:border-box;margin-right:4px }
+.fractalscript-premium-btn:hover { border-color:rgba(201,168,76,.7);background:linear-gradient(135deg,#121824,#080a12);transform:translateY(-1px) }
+.fractalscript-premium-btn.on { background:linear-gradient(135deg,#1c1500,#0d0b00);border-color:#c9a84c;box-shadow:0 0 15px rgba(201,168,76,.15) }
+.fractalscript-btn-icon { width:20px;height:20px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 2px rgba(201,168,76,.2)) }
+.fractalscript-btn-text { font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#f0f4fa;transition:color .2s }
+.fractalscript-premium-btn.on .fractalscript-btn-text { color:#c9a84c }
+.fractalscript-premium-btn svg { width:100%;height:100% }
 @media(max-width:768px){
   .nd-main{grid-template-columns:1fr !important;}
   .nd-side{border-left:none !important;border-top:1px solid rgba(255,255,255,.06);}
@@ -1001,7 +1009,7 @@ if (isEmbedded) {
         <!-- CHART AREA: full width -->
         <div style="position:relative">
           <!-- Chart toolbar — always visible -->
-          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:20">
             <div style="position:relative;display:inline-block">
               <input type="text" id="pairIn" placeholder="Search symbol… (/)" autocomplete="off" readonly
                 onclick="openSearchModal()"
@@ -1066,13 +1074,30 @@ if (isEmbedded) {
             </label>
             <button id="clearUploadBtn" onclick="clearUploadedChart()" style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕ CLEAR PHOTO</button>
             <button id="terminateChartBtn" onclick="terminateChart()" style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em">⏹ STOP</button>
-            <!-- Live price — sits in toolbar row, right-aligned -->
-            <div class="live-price-bar" id="livePriceBar" style="margin-left:auto">
-              <div class="live-dot"></div>
-              <div class="live-price-val" id="livePriceVal">—</div>
-              <div class="live-price-change" id="livePriceChange"></div>
-              <div class="live-price-hl" id="livePriceHL" style="display:none"></div>
-              <div class="live-price-meta" id="livePriceMeta">LIVE</div>
+            
+            <!-- FractalScript & Live Price Group -->
+            <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+              <!-- FractalScript Premium Button -->
+              <button id="fractalScriptBtn" class="fractalscript-premium-btn" title="FractalScript (Pine-Compatible) Logic Engine" onclick="_toggleFractalScript()">
+                <div class="fractalscript-btn-icon">
+                  <svg viewBox="0 20 512 480" xmlns="http://www.w3.org/2000/svg">
+                    <defs><linearGradient id="gld" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F5D76E"/><stop offset="100%" stop-color="#C9A227"/></linearGradient></defs>
+                    <path d="M 90 330 L 130 295 L 160 325 L 200 240 L 240 275 L 285 195 L 325 225 L 370 155 L 420 185 L 420 400 L 90 400 Z" fill="url(#gld)" opacity="0.15"/>
+                    <path d="M 90 330 L 130 295 L 160 325 L 200 240 L 240 275 L 285 195 L 325 225 L 370 155 L 420 185" fill="none" stroke="url(#gld)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"/>
+                    <text x="256" y="360" font-family="Cambria,Georgia,serif" font-size="280" font-style="italic" fill="url(#gld)" text-anchor="middle">∫</text>
+                    <text x="360" y="320" font-family="Cambria,Georgia,serif" font-size="120" font-style="italic" fill="url(#gld)" text-anchor="middle">f(x)</text>
+                  </svg>
+                </div>
+                <span class="fractalscript-btn-text">FractalScript</span>
+              </button>
+
+              <div class="live-price-bar" id="livePriceBar">
+                <div class="live-dot"></div>
+                <div class="live-price-val" id="livePriceVal">—</div>
+                <div class="live-price-change" id="livePriceChange"></div>
+                <div class="live-price-hl" id="livePriceHL" style="display:none"></div>
+                <div class="live-price-meta" id="livePriceMeta">LIVE</div>
+              </div>
             </div>
 
           </div>
@@ -7398,12 +7423,6 @@ var GROUPS = [
       { id:'magnet_t',  label:'Magnet snap', icon:S('<path d="M5 3a4 4 0 0 1 6 0v4a1 1 0 0 1-2 0V5a2 2 0 0 0-2 0v2a1 1 0 0 1-2 0z"/><path d="M4 11h8"/>'), toggle:true, magnettool:true, getState:function(){ return magnetOn; } },
     ]},
   'sep',
-  /* ── Pine Script ── */
-  { id:'pine_btn', single:true, toggle:true, pinescripttool:true,
-    icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2 L7 9 L9.5 9 L5 16 L10 16 L10 22 L14 22 L14 16 L19 16 L14.5 9 L17 9 Z" fill="currentColor" opacity=".85"/></svg>',
-    tooltip:'Pine Script',
-    getState:function(){ return pineOverlayOn; } },
-  'sep',
   /* ── Undo / Redo / Erase ── */
   { id:'edit_grp', icon:S('<path d="M3 8a6 6 0 1 1 1 6"/><path d="M3 4v4h4"/>'), tooltip:'Edit / Undo / Erase',
     items:[
@@ -9960,8 +9979,8 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;">
       <div style="display:flex;align-items:center;gap:10px;">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#c9a84c" stroke-width="1.2"><path d="M8 2 L4 7 L6 7 L3 13 L10 7 L7.5 7 L11 3 Z" fill="#c9a84c" stroke="none"/></svg>
-        <span style="font-family:'DM Sans',sans-serif;font-weight:600;color:#f0f4fa;font-size:15px;">Pine Script v5</span>
-        <span style="font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;">paste &amp; run</span>
+        <span style="font-family:'DM Sans',sans-serif;font-weight:600;color:#f0f4fa;font-size:15px;">FractalScript <span style="font-size:10px;opacity:0.5;font-weight:400;">(Pine-Compatible)</span></span>
+        <span style="font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;">logic engine</span>
       </div>
       <button onclick="_closePineModal()" style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
@@ -9970,8 +9989,11 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
       <div id="pineErrors"></div>
       <div id="pineInputsArea"></div>
     </div>
-    <div style="padding:12px 24px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;">
-      <span style="font-size:11px;color:rgba(255,255,255,0.25);font-family:'DM Mono',monospace;">Only //@version=5 supported</span>
+    <div style="padding:12px 24px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);">
+      <div style="flex:1;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;line-height:1.2;margin-bottom:2px;">Independent interpreter compatible with Pine Script® syntax. Not affiliated with TradingView®.</div>
+        <div style="font-size:11px;color:rgba(201,168,76,0.5);font-family:'DM Mono',monospace;">v5-compatible syntax only</div>
+      </div>
       <div style="display:flex;gap:8px;">
         <button onclick="_clearPineScript()" style="background:rgba(239,83,80,0.12);border:1px solid rgba(239,83,80,0.3);color:#ef5350;padding:8px 16px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,83,80,0.2)'" onmouseout="this.style.background='rgba(239,83,80,0.12)'">Clear</button>
         <button onclick="_runPineFromModal()" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;padding:8px 20px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(201,168,76,0.25)'" onmouseout="this.style.background='rgba(201,168,76,0.15)'">▶ Run</button>
@@ -9985,6 +10007,24 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
   var ta = document.getElementById('pineTextarea');
   /* Restore from localStorage */
   if (window.pineSource) ta.value = window.pineSource;
+
+  /* Global toggle for the new header button */
+  window._toggleFractalScript = function() {
+    window.pineOverlayOn = !window.pineOverlayOn;
+    var btn = document.getElementById('fractalScriptBtn');
+    if (btn) {
+      if (window.pineOverlayOn) btn.classList.add('on');
+      else btn.classList.remove('on');
+    }
+    
+    if (window.pineOverlayOn) {
+      _showPineModal();
+      if (!window.pineResult && window.pineSource) _runPineScript();
+    }
+    
+    if (typeof buildToolbar === 'function') buildToolbar();
+    if (typeof renderChart === 'function') renderChart();
+  };
 
   window._showPineModal = function() {
     var m = document.getElementById('pineModal');
@@ -10015,14 +10055,19 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
       overrides[f.dataset.name] = f.type === 'checkbox' ? f.checked : parseFloat(f.value) || f.value;
     }
 
-    if (!window.PineRuntime) { _showPineError('PineRuntime not loaded'); return; }
+    if (!window.PineRuntime) { _showPineError('FractalScript engine not loaded'); return; }
     var candles = window.chartCandles;
     if (!candles || candles.length < 2) { _showPineError('No candle data available'); return; }
 
     var result = window.PineRuntime.run(src, candles, overrides);
+    
+    /* Sync button state */
+    var fsBtn = document.getElementById('fractalScriptBtn');
+
     if (result.errors && result.errors.length > 0) {
       var errMsg = result.errors.map(function(e) { return 'Line ' + e.line + ':' + e.col + ' — ' + e.message; }).join('\n');
       _showPineError(errMsg);
+      if (fsBtn) fsBtn.classList.add('on');
       /* Still show inputs if available */
       if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
       return;
@@ -10030,6 +10075,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
 
     window.pineResult = result;
     window.pineOverlayOn = true;
+    if (fsBtn) fsBtn.classList.add('on');
     _hidePineError();
     if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
     if (typeof buildToolbar === 'function') buildToolbar();
