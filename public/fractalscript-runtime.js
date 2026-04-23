@@ -364,12 +364,12 @@
       return expr;
     }
 
-    function parseIf() {
+    function parseIf(parentCol) {
       var l = loc(); pos++; // consume 'if'
       var cond = parseExpression();
       if (cond && cond.error) return cond;
       skipNewlines();
-      var then = parseBlock();
+      var then = parseBlock(parentCol !== undefined ? parentCol : l.col);
       if (then && then.error) return then;
       var els = null;
       skipNewlines();
@@ -377,9 +377,9 @@
         pos++;
         skipNewlines();
         if (at(TT.KW_IF)) {
-          els = parseIf();
+          els = parseIf(parentCol !== undefined ? parentCol : l.col);
         } else {
-          els = parseBlock();
+          els = parseBlock(parentCol !== undefined ? parentCol : l.col);
         }
         if (els && els.error) return els;
       }
@@ -396,18 +396,18 @@
       var step = null;
       if (at(TT.KW_BY)) { pos++; step = parseExpression(); if (step && step.error) return step; }
       skipNewlines();
-      var body = parseBlock(); if (body && body.error) return body;
+      var body = parseBlock(l.col); if (body && body.error) return body;
       return { type: 'For', varName: varName.value, start: start, end: end, step: step, body: body, line: l.line, col: l.col };
     }
 
-    function parseBlock() {
-      /* fractal uses indentation — we simplify: collect indented statements until de-indent.
-         Since we strip tabs/spaces during lexing, we detect block end by:
-         - Next line starts at column <= previous statement's column
-         - Or we hit EOF, else, a top-level keyword at col 1 */
+    function parseBlock(parentCol) {
+      parentCol = parentCol || 0;
       var stmts = [];
       skipNewlines();
-      /* Read at least one statement */
+      var t = cur();
+      if (!t || t.col <= parentCol) return null; // empty block
+      var blockCol = t.col;
+
       var first = parseStatement();
       if (first && first.error) return first;
       if (first) stmts.push(first);
@@ -418,17 +418,12 @@
         if (s2) stmts.push(s2);
       }
 
-      /* Try to read more indented statements — peek ahead for indentation */
       while (!at(TT.EOF)) {
         skipNewlines();
         if (at(TT.EOF)) break;
-        /* Stop if we see a de-indented keyword */
-        var t = cur();
-        if (t.col <= 1 && (t.type === TT.KW_ELSE || t.type === TT.KW_IF || t.type === TT.KW_FOR ||
-            t.type === TT.KW_VAR || t.type === TT.KW_PLOT || t.type === TT.KW_PLOTSHAPE ||
-            t.type === TT.KW_BGCOLOR || t.type === TT.KW_HLINE || t.type === TT.KW_INDICATOR ||
-            t.type === TT.IDENT)) break;
-        if (t.col <= 1) break;
+        t = cur();
+        if (t.col < blockCol) break;
+
         var s = parseStatement();
         if (s && s.error) return s;
         if (s) stmts.push(s);
@@ -1476,6 +1471,7 @@
           var arr = evalArg(0);
           var idx = evalArg(1);
           if (Array.isArray(arr) && !isNa(idx) && idx >= 0 && idx < arr.length) return arr[idx];
+          console.log("ARRAY GET FAILED!", "arr:", arr, "idx:", idx, "isNa(idx):", isNa(idx));
           return NA;
         }
         case 'array.set': {
