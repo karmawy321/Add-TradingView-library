@@ -707,6 +707,120 @@
         return c.prev;
       },
 
+      wma: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var sum = 0, weightSum = 0;
+        for (var i = 0; i < length; i++) {
+          var w = (i + 1);
+          sum += c.buf[i] * w;
+          weightSum += w;
+        }
+        return sum / weightSum;
+      },
+
+      rsi: function(source, length, id) {
+        var c = getCache(id, function() { return { prevSrc: NA, gains: [], losses: [], lastAvgGain: NA, lastAvgLoss: NA, count: 0 }; });
+        if (isNa(source)) return NA;
+        if (isNa(c.prevSrc)) { c.prevSrc = source; return NA; }
+        var diff = source - c.prevSrc;
+        var gain = diff > 0 ? diff : 0;
+        var loss = diff < 0 ? -diff : 0;
+        c.prevSrc = source;
+        c.count++;
+        if (c.count <= length) {
+          c.gains.push(gain); c.losses.push(loss);
+          if (c.count === length) {
+            var gSum = 0, lSum = 0;
+            for (var i = 0; i < length; i++) { gSum += c.gains[i]; lSum += c.losses[i]; }
+            c.lastAvgGain = gSum / length; c.lastAvgLoss = lSum / length;
+            var rs = c.lastAvgLoss === 0 ? 100 : c.lastAvgGain / c.lastAvgLoss;
+            return 100 - (100 / (1 + rs));
+          }
+          return NA;
+        }
+        c.lastAvgGain = (c.lastAvgGain * (length - 1) + gain) / length;
+        c.lastAvgLoss = (c.lastAvgLoss * (length - 1) + loss) / length;
+        var rs2 = c.lastAvgLoss === 0 ? 100 : c.lastAvgGain / c.lastAvgLoss;
+        return 100 - (100 / (1 + rs2));
+      },
+
+      macd: function(source, fast, slow, sig, id) {
+        var m_id = id + '_m', s_id = id + '_s';
+        var fastEma = this.ema(source, fast, m_id + '_f');
+        var slowEma = this.ema(source, slow, m_id + '_s');
+        if (isNa(fastEma) || isNa(slowEma)) return [NA, NA, NA];
+        var macdLine = fastEma - slowEma;
+        var signalLine = this.ema(macdLine, sig, s_id);
+        if (isNa(signalLine)) return [macdLine, NA, NA];
+        return [macdLine, signalLine, macdLine - signalLine];
+      },
+
+      stoch: function(source, high, low, length, id) {
+        var c = getCache(id, function() { return { hBuf: [], lBuf: [] }; });
+        if (isNa(source) || isNa(high) || isNa(low)) return NA;
+        c.hBuf.push(high); c.lBuf.push(low);
+        if (c.hBuf.length > length) { c.hBuf.shift(); c.lBuf.shift(); }
+        if (c.hBuf.length < length) return NA;
+        var highest = -Infinity, lowest = Infinity;
+        for (var i = 0; i < length; i++) {
+          if (c.hBuf[i] > highest) highest = c.hBuf[i];
+          if (c.lBuf[i] < lowest) lowest = c.lBuf[i];
+        }
+        if (highest === lowest) return 100;
+        return 100 * (source - lowest) / (highest - lowest);
+      },
+
+      atr: function(high, low, close, prevClose, length, id) {
+        var tr;
+        if (isNa(prevClose)) {
+          tr = isNa(high) || isNa(low) ? NA : high - low;
+        } else {
+          if (isNa(high) || isNa(low)) { tr = NA; }
+          else { tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)); }
+        }
+        return this.rma(tr, length, id + '_rma');
+      },
+
+      vwap: function(source, volume, id) {
+        var c = getCache(id, function() { return { sumPV: 0, sumV: 0 }; });
+        if (isNa(source) || isNa(volume)) return NA;
+        c.sumPV += (source * volume);
+        c.sumV += volume;
+        return c.sumV === 0 ? NA : c.sumPV / c.sumV;
+      },
+
+      ema: function(source, length, id) {
+        var c = getCache(id, function() { return { prev: NA, count: 0, sum: 0 }; });
+        if (isNa(source)) return isNa(c.prev) ? NA : c.prev;
+        c.count++;
+        if (c.count <= length) {
+          c.sum += source;
+          if (c.count === length) { c.prev = c.sum / length; return c.prev; }
+          return NA;
+        }
+        var k = 2 / (length + 1);
+        c.prev = source * k + c.prev * (1 - k);
+        return c.prev;
+      },
+
+      rma: function(source, length, id) {
+        var c = getCache(id, function() { return { prev: NA, count: 0, sum: 0 }; });
+        if (isNa(source)) return isNa(c.prev) ? NA : c.prev;
+        c.count++;
+        if (c.count <= length) {
+          c.sum += source;
+          if (c.count === length) { c.prev = c.sum / length; return c.prev; }
+          return NA;
+        }
+        var alpha = 1 / length;
+        c.prev = alpha * source + (1 - alpha) * c.prev;
+        return c.prev;
+      },
+
       atr: function(high, low, close, prevClose, length, id) {
         /* ATR = RMA of True Range */
         var tr;
