@@ -1337,17 +1337,47 @@
           var b2 = evalArg(1);
           return ta.crossunder(a2, b2, id);
         }
+        case 'ta.ema': {
+          var srcE = evalArg(0);
+          var lenE = evalArg(1);
+          if (isNa(lenE)) return NA;
+          return ta.ema(srcE, Math.round(lenE), id);
+        }
+        case 'ta.rsi': {
+          var srcR = evalArg(0);
+          var lenR = evalArg(1);
+          if (isNa(lenR)) return NA;
+          return ta.rsi(srcR, Math.round(lenR), id);
+        }
+        case 'ta.wma': {
+          var srcW = evalArg(0);
+          var lenW = evalArg(1);
+          if (isNa(lenW)) return NA;
+          return ta.wma(srcW, Math.round(lenW), id);
+        }
         case 'ta.highest': {
-          var src4 = getNamedArg('source', 0);
-          var len5 = getNamedArg('length', 1);
+          var src4 = evalArg(0);
+          var len5 = evalArg(1);
           if (isNa(len5)) return NA;
           return ta.highest(src4, Math.round(len5), id);
         }
         case 'ta.lowest': {
-          var src5 = getNamedArg('source', 0);
-          var len6 = getNamedArg('length', 1);
+          var src5 = evalArg(0);
+          var len6 = evalArg(1);
           if (isNa(len6)) return NA;
           return ta.lowest(src5, Math.round(len6), id);
+        }
+        case 'ta.highestbars': {
+          var src6 = evalArg(0);
+          var len7 = evalArg(1);
+          if (isNa(len7)) return NA;
+          return ta.highestbars(src6, Math.round(len7), id);
+        }
+        case 'ta.lowestbars': {
+          var src7 = evalArg(0);
+          var len8 = evalArg(1);
+          if (isNa(len8)) return NA;
+          return ta.lowestbars(src7, Math.round(len8), id);
         }
         default:
           return { __error__: { line: node.line, col: node.col,
@@ -1473,6 +1503,17 @@
         case 'array.pop': {
           var arr = evalArg(0);
           if (Array.isArray(arr) && arr.length > 0) return arr.pop();
+          return NA;
+        }
+        case 'array.shift': {
+          var arr = evalArg(0);
+          if (Array.isArray(arr) && arr.length > 0) return arr.shift();
+          return NA;
+        }
+        case 'array.unshift': {
+          var arr = evalArg(0);
+          var val = evalArg(1);
+          if (Array.isArray(arr)) arr.unshift(val);
           return NA;
         }
         case 'array.shift': {
