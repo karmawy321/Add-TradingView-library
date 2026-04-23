@@ -940,9 +940,12 @@
     var bgcolors = [];    // {barIndex, color}
     var inputs = [];      // {name, type, default, value}
     var lines = [];       // {id, x1, y1, x2, y2, color, width, style, extend}
-    
+    var labels = [];      // {id, x, y, text, color, textcolor, style, size, textalign, tooltip}
+
     var nextLineId = 1;
+    var nextLabelId = 1;
     var max_lines_count = 50;
+    var max_labels_count = 50;
 
     var COLORS = {
       'red': '#FF5252', 'green': '#4CAF50', 'blue': '#2196F3', 'orange': '#FF9800',
@@ -957,6 +960,18 @@
     };
     var LINE_STYLES = { 'style_solid': 'solid', 'style_dashed': 'dashed', 'style_dotted': 'dotted' };
     var EXTEND_MODES = { 'none': 'none', 'right': 'right', 'left': 'left', 'both': 'both' };
+    var LABEL_STYLES = {
+      'style_none': 'none',
+      'style_label_up': 'label_up', 'style_label_down': 'label_down',
+      'style_label_left': 'label_left', 'style_label_right': 'label_right',
+      'style_label_center': 'label_center',
+      'style_label_upper_left': 'label_upper_left',  'style_label_upper_right': 'label_upper_right',
+      'style_label_lower_left': 'label_lower_left',  'style_label_lower_right': 'label_lower_right',
+      'style_arrowup': 'arrowup', 'style_arrowdown': 'arrowdown',
+      'style_triangleup': 'triangleup', 'style_triangledown': 'triangledown',
+      'style_circle': 'circle', 'style_square': 'square', 'style_diamond': 'diamond',
+      'style_cross': 'cross', 'style_xcross': 'xcross', 'style_flag': 'flag'
+    };
     var LOCATIONS = {
       'abovebar': 'abovebar', 'belowbar': 'belowbar', 'top': 'top', 'bottom': 'bottom', 'absolute': 'absolute'
     };
@@ -970,6 +985,11 @@
              if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'max_lines_count') {
                if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
                  max_lines_count = indArgs[j].value.value;
+               }
+             }
+             if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'max_labels_count') {
+               if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
+                 max_labels_count = indArgs[j].value.value;
                }
              }
              if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'overlay') {
@@ -1053,6 +1073,7 @@
       bgcolors: bgcolors,
       inputs: inputs,
       lines: lines,
+      labels: labels,
       overlay: overlay,
       errors: []
     };
@@ -1251,7 +1272,13 @@
       if (right && right.__error__) return right;
 
       switch (node.op) {
-        case '+':  return naArith(left, right, function(a,b){return a+b;});
+        case '+':
+          /* String concatenation when either side is a string */
+          if (typeof left === 'string' || typeof right === 'string') {
+            if (isNa(left) || isNa(right)) return NA;
+            return String(left) + String(right);
+          }
+          return naArith(left, right, function(a,b){return a+b;});
         case '-':  return naArith(left, right, function(a,b){return a-b;});
         case '*':  return naArith(left, right, function(a,b){return a*b;});
         case '/':  return naArith(left, right, function(a,b){return b===0?NA:a/b;});
@@ -1320,6 +1347,7 @@
       if (obj === 'ta') return 'ta.' + node.member;
       if (obj === 'input') return 'input.' + node.member;
       if (obj === 'line') return LINE_STYLES[node.member] || 'line.' + node.member;
+      if (obj === 'label') return LABEL_STYLES[node.member] || 'label.' + node.member;
       if (obj === 'extend') return EXTEND_MODES[node.member] || 'extend.' + node.member;
 
       return NA;
@@ -1362,6 +1390,11 @@
       /* line.* functions */
       if (callName.indexOf('line.') === 0) {
         return execLineCall(callName, node.args, node);
+      }
+
+      /* label.* functions */
+      if (callName.indexOf('label.') === 0) {
+        return execLabelCall(callName, node.args, node);
       }
 
       /* array.* functions */
@@ -1696,6 +1729,105 @@
         case 'line.get_y2': { var l4 = evalArg(0); return (l4 && l4.id) ? l4.y2 : NA; }
         default:
           return { __error__: { line: node.line, col: node.col, message: "Unknown line function '" + name + "'" } };
+      }
+    }
+
+    function execLabelCall(name, args, node) {
+      var evalArg = function(idx) {
+        if (idx >= args.length) return NA;
+        var a = args[idx];
+        return execNode(a.type === 'NamedArg' ? a.value : a);
+      };
+      var getNamedArg = function(argName, defaultIdx) {
+        for (var i = 0; i < args.length; i++) {
+          if (args[i].type === 'NamedArg' && args[i].name === argName) {
+            return execNode(args[i].value);
+          }
+        }
+        return defaultIdx !== undefined ? evalArg(defaultIdx) : NA;
+      };
+
+      switch (name) {
+        case 'label.new': {
+          var x = Number(getNamedArg('x', 0));
+          var y = Number(getNamedArg('y', 1));
+          if (isNaN(x) || isNaN(y)) return NA;
+          var text = getNamedArg('text', 2);
+          var color = getNamedArg('color', 3);
+          var style = getNamedArg('style', 4);
+          var textcolor = getNamedArg('textcolor', 5);
+          var size = getNamedArg('size', 6);
+          var textalign = getNamedArg('textalign', 7);
+          var tooltip = getNamedArg('tooltip', 8);
+          var lbl = {
+            id: nextLabelId++,
+            x: x, y: y,
+            text: isNa(text) ? '' : String(text),
+            color: isNa(color) ? '#2196F3' : color,
+            textcolor: isNa(textcolor) ? '#FFFFFF' : textcolor,
+            style: isNa(style) ? 'label_down' : style,
+            size: isNa(size) ? 'normal' : size,
+            textalign: isNa(textalign) ? 'center' : textalign,
+            tooltip: isNa(tooltip) ? '' : String(tooltip)
+          };
+          labels.push(lbl);
+          if (labels.length > max_labels_count) labels.shift();
+          return lbl;
+        }
+        case 'label.delete': {
+          var lb = evalArg(0);
+          if (lb && lb.id) {
+            for (var i = 0; i < labels.length; i++) {
+              if (labels[i].id === lb.id) { labels.splice(i, 1); break; }
+            }
+          }
+          return NA;
+        }
+        case 'label.set_text': {
+          var lb1 = evalArg(0); var t = evalArg(1);
+          if (lb1 && lb1.id) lb1.text = isNa(t) ? '' : String(t);
+          return NA;
+        }
+        case 'label.set_xy': {
+          var lb2 = evalArg(0); var nx = evalArg(1); var ny = evalArg(2);
+          if (lb2 && lb2.id && !isNa(nx) && !isNa(ny)) { lb2.x = Number(nx); lb2.y = Number(ny); }
+          return NA;
+        }
+        case 'label.set_x': {
+          var lb3 = evalArg(0); var nx1 = evalArg(1);
+          if (lb3 && lb3.id && !isNa(nx1)) lb3.x = Number(nx1);
+          return NA;
+        }
+        case 'label.set_y': {
+          var lb4 = evalArg(0); var ny1 = evalArg(1);
+          if (lb4 && lb4.id && !isNa(ny1)) lb4.y = Number(ny1);
+          return NA;
+        }
+        case 'label.set_color': {
+          var lb5 = evalArg(0); var c = evalArg(1);
+          if (lb5 && lb5.id && !isNa(c)) lb5.color = c;
+          return NA;
+        }
+        case 'label.set_textcolor': {
+          var lb6 = evalArg(0); var tc = evalArg(1);
+          if (lb6 && lb6.id && !isNa(tc)) lb6.textcolor = tc;
+          return NA;
+        }
+        case 'label.set_style': {
+          var lb7 = evalArg(0); var s = evalArg(1);
+          if (lb7 && lb7.id && !isNa(s)) lb7.style = s;
+          return NA;
+        }
+        case 'label.set_size': {
+          var lb8 = evalArg(0); var sz = evalArg(1);
+          if (lb8 && lb8.id && !isNa(sz)) lb8.size = sz;
+          return NA;
+        }
+        case 'label.get_x':    { var lg1 = evalArg(0); return (lg1 && lg1.id) ? lg1.x : NA; }
+        case 'label.get_y':    { var lg2 = evalArg(0); return (lg2 && lg2.id) ? lg2.y : NA; }
+        case 'label.get_text': { var lg3 = evalArg(0); return (lg3 && lg3.id) ? lg3.text : NA; }
+        default:
+          return { __error__: { line: node.line, col: node.col, message: "Unknown label function '" + name + "'" } };
       }
     }
 

@@ -5180,9 +5180,137 @@ function renderChart() {
         }
 
         chartCtx.beginPath();
-        chartCtx.moveTo(_x1, _y1); 
+        chartCtx.moveTo(_x1, _y1);
         chartCtx.lineTo(_x2, _y2);
         chartCtx.stroke();
+      }
+      chartCtx.restore();
+    }
+    /* labels */
+    if (fractalResult.labels && fractalResult.labels.length) {
+      chartCtx.save();
+      var _fsSizePx = { tiny: 9, small: 10, normal: 12, large: 14, huge: 18, auto: 11 };
+      /* Clip to chart area (or pane) so off-screen labels don't bleed */
+      if (_fsOverlay) {
+        chartCtx.beginPath();
+        chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, CH);
+        chartCtx.clip();
+      } else {
+        chartCtx.beginPath();
+        chartCtx.rect(PAD.l, _fsPaneTop, W - PAD.l - PAD.r, _fsPaneBottom - _fsPaneTop);
+        chartCtx.clip();
+      }
+      for (var _lbi = 0; _lbi < fractalResult.labels.length; _lbi++) {
+        var _LB = fractalResult.labels[_lbi];
+        var _lx = worldToScreenX(_LB.x);
+        var _ly = _fsOverlay ? worldToScreenY(_LB.y) : _fsPy(_LB.y);
+        /* Skip labels clearly off-screen */
+        if (_lx < -200 || _lx > W + 200) continue;
+        var _lfont = (_fsSizePx[_LB.size] || 12);
+        chartCtx.font = _lfont + 'px "DM Sans", sans-serif';
+        chartCtx.textBaseline = 'middle';
+        chartCtx.textAlign = 'center';
+        var _ltext = String(_LB.text == null ? '' : _LB.text);
+        var _ltw = _ltext ? chartCtx.measureText(_ltext).width : 0;
+        var _lpadX = 6, _lpadY = 3;
+        var _lbw = _ltw + _lpadX * 2;
+        var _lbh = _lfont + _lpadY * 2;
+        var _style = _LB.style || 'label_down';
+        var _lbox = null; // {x, y, w, h}
+        var _arrow = null; // {ax, ay, bx, by, cx, cy}
+        /* Position box + arrow by style */
+        if (_style === 'label_down') {
+          _lbox = { x: _lx - _lbw/2, y: _ly + 6, w: _lbw, h: _lbh };
+          _arrow = { ax: _lx, ay: _ly, bx: _lx - 5, by: _ly + 6, cx: _lx + 5, cy: _ly + 6 };
+        } else if (_style === 'label_up') {
+          _lbox = { x: _lx - _lbw/2, y: _ly - 6 - _lbh, w: _lbw, h: _lbh };
+          _arrow = { ax: _lx, ay: _ly, bx: _lx - 5, by: _ly - 6, cx: _lx + 5, cy: _ly - 6 };
+        } else if (_style === 'label_left') {
+          _lbox = { x: _lx - _lbw - 6, y: _ly - _lbh/2, w: _lbw, h: _lbh };
+          _arrow = { ax: _lx, ay: _ly, bx: _lx - 6, by: _ly - 5, cx: _lx - 6, cy: _ly + 5 };
+        } else if (_style === 'label_right') {
+          _lbox = { x: _lx + 6, y: _ly - _lbh/2, w: _lbw, h: _lbh };
+          _arrow = { ax: _lx, ay: _ly, bx: _lx + 6, by: _ly - 5, cx: _lx + 6, cy: _ly + 5 };
+        } else if (_style === 'label_center') {
+          _lbox = { x: _lx - _lbw/2, y: _ly - _lbh/2, w: _lbw, h: _lbh };
+        } else if (_style === 'label_upper_left') {
+          _lbox = { x: _lx - _lbw, y: _ly - _lbh, w: _lbw, h: _lbh };
+        } else if (_style === 'label_upper_right') {
+          _lbox = { x: _lx, y: _ly - _lbh, w: _lbw, h: _lbh };
+        } else if (_style === 'label_lower_left') {
+          _lbox = { x: _lx - _lbw, y: _ly, w: _lbw, h: _lbh };
+        } else if (_style === 'label_lower_right') {
+          _lbox = { x: _lx, y: _ly, w: _lbw, h: _lbh };
+        } else if (_style === 'none') {
+          _lbox = null; // text only, no background
+        } else {
+          /* marker styles: arrowup/down, triangleup/down, circle, square, diamond, flag, cross, xcross */
+          var _fcolor = _LB.color || '#2196F3';
+          chartCtx.fillStyle = _fcolor;
+          chartCtx.strokeStyle = _fcolor;
+          chartCtx.lineWidth = 2;
+          chartCtx.beginPath();
+          if (_style === 'arrowup' || _style === 'triangleup') {
+            chartCtx.moveTo(_lx, _ly - 7); chartCtx.lineTo(_lx + 6, _ly + 4); chartCtx.lineTo(_lx - 6, _ly + 4); chartCtx.closePath(); chartCtx.fill();
+          } else if (_style === 'arrowdown' || _style === 'triangledown') {
+            chartCtx.moveTo(_lx, _ly + 7); chartCtx.lineTo(_lx + 6, _ly - 4); chartCtx.lineTo(_lx - 6, _ly - 4); chartCtx.closePath(); chartCtx.fill();
+          } else if (_style === 'circle') {
+            chartCtx.arc(_lx, _ly, 5, 0, Math.PI * 2); chartCtx.fill();
+          } else if (_style === 'square') {
+            chartCtx.fillRect(_lx - 5, _ly - 5, 10, 10);
+          } else if (_style === 'diamond') {
+            chartCtx.moveTo(_lx, _ly - 6); chartCtx.lineTo(_lx + 5, _ly); chartCtx.lineTo(_lx, _ly + 6); chartCtx.lineTo(_lx - 5, _ly); chartCtx.closePath(); chartCtx.fill();
+          } else if (_style === 'flag') {
+            chartCtx.fillRect(_lx, _ly - 8, 8, 6);
+            chartCtx.fillRect(_lx, _ly - 8, 1, 12);
+          } else if (_style === 'cross' || _style === 'xcross') {
+            chartCtx.moveTo(_lx - 5, _ly - 5); chartCtx.lineTo(_lx + 5, _ly + 5);
+            chartCtx.moveTo(_lx + 5, _ly - 5); chartCtx.lineTo(_lx - 5, _ly + 5);
+            chartCtx.stroke();
+          }
+          /* text below the marker if any */
+          if (_ltext) {
+            _lbox = { x: _lx - _lbw/2, y: _ly + 10, w: _lbw, h: _lbh };
+          }
+        }
+        /* Draw arrow (triangle pointer) */
+        if (_arrow) {
+          chartCtx.fillStyle = _LB.color || '#2196F3';
+          chartCtx.beginPath();
+          chartCtx.moveTo(_arrow.ax, _arrow.ay);
+          chartCtx.lineTo(_arrow.bx, _arrow.by);
+          chartCtx.lineTo(_arrow.cx, _arrow.cy);
+          chartCtx.closePath();
+          chartCtx.fill();
+        }
+        /* Draw box */
+        if (_lbox) {
+          chartCtx.fillStyle = _LB.color || '#2196F3';
+          chartCtx.beginPath();
+          if (chartCtx.roundRect) {
+            chartCtx.roundRect(_lbox.x, _lbox.y, _lbox.w, _lbox.h, 3);
+          } else {
+            chartCtx.rect(_lbox.x, _lbox.y, _lbox.w, _lbox.h);
+          }
+          chartCtx.fill();
+        }
+        /* Draw text */
+        if (_ltext) {
+          chartCtx.fillStyle = _LB.textcolor || '#FFFFFF';
+          var _tx, _ty;
+          if (_lbox) {
+            var _align = _LB.textalign || 'center';
+            if (_align === 'left') { chartCtx.textAlign = 'left'; _tx = _lbox.x + _lpadX; }
+            else if (_align === 'right') { chartCtx.textAlign = 'right'; _tx = _lbox.x + _lbox.w - _lpadX; }
+            else { chartCtx.textAlign = 'center'; _tx = _lbox.x + _lbox.w / 2; }
+            _ty = _lbox.y + _lbox.h / 2;
+          } else {
+            /* style === 'none' — draw at point */
+            chartCtx.textAlign = 'center';
+            _tx = _lx; _ty = _ly;
+          }
+          chartCtx.fillText(_ltext, _tx, _ty);
+        }
       }
       chartCtx.restore();
     }
