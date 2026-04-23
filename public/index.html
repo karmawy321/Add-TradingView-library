@@ -5129,11 +5129,25 @@ function renderChart() {
         var _hy = _fsOverlay ? worldToScreenY(_hl.price) : _fsPy(_hl.price);
         if (_fsOverlay && (_hy < PAD.t || _hy > H - PAD.b)) continue;
         if (!_fsOverlay && (_hy < _fsPaneTop || _hy > _fsPaneBottom)) continue;
-        chartCtx.strokeStyle = _hl.color || '#FF9800';
+        var _hlColor = _hl.color || '#FF9800';
+        chartCtx.strokeStyle = _hlColor;
         chartCtx.lineWidth = _hl.lineWidth || 1;
-        chartCtx.setLineDash([4, 4]);
+        var _hls = _hl.linestyle || 'dashed';
+        if (_hls === 'solid') chartCtx.setLineDash([]);
+        else if (_hls === 'dotted') chartCtx.setLineDash([2, 3]);
+        else chartCtx.setLineDash([4, 4]);
         chartCtx.beginPath(); chartCtx.moveTo(_FRACTALLEdge, _hy); chartCtx.lineTo(_FRACTALREdge, _hy); chartCtx.stroke();
         chartCtx.setLineDash([]);
+        /* Right-axis price badge */
+        var _hlTxt = typeof _hl.price === 'number' ? _hl.price.toFixed(3) : String(_hl.price);
+        chartCtx.font = 'bold 10px sans-serif';
+        var _hlTw = chartCtx.measureText(_hlTxt).width;
+        var _hlBx = _FRACTALREdge + 2, _hlBw = _hlTw + 8, _hlBh = 14;
+        chartCtx.fillStyle = _hlColor;
+        chartCtx.fillRect(_hlBx, _hy - _hlBh / 2, _hlBw, _hlBh);
+        chartCtx.fillStyle = '#000000';
+        chartCtx.textAlign = 'left';
+        chartCtx.fillText(_hlTxt, _hlBx + 4, _hy + 4);
       }
     }
     /* lines */

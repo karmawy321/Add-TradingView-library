@@ -1255,7 +1255,8 @@
 
       /* Namespace roots */
       if (name === 'ta' || name === 'math' || name === 'color' || name === 'shape' ||
-          name === 'location' || name === 'size' || name === 'input' || name === 'str') return name;
+          name === 'location' || name === 'size' || name === 'input' || name === 'str' ||
+          name === 'hline') return name;
 
       return NA;
     }
@@ -1350,6 +1351,7 @@
       if (obj === 'label') return LABEL_STYLES[node.member] || 'label.' + node.member;
       if (obj === 'str') return 'str.' + node.member;
       if (obj === 'extend') return EXTEND_MODES[node.member] || 'extend.' + node.member;
+      if (obj === 'hline') return 'hline.' + node.member;
 
       return NA;
     }
@@ -2202,7 +2204,7 @@
       /* hline only needs to be added once */
       if (barIndex > 0) return NA;
 
-      var color = '#FF9800', lw = 1, title = '';
+      var color = '#FF9800', lw = 1, title = '', linestyle = 'dashed';
       for (var i = 0; i < args.length; i++) {
         var a = args[i];
         if (a.type === 'NamedArg') {
@@ -2210,9 +2212,15 @@
           if (a.name === 'color') color = (typeof v === 'string') ? v : color;
           if (a.name === 'linewidth') lw = v || 1;
           if (a.name === 'title') title = v || '';
+          if (a.name === 'linestyle') {
+            var ls = typeof v === 'string' ? v : 'dashed';
+            if (ls.indexOf('solid') >= 0) linestyle = 'solid';
+            else if (ls.indexOf('dotted') >= 0) linestyle = 'dotted';
+            else linestyle = 'dashed';
+          }
         }
       }
-      hlines.push({ price: price, color: color, lineWidth: lw, title: title });
+      hlines.push({ price: price, color: color, lineWidth: lw, linestyle: linestyle, title: title });
       return NA;
     }
   }
