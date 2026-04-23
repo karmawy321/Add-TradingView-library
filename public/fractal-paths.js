@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
    FRACTAL PATTERN - SPECIALIZED PATHS
-   Port of the Pine Script logic from afa.txt
+   Port of the FractalScript logic from afa.txt
    ═══════════════════════════════════════════════════════════════ */
 
 (function(global) {

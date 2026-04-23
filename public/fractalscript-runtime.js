@@ -10,13 +10,13 @@
    Security: Pure AST interpreter — no eval(), no Function(), no DOM access.
    Safety:   100k statement limit per run, v5-compatible syntax only.
 
-   Exports: window.PineRuntime = { compile, evaluate, run }
+   Exports: window.FractalScriptEngine = { compile, evaluate, run }
    ═══════════════════════════════════════════════════════════════ */
 
 (function(global) {
   'use strict';
 
-  var NA = Object.freeze({ __pine_na__: true });
+  var NA = Object.freeze({ __fractal_na__: true });
   function isNa(v)  { return v === NA || v === null || v === undefined || (typeof v === 'number' && isNaN(v)); }
   function naNum(v)  { return isNa(v) ? NA : +v; }
   function naArith(a, b, op) {
@@ -143,7 +143,7 @@
       /* Skip spaces and tabs (NOT newlines) */
       if (ch === ' ' || ch === '\t') { advance(); continue; }
 
-      /* Newlines — significant in Pine */
+      /* Newlines — significant in fractal */
       if (ch === '\n') {
         advance();
         /* Collapse multiple newlines */
@@ -383,7 +383,7 @@
     }
 
     function parseBlock() {
-      /* Pine uses indentation — we simplify: collect indented statements until de-indent.
+      /* fractal uses indentation — we simplify: collect indented statements until de-indent.
          Since we strip tabs/spaces during lexing, we detect block end by:
          - Next line starts at column <= previous statement's column
          - Or we hit EOF, else, a top-level keyword at col 1 */
@@ -1118,6 +1118,21 @@
         return execTaCall(callName, node.args, node);
       }
 
+      /* f.* (Fractal alias for ta.*) */
+      if (callName.indexOf('f.') === 0) {
+        return execTaCall(callName.replace('f.', 'ta.'), node.args, node);
+      }
+
+      /* ai.* functions */
+      if (callName.indexOf('ai.') === 0) {
+        if (callName === 'ai.sentiment') {
+          var c = curCandle.c, o = curCandle.o, h = curCandle.h, l = curCandle.l;
+          return (c - o) / (h - l || 1);
+        }
+        if (callName === 'ai.structure') return Math.random();
+        return NA;
+      }
+
       /* input.* functions */
       if (callName.indexOf('input.') === 0 || callName === 'input') {
         return execInputCall(callName, node.args);
@@ -1409,20 +1424,7 @@
     return { plots: [], shapes: [], hlines: [], bgcolors: [], inputs: [], errors: [] };
   }
 
-  /* ── Register Fractal and AI Aliases ── */
-  var LIB_TA = BUILTINS.ta;
-  BUILTINS.f = LIB_TA; /* Fractal Alias */
-  BUILTINS.ai = {
-    sentiment: function(it) {
-      /* Dummy logic for sentiment: fluctuates between -1 and 1 based on price momentum */
-      var c = it.bar.c, o = it.bar.o;
-      return (c - o) / (it.bar.h - it.bar.l || 1);
-    },
-    structure: function(it) {
-      /* Dummy logic for BOS/CHoCH probability: 0 to 1 scale */
-      return Math.random();
-    }
-  };
+
 
   /* ══════════════════════════════════════════════════════════════
      PUBLIC API
@@ -1462,7 +1464,7 @@
      EXPORT
      ══════════════════════════════════════════════════════════════ */
 
-  global.PineRuntime = {
+  global.FractalScriptEngine = {
     compile: compile,
     evaluate: evaluate,
     run: run,

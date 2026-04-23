@@ -1,14 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════
-   PINE RUNTIME — Unit Tests
-   Run: node pine-runtime.test.js
+   fractalscript RUNTIME — Unit Tests
+   Run: node fractalscript-runtime.test.js
    ═══════════════════════════════════════════════════════════════ */
 
 /* Load the runtime — IIFE uses `typeof window !== 'undefined' ? window : this`.
    In Node's require() context, `this` is module.exports, not global.
-   Set global.window so the IIFE writes PineRuntime to it. */
+   Set global.window so the IIFE writes FractalScriptEngine to it. */
 global.window = global;
-require('./public/pine-runtime.js');
-var PineRuntime = global.PineRuntime;
+require('./public/fractalscript-runtime.js');
+var FractalScriptEngine = global.FractalScriptEngine;
 
 var passed = 0, failed = 0, total = 0;
 
@@ -42,22 +42,22 @@ section('Lexer');
 
 (function() {
   /* Version gate — reject v4 */
-  var r1 = PineRuntime.compile('//@version=4\nindicator("test")');
+  var r1 = FractalScriptEngine.compile('//@version=4\nindicator("test")');
   assert(r1.error !== null, 'Should reject //@version=4');
   assert(r1.error.message.indexOf('v4') >= 0, 'Error should mention v4');
 
   /* Version gate — reject missing */
-  var r2 = PineRuntime.compile('indicator("test")');
+  var r2 = FractalScriptEngine.compile('indicator("test")');
   assert(r2.error !== null, 'Should reject missing version');
 
   /* Version gate — accept v5 */
-  var r3 = PineRuntime.compile('//@version=5\nindicator("test")');
+  var r3 = FractalScriptEngine.compile('//@version=5\nindicator("test")');
   assert(r3.error === null, 'Should accept //@version=5');
   assert(r3.ast !== null, 'Should produce AST for v5');
 
   /* Token line/col accuracy */
   var src = '//@version=5\nx = 42';
-  var r4 = PineRuntime.compile(src);
+  var r4 = FractalScriptEngine.compile(src);
   assert(r4.ast !== null, 'Should parse simple assignment');
   /* The assignment should be on line 2 */
   if (r4.ast && r4.ast.body && r4.ast.body.length > 0) {
@@ -66,15 +66,15 @@ section('Lexer');
   }
 
   /* Comment stripping */
-  var r5 = PineRuntime.compile('//@version=5\n// this is a comment\nx = 10');
+  var r5 = FractalScriptEngine.compile('//@version=5\n// this is a comment\nx = 10');
   assert(r5.error === null, 'Comments should be stripped');
 
   /* String literal */
-  var r6 = PineRuntime.compile('//@version=5\nindicator("My Test")');
+  var r6 = FractalScriptEngine.compile('//@version=5\nindicator("My Test")');
   assert(r6.error === null, 'String literals should parse');
 
   /* na literal */
-  var r7 = PineRuntime.compile('//@version=5\nx = na');
+  var r7 = FractalScriptEngine.compile('//@version=5\nx = na');
   assert(r7.error === null, 'na literal should parse');
 })();
 
@@ -85,46 +85,46 @@ section('Parser');
 
 (function() {
   /* Variable declaration */
-  var r1 = PineRuntime.compile('//@version=5\nx = 42');
+  var r1 = FractalScriptEngine.compile('//@version=5\nx = 42');
   assert(r1.ast.body[0].type === 'VarDecl', 'Should parse as VarDecl');
   assert(r1.ast.body[0].name === 'x', 'Variable name should be x');
 
   /* Persistent var */
-  var r2 = PineRuntime.compile('//@version=5\nvar count = 0');
+  var r2 = FractalScriptEngine.compile('//@version=5\nvar count = 0');
   assert(r2.ast.body[0].persistent === true, 'var should be persistent');
 
   /* If/else */
-  var r3 = PineRuntime.compile('//@version=5\nif close > open\n    x = 1');
+  var r3 = FractalScriptEngine.compile('//@version=5\nif close > open\n    x = 1');
   assert(r3.error === null, 'If statement should parse');
   assert(r3.ast.body[0].type === 'If', 'Should be an If node');
 
   /* For loop */
-  var r4 = PineRuntime.compile('//@version=5\nfor i = 0 to 10\n    x = i');
+  var r4 = FractalScriptEngine.compile('//@version=5\nfor i = 0 to 10\n    x = i');
   assert(r4.error === null, 'For loop should parse');
   assert(r4.ast.body[0].type === 'For', 'Should be a For node');
 
   /* History ref close[1] */
-  var r5 = PineRuntime.compile('//@version=5\nx = close[1]');
+  var r5 = FractalScriptEngine.compile('//@version=5\nx = close[1]');
   assert(r5.error === null, 'History ref should parse');
 
   /* Ternary */
-  var r6 = PineRuntime.compile('//@version=5\nx = close > open ? 1 : 0');
+  var r6 = FractalScriptEngine.compile('//@version=5\nx = close > open ? 1 : 0');
   assert(r6.error === null, 'Ternary should parse');
 
   /* Plot with named args */
-  var r7 = PineRuntime.compile('//@version=5\nplot(close, title="Price", color=color.blue)');
+  var r7 = FractalScriptEngine.compile('//@version=5\nplot(close, title="Price", color=color.blue)');
   assert(r7.error === null, 'Plot with named args should parse');
 
   /* ta.sma call */
-  var r8 = PineRuntime.compile('//@version=5\nx = ta.sma(close, 14)');
+  var r8 = FractalScriptEngine.compile('//@version=5\nx = ta.sma(close, 14)');
   assert(r8.error === null, 'ta.sma should parse');
 
   /* Nested member access */
-  var r9 = PineRuntime.compile('//@version=5\nx = color.red');
+  var r9 = FractalScriptEngine.compile('//@version=5\nx = color.red');
   assert(r9.error === null, 'Member access should parse');
 
   /* Binary expression precedence */
-  var r10 = PineRuntime.compile('//@version=5\nx = 1 + 2 * 3');
+  var r10 = FractalScriptEngine.compile('//@version=5\nx = 1 + 2 * 3');
   assert(r10.error === null, 'Arithmetic should parse');
 })();
 
@@ -137,7 +137,7 @@ section('Evaluator');
   var candles = makeCandles(50);
 
   /* Simple SMA */
-  var r1 = PineRuntime.run(
+  var r1 = FractalScriptEngine.run(
     '//@version=5\nindicator("test", overlay=true)\nfast = ta.sma(close, 5)\nplot(fast, title="SMA5")',
     candles
   );
@@ -157,7 +157,7 @@ section('Evaluator');
     'SMA5 at bar 4 should be ' + expectedSma5.toFixed(4) + ', got ' + r1.plots[0].values[4].toFixed(4));
 
   /* na propagation — arithmetic */
-  var r2 = PineRuntime.run(
+  var r2 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nx = na + 5\nplot(x)',
     candles
   );
@@ -165,7 +165,7 @@ section('Evaluator');
   assert(isNaN(r2.plots[0].values[0]), 'na + 5 should be NaN in output');
 
   /* na comparison */
-  var r3 = PineRuntime.run(
+  var r3 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\ncond = na > 5\nplotshape(cond, style=shape.circle)',
     candles
   );
@@ -173,7 +173,7 @@ section('Evaluator');
   assert(r3.shapes.length === 0, 'na > 5 should produce no shapes (false)');
 
   /* var persistence across bars */
-  var r4 = PineRuntime.run(
+  var r4 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nvar count = 0\ncount := count + 1\nplot(count, title="Count")',
     candles
   );
@@ -182,7 +182,7 @@ section('Evaluator');
   assert(r4.plots[0].values[49] === 50, 'Count at bar 49 should be 50, got ' + r4.plots[0].values[49]);
 
   /* Statement limit — use a huge loop that would exceed 5M */
-  var r5 = PineRuntime.run(
+  var r5 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nfor i = 0 to 9999999\n    x = i',
     makeCandles(5)
   );
@@ -197,14 +197,14 @@ section('Evaluator');
     var slow = 95 + ci * 0.2;
     crossCandles.push({ t: Date.now() + ci * 60000, o: fast, h: fast + 1, l: fast - 1, c: fast, v: 100 });
   }
-  var r6 = PineRuntime.run(
+  var r6 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nplotshape(ta.crossover(close, ta.sma(close, 5)), style=shape.triangleup, location=location.belowbar)',
     crossCandles
   );
   assert(r6.errors.length === 0, 'Crossover script should run');
 
   /* plotshape with condition */
-  var r7 = PineRuntime.run(
+  var r7 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nplotshape(close > open, style=shape.triangleup, location=location.belowbar, color=color.green)',
     candles
   );
@@ -212,7 +212,7 @@ section('Evaluator');
   assert(r7.shapes.length > 0, 'Should produce some shapes where close > open');
 
   /* hline */
-  var r8 = PineRuntime.run(
+  var r8 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nhline(100, title="Mid", color=color.red)',
     candles
   );
@@ -221,7 +221,7 @@ section('Evaluator');
   assert(r8.hlines[0].price === 100, 'hline price should be 100');
 
   /* EMA convergence */
-  var r9 = PineRuntime.run(
+  var r9 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nplot(ta.ema(close, 10), title="EMA10")',
     makeCandles(100)
   );
@@ -229,7 +229,7 @@ section('Evaluator');
   assert(!isNaN(r9.plots[0].values[99]), 'EMA at bar 99 should have a value');
 
   /* input.int */
-  var r10 = PineRuntime.run(
+  var r10 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nlen = input.int(14, "Length")\nplot(ta.sma(close, len), title="SMA")',
     candles
   );
@@ -239,7 +239,7 @@ section('Evaluator');
   assert(r10.inputs[0].value === 14, 'Input default should be 14');
 
   /* input override */
-  var r11 = PineRuntime.run(
+  var r11 = FractalScriptEngine.run(
     '//@version=5\nindicator("test")\nlen = input.int(14, "Length")\nplot(ta.sma(close, len), title="SMA")',
     candles,
     { 'Length': 5 }

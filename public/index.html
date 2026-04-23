@@ -8,7 +8,7 @@
 <script src="https://js.stripe.com/v3/"></script>
 <script src="ma-cascade.js"></script>
 <script src="fractal-paths.js"></script>
-<script src="pine-runtime.js"></script>
+<script src="fractalscript-runtime.js"></script>
 <!-- Fractal AI Agent v3.0 -->
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -4533,10 +4533,10 @@ var gbmOn            = false;
 var ouOn             = false;
 var kalmanOn         = false;
 var maCascadeOn      = false;
-var pineOverlayOn    = false;
-var pineResult       = null;
-var pineSource       = localStorage.getItem('pineSource') || '';
-var _pineRevalTimer  = null;
+var fractalOverlayOn    = false;
+var fractalResult       = null;
+var fractalSource       = localStorage.getItem('fractalSource') || '';
+var _FRACTALRevalTimer  = null;
 var vpvrAnchorX      = null;  /* null = auto right edge (W-PAD.r-2); set by drag */
 var _vpvrDragging    = false;
 var _vpvrDragOff     = 0;
@@ -5003,13 +5003,13 @@ function renderChart() {
     });
   }
 
-  /* ── Pine Script overlay ── */
-  if (pineOverlayOn && pineResult && pineResult.plots) {
-    var _pineLEdge = PAD.l, _pineREdge = W - PAD.r;
+  /* ── FractalScript overlay ── */
+  if (fractalOverlayOn && fractalResult && fractalResult.plots) {
+    var _FRACTALLEdge = PAD.l, _FRACTALREdge = W - PAD.r;
     /* bgcolors */
-    if (pineResult.bgcolors) {
-      for (var _bi = 0; _bi < pineResult.bgcolors.length; _bi++) {
-        var _bg = pineResult.bgcolors[_bi];
+    if (fractalResult.bgcolors) {
+      for (var _bi = 0; _bi < fractalResult.bgcolors.length; _bi++) {
+        var _bg = fractalResult.bgcolors[_bi];
         var _bgGi = _bg.barIndex;
         if (_bgGi < startIdx || _bgGi >= endIdx) continue;
         var _bgX = worldToScreenX(_bgGi);
@@ -5018,8 +5018,8 @@ function renderChart() {
       }
     }
     /* plots — draw as lines */
-    for (var _pi = 0; _pi < pineResult.plots.length; _pi++) {
-      var _pp = pineResult.plots[_pi];
+    for (var _pi = 0; _pi < fractalResult.plots.length; _pi++) {
+      var _pp = fractalResult.plots[_pi];
       chartCtx.strokeStyle = _pp.color; chartCtx.lineWidth = _pp.lineWidth || 1;
       chartCtx.setLineDash([]); chartCtx.beginPath();
       var _ppDrew = false;
@@ -5043,9 +5043,9 @@ function renderChart() {
       if (_ppDrew) chartCtx.stroke();
     }
     /* shapes */
-    if (pineResult.shapes) {
-      for (var _si2 = 0; _si2 < pineResult.shapes.length; _si2++) {
-        var _sh = pineResult.shapes[_si2];
+    if (fractalResult.shapes) {
+      for (var _si2 = 0; _si2 < fractalResult.shapes.length; _si2++) {
+        var _sh = fractalResult.shapes[_si2];
         if (_sh.barIndex < startIdx || _sh.barIndex >= endIdx) continue;
         var _sx = worldToScreenX(_sh.barIndex);
         var _sy = worldToScreenY(_sh.price);
@@ -5071,15 +5071,15 @@ function renderChart() {
       }
     }
     /* hlines */
-    if (pineResult.hlines) {
-      for (var _hi = 0; _hi < pineResult.hlines.length; _hi++) {
-        var _hl = pineResult.hlines[_hi];
+    if (fractalResult.hlines) {
+      for (var _hi = 0; _hi < fractalResult.hlines.length; _hi++) {
+        var _hl = fractalResult.hlines[_hi];
         var _hy = worldToScreenY(_hl.price);
         if (_hy < PAD.t || _hy > H - PAD.b) continue;
         chartCtx.strokeStyle = _hl.color || '#FF9800';
         chartCtx.lineWidth = _hl.lineWidth || 1;
         chartCtx.setLineDash([4, 4]);
-        chartCtx.beginPath(); chartCtx.moveTo(_pineLEdge, _hy); chartCtx.lineTo(_pineREdge, _hy); chartCtx.stroke();
+        chartCtx.beginPath(); chartCtx.moveTo(_FRACTALLEdge, _hy); chartCtx.lineTo(_FRACTALREdge, _hy); chartCtx.stroke();
         chartCtx.setLineDash([]);
       }
     }
@@ -7485,7 +7485,7 @@ function buildToolbar() {
     }
     var wrap=document.createElement('div'); wrap.className='tb-group';
     var btn=document.createElement('button');
-    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||kalmanOn||fractalPathsOn))||(g.stochgroup&&(gbmOn||ouOn))||(g.overlaysgroup&&(vpvrOn||liqHeatmapOn||volBubblesOn||maCascadeOn||pineOverlayOn))||(g.measuregroup&&(activeTool==='measure'||magnetOn)))?' active':'');
+    btn.className='tb-main'+((isActive(g)||(g.quantgroup&&(hurstOn||garchBandsOn||fractalSignalOn||kalmanOn||fractalPathsOn))||(g.stochgroup&&(gbmOn||ouOn))||(g.overlaysgroup&&(vpvrOn||liqHeatmapOn||volBubblesOn||maCascadeOn||fractalOverlayOn))||(g.measuregroup&&(activeTool==='measure'||magnetOn)))?' active':'');
     btn.innerHTML=g.icon+((!g.single&&g.items&&g.items.length>1)?'<span class="tb-arr"></span>':'');
 
     if (g.single) {
@@ -7584,7 +7584,7 @@ function pickItem(item) {
   if(item.undotool)  { doUndo(); return; }
   if(item.redotool)  { doRedo(); return; }
   if(item.erasertool){ saveUndo(); window.drawings=[]; drawings=window.drawings; renderChart&&renderChart(); return; }
-  if(item.clearalltools){ vpvrOn=liqHeatmapOn=volBubblesOn=hurstOn=garchBandsOn=fractalSignalOn=kalmanOn=gbmOn=ouOn=maCascadeOn=fractalPathsOn=pineOverlayOn=false; pineResult=null; buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.clearalltools){ vpvrOn=liqHeatmapOn=volBubblesOn=hurstOn=garchBandsOn=fractalSignalOn=kalmanOn=gbmOn=ouOn=maCascadeOn=fractalPathsOn=fractalOverlayOn=false; fractalResult=null; buildToolbar(); renderChart&&renderChart(); return; }
 
   /* ── Quantitative overlays — toggle on/off from dropdown ── */
   if(item.hursttool)        { hurstOn=!hurstOn;        buildToolbar(); renderChart&&renderChart(); return; }
@@ -7598,7 +7598,7 @@ function pickItem(item) {
   if(item.liqheatmaptool){ liqHeatmapOn=!liqHeatmapOn; buildToolbar(); renderChart&&renderChart(); return; }
   if(item.volbubblestool){ volBubblesOn=!volBubblesOn; buildToolbar(); renderChart&&renderChart(); return; }
   if(item.macascadetool) { maCascadeOn=!maCascadeOn;   buildToolbar(); renderChart&&renderChart(); return; }
-  if(item.pinescripttool) { pineOverlayOn=!pineOverlayOn; if(pineOverlayOn) { _showPineModal(); if(!pineResult && pineSource) _runPineScript(); } buildToolbar(); renderChart&&renderChart(); return; }
+  if(item.FractalScripttool) { fractalOverlayOn=!fractalOverlayOn; if(fractalOverlayOn) { _showfractalModal(); if(!fractalResult && fractalSource) _runFractalScript(); } buildToolbar(); renderChart&&renderChart(); return; }
   if(item.measuretool)   { activeTool='measure'; activeItem=item; measuring=true; measurePts=[]; setCursor('crosshair'); buildToolbar(); return; }
   if(item.zoomtool)      { chartView.zoom=Math.min(8,chartView.zoom*1.5); renderChart&&renderChart(); return; }
   if(item.magnettool)    { magnetOn=!magnetOn; buildToolbar(); return; }
@@ -7634,7 +7634,7 @@ function handleSingle(g) {
   if (g.liqheatmaptool)    { liqHeatmapOn=!liqHeatmapOn; buildToolbar(); renderChart&&renderChart(); return; }
   if (g.volbubblestool)    { volBubblesOn=!volBubblesOn; buildToolbar(); renderChart&&renderChart(); return; }
   if (g.macascadetool)     { maCascadeOn=!maCascadeOn;   buildToolbar(); renderChart&&renderChart(); return; }
-  if (g.pinescripttool)    { pineOverlayOn=!pineOverlayOn; if(pineOverlayOn) { _showPineModal(); if(!pineResult && pineSource) _runPineScript(); } buildToolbar(); renderChart&&renderChart(); return; }
+  if (g.FractalScripttool)    { fractalOverlayOn=!fractalOverlayOn; if(fractalOverlayOn) { _showfractalModal(); if(!fractalResult && fractalSource) _runFractalScript(); } buildToolbar(); renderChart&&renderChart(); return; }
 }
 
 function setCursor(cur) {
@@ -9793,7 +9793,7 @@ function showCanvas(x,y,idx){
   ));
   M.appendChild(btn(
     '<circle cx="8" cy="8" r="5.5"/><line x1="5.5" y1="5.5" x2="10.5" y2="10.5"/><line x1="10.5" y1="5.5" x2="5.5" y2="10.5"/>','Clear all tools','red',
-    function(){ window.vpvrOn=window.liqHeatmapOn=window.volBubblesOn=window.hurstOn=window.garchBandsOn=window.fractalSignalOn=window.kalmanOn=window.gbmOn=window.ouOn=window.maCascadeOn=window.fractalPathsOn=window.pineOverlayOn=false; window.pineResult=null; fx.buildToolbar(); fx.renderChart(); }
+    function(){ window.vpvrOn=window.liqHeatmapOn=window.volBubblesOn=window.hurstOn=window.garchBandsOn=window.fractalSignalOn=window.kalmanOn=window.gbmOn=window.ouOn=window.maCascadeOn=window.fractalPathsOn=window.fractalOverlayOn=false; window.fractalResult=null; fx.buildToolbar(); fx.renderChart(); }
   ));
   M.appendChild(sep());
 
@@ -9954,43 +9954,43 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
   </div>
 </div>
 
-<!-- PINE SCRIPT PASTE MODAL -->
+<!-- FractalScript PASTE MODAL -->
 <style>
-#pineModal { display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:2147483647;backdrop-filter:blur(4px);align-items:center;justify-content:center; }
-#pineModal.show { display:flex; }
-#pineModalInner { background:#090b11;border:1px solid rgba(201,168,76,.3);width:92%;max-width:720px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.8);display:flex;flex-direction:column;max-height:85vh;overflow:hidden; }
-#pineTextarea { width:100%;min-height:220px;max-height:380px;background:#0d1018;color:#dde4ee;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:12px;font-family:'DM Mono','Courier New',monospace;font-size:12px;resize:vertical;outline:none;tab-size:4; }
-#pineTextarea:focus { border-color:rgba(201,168,76,0.4); }
-#pineErrors { color:#ef5350;font-family:'DM Mono',monospace;font-size:11px;padding:8px 12px;background:rgba(239,83,80,0.08);border:1px solid rgba(239,83,80,0.25);border-radius:4px;display:none;margin-top:8px;white-space:pre-wrap; }
-#pineInputsArea { display:flex;flex-wrap:wrap;gap:8px;margin-top:8px; }
-.pine-input-field { display:flex;flex-direction:column;gap:2px; }
-.pine-input-field label { font-size:10px;color:rgba(255,255,255,0.5);font-family:'DM Mono',monospace; }
-.pine-input-field input { width:80px;background:#131720;border:1px solid rgba(255,255,255,0.1);color:#dde4ee;border-radius:4px;padding:4px 8px;font-family:'DM Mono',monospace;font-size:12px;outline:none; }
-.pine-input-field input:focus { border-color:rgba(201,168,76,0.4); }
+#fractalModal { display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:2147483647;backdrop-filter:blur(4px);align-items:center;justify-content:center; }
+#fractalModal.show { display:flex; }
+#fractalModalInner { background:#090b11;border:1px solid rgba(201,168,76,.3);width:92%;max-width:720px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.8);display:flex;flex-direction:column;max-height:85vh;overflow:hidden; }
+#fractalEditor { width:100%;min-height:220px;max-height:380px;background:#0d1018;color:#dde4ee;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:12px;font-family:'DM Mono','Courier New',monospace;font-size:12px;resize:vertical;outline:none;tab-size:4; }
+#fractalEditor:focus { border-color:rgba(201,168,76,0.4); }
+#fractalErrors { color:#ef5350;font-family:'DM Mono',monospace;font-size:11px;padding:8px 12px;background:rgba(239,83,80,0.08);border:1px solid rgba(239,83,80,0.25);border-radius:4px;display:none;margin-top:8px;white-space:pre-wrap; }
+#fractalInputs { display:flex;flex-wrap:wrap;gap:8px;margin-top:8px; }
+.FRACTAL-input-field { display:flex;flex-direction:column;gap:2px; }
+.FRACTAL-input-field label { font-size:10px;color:rgba(255,255,255,0.5);font-family:'DM Mono',monospace; }
+.FRACTAL-input-field input { width:80px;background:#131720;border:1px solid rgba(255,255,255,0.1);color:#dde4ee;border-radius:4px;padding:4px 8px;font-family:'DM Mono',monospace;font-size:12px;outline:none; }
+.FRACTAL-input-field input:focus { border-color:rgba(201,168,76,0.4); }
 </style>
-<div id="pineModal">
-  <div id="pineModalInner">
+<div id="fractalModal">
+  <div id="fractalModalInner">
     <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;">
       <div style="display:flex;align-items:center;gap:10px;">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#c9a84c" stroke-width="1.2"><path d="M8 2 L4 7 L6 7 L3 13 L10 7 L7.5 7 L11 3 Z" fill="#c9a84c" stroke="none"/></svg>
-        <span style="font-family:'DM Sans',sans-serif;font-weight:600;color:#f0f4fa;font-size:15px;">FractalScript <span style="font-size:10px;opacity:0.5;font-weight:400;">(Pine-Compatible)</span></span>
+        <span style="font-family:'DM Sans',sans-serif;font-weight:600;color:#f0f4fa;font-size:15px;">FractalScript <span style="font-size:10px;opacity:0.5;font-weight:400;">(FractalScript-compatible)</span></span>
         <span style="font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;">logic engine</span>
       </div>
-      <button onclick="_closePineModal()" style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      <button onclick="_closefractalModal()" style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div style="padding:16px 24px;flex:1;overflow-y:auto;">
-      <textarea id="pineTextarea" placeholder="//@version=5&#10;indicator(&quot;My Indicator&quot;, overlay=true)&#10;&#10;fast = ta.sma(close, 9)&#10;slow = ta.sma(close, 21)&#10;&#10;plot(fast, title=&quot;Fast&quot;, color=color.blue)&#10;plot(slow, title=&quot;Slow&quot;, color=color.orange)"></textarea>
-      <div id="pineErrors"></div>
-      <div id="pineInputsArea"></div>
+      <textarea id="fractalEditor" placeholder="//@version=5&#10;indicator(&quot;My Indicator&quot;, overlay=true)&#10;&#10;fast = ta.sma(close, 9)&#10;slow = ta.sma(close, 21)&#10;&#10;plot(fast, title=&quot;Fast&quot;, color=color.blue)&#10;plot(slow, title=&quot;Slow&quot;, color=color.orange)"></textarea>
+      <div id="fractalErrors"></div>
+      <div id="fractalInputs"></div>
     </div>
     <div style="padding:12px 24px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);">
       <div style="flex:1;">
-        <div style="font-size:10px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;line-height:1.2;margin-bottom:2px;">Independent interpreter compatible with Pine Script® syntax. Not affiliated with TradingView®.</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;line-height:1.2;margin-bottom:2px;">Independent interpreter compatible with FractalScript® syntax. Not affiliated with TradingView®.</div>
         <div style="font-size:11px;color:rgba(201,168,76,0.5);font-family:'DM Mono',monospace;">v5-compatible syntax only</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button onclick="_clearPineScript()" style="background:rgba(239,83,80,0.12);border:1px solid rgba(239,83,80,0.3);color:#ef5350;padding:8px 16px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,83,80,0.2)'" onmouseout="this.style.background='rgba(239,83,80,0.12)'">Clear</button>
-        <button onclick="_runPineFromModal()" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;padding:8px 20px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(201,168,76,0.25)'" onmouseout="this.style.background='rgba(201,168,76,0.15)'">▶ Run</button>
+        <button onclick="_clearFractalScript()" style="background:rgba(239,83,80,0.12);border:1px solid rgba(239,83,80,0.3);color:#ef5350;padding:8px 16px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,83,80,0.2)'" onmouseout="this.style.background='rgba(239,83,80,0.12)'">Clear</button>
+        <button onclick="_runFractalFromModal()" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;padding:8px 20px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(201,168,76,0.25)'" onmouseout="this.style.background='rgba(201,168,76,0.15)'">▶ Run</button>
       </div>
     </div>
   </div>
@@ -9998,40 +9998,40 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
 <script>
 (function(){
   'use strict';
-  var ta = document.getElementById('pineTextarea');
+  var ta = document.getElementById('fractalEditor');
   /* Restore from localStorage */
-  if (window.pineSource) ta.value = window.pineSource;
+  if (window.fractalSource) ta.value = window.fractalSource;
 
   /* Global toggle for the new header button */
   window._toggleFractalScript = function() {
-    window.pineOverlayOn = !window.pineOverlayOn;
+    window.fractalOverlayOn = !window.fractalOverlayOn;
     var glow = document.getElementById('fsBtnGlow');
     var txt = document.getElementById('fsLabelText');
-    if (glow) glow.style.opacity = window.pineOverlayOn ? '1' : '0';
+    if (glow) glow.style.opacity = window.fractalOverlayOn ? '1' : '0';
     if (txt) {
-      txt.style.color = window.pineOverlayOn ? '#c9a84c' : 'rgba(255,255,255,0.2)';
-      txt.style.textShadow = window.pineOverlayOn ? '0 0 10px rgba(201,168,76,0.3)' : 'none';
+      txt.style.color = window.fractalOverlayOn ? '#c9a84c' : 'rgba(255,255,255,0.2)';
+      txt.style.textShadow = window.fractalOverlayOn ? '0 0 10px rgba(201,168,76,0.3)' : 'none';
     }
     
-    if (window.pineOverlayOn) {
-      _showPineModal();
-      if (!window.pineResult && window.pineSource) _runPineScript();
+    if (window.fractalOverlayOn) {
+      _showfractalModal();
+      if (!window.fractalResult && window.fractalSource) _runFractalScript();
     }
     
     if (typeof buildToolbar === 'function') buildToolbar();
     if (typeof renderChart === 'function') renderChart();
   };
 
-  window._showPineModal = function() {
-    var m = document.getElementById('pineModal');
+  window._showfractalModal = function() {
+    var m = document.getElementById('fractalModal');
     if (m) { m.classList.add('show'); ta.focus(); }
   };
-  window._closePineModal = function() {
-    var m = document.getElementById('pineModal');
+  window._closefractalModal = function() {
+    var m = document.getElementById('fractalModal');
     if (m) m.classList.remove('show');
   };
-  window._runPineScript = function() {
-    var src = ta ? ta.value : window.pineSource;
+  window._runFractalScript = function() {
+    var src = ta ? ta.value : window.fractalSource;
     if (!src || !src.trim()) return;
 
     /* Auto-strip RTF formatting if detected */
@@ -10040,22 +10040,22 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
       if (ta) ta.value = src; /* Update textarea with cleaned version */
     }
 
-    window.pineSource = src;
-    localStorage.setItem('pineSource', src);
+    window.fractalSource = src;
+    localStorage.setItem('fractalSource', src);
 
     /* Gather input overrides */
     var overrides = {};
-    var fields = document.querySelectorAll('#pineInputsArea input');
+    var fields = document.querySelectorAll('#fractalInputs input');
     for (var i = 0; i < fields.length; i++) {
       var f = fields[i];
       overrides[f.dataset.name] = f.type === 'checkbox' ? f.checked : parseFloat(f.value) || f.value;
     }
 
-    if (!window.PineRuntime) { _showPineError('FractalScript engine not loaded'); return; }
+    if (!window.FractalScriptEngine) { _showfractalError('FractalScript engine not loaded'); return; }
     var candles = window.chartCandles;
-    if (!candles || candles.length < 2) { _showPineError('No candle data available'); return; }
+    if (!candles || candles.length < 2) { _showfractalError('No candle data available'); return; }
 
-    var result = window.PineRuntime.run(src, candles, overrides);
+    var result = window.FractalScriptEngine.run(src, candles, overrides);
     
     /* Sync button state */
     var glow = document.getElementById('fsBtnGlow');
@@ -10063,58 +10063,58 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
 
     if (result.errors && result.errors.length > 0) {
       var errMsg = result.errors.map(function(e) { return 'Line ' + e.line + ':' + e.col + ' — ' + e.message; }).join('\n');
-      _showPineError(errMsg);
+      _showfractalError(errMsg);
       if (glow) glow.style.opacity = '1';
       if (txt) {
         txt.style.color = '#c9a84c';
         txt.style.textShadow = '0 0 10px rgba(201,168,76,0.3)';
       }
       /* Still show inputs if available */
-      if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
+      if (result.inputs && result.inputs.length > 0) _buildFractalInputs(result.inputs);
       return;
     }
 
-    window.pineResult = result;
-    window.pineOverlayOn = true;
+    window.fractalResult = result;
+    window.fractalOverlayOn = true;
     if (glow) glow.style.opacity = '1';
     if (txt) {
       txt.style.color = '#c9a84c';
       txt.style.textShadow = '0 0 10px rgba(201,168,76,0.3)';
     }
-    _hidePineError();
-    if (result.inputs && result.inputs.length > 0) _buildPineInputs(result.inputs);
+    _hidefractalError();
+    if (result.inputs && result.inputs.length > 0) _buildFractalInputs(result.inputs);
     if (typeof buildToolbar === 'function') buildToolbar();
     if (typeof renderChart === 'function') renderChart();
   };
-  window._runPineFromModal = function() {
-    if (ta) window.pineSource = ta.value;
-    _runPineScript();
+  window._runFractalFromModal = function() {
+    if (ta) window.fractalSource = ta.value;
+    _runFractalScript();
   };
-  window._clearPineScript = function() {
+  window._clearFractalScript = function() {
     if (ta) ta.value = '';
-    window.pineSource = '';
-    window.pineResult = null;
-    localStorage.removeItem('pineSource');
-    _hidePineError();
-    var ia = document.getElementById('pineInputsArea');
+    window.fractalSource = '';
+    window.fractalResult = null;
+    localStorage.removeItem('fractalSource');
+    _hidefractalError();
+    var ia = document.getElementById('fractalInputs');
     if (ia) ia.innerHTML = '';
     if (typeof renderChart === 'function') renderChart();
   };
-  function _showPineError(msg) {
-    var el = document.getElementById('pineErrors');
+  function _showfractalError(msg) {
+    var el = document.getElementById('fractalErrors');
     if (el) { el.textContent = msg; el.style.display = 'block'; }
   }
-  function _hidePineError() {
-    var el = document.getElementById('pineErrors');
+  function _hidefractalError() {
+    var el = document.getElementById('fractalErrors');
     if (el) { el.textContent = ''; el.style.display = 'none'; }
   }
-  function _buildPineInputs(inputs) {
-    var area = document.getElementById('pineInputsArea');
+  function _buildFractalInputs(inputs) {
+    var area = document.getElementById('fractalInputs');
     if (!area) return;
     area.innerHTML = '';
     for (var i = 0; i < inputs.length; i++) {
       var inp = inputs[i];
-      var div = document.createElement('div'); div.className = 'pine-input-field';
+      var div = document.createElement('div'); div.className = 'FRACTAL-input-field';
       var lbl = document.createElement('label'); lbl.textContent = inp.name || ('Input ' + (i+1));
       var field = document.createElement('input');
       field.dataset.name = inp.name;
@@ -10123,12 +10123,12 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
       } else {
         field.type = 'number'; field.value = inp.value; field.step = inp.type === 'float' ? '0.1' : '1';
       }
-      field.addEventListener('change', function() { _runPineScript(); });
+      field.addEventListener('change', function() { _runFractalScript(); });
       div.appendChild(lbl); div.appendChild(field); area.appendChild(div);
     }
   }
 
-  /* RTF auto-stripper — converts RTF-formatted Pine scripts to plain text */
+  /* RTF auto-stripper — converts RTF-formatted FractalScripts to plain text */
   function _stripRTF(rtf) {
     var text = rtf;
     /* Jump to //@version if present — skip all RTF header junk */
@@ -10149,15 +10149,15 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
   var _origRender = window.renderChart;
   if (typeof _origRender === 'function') {
     /* We don't wrap renderChart itself — instead, use a MutationObserver-like approach.
-       Simply re-run every 5s if Pine is active and candles changed. */
+       Simply re-run every 5s if FRACTAL is active and candles changed. */
   }
   setInterval(function() {
-    if (window.pineOverlayOn && window.pineSource && window.chartCandles && window.chartCandles.length > 2) {
+    if (window.fractalOverlayOn && window.fractalSource && window.chartCandles && window.chartCandles.length > 2) {
       /* Only re-run if candle count changed */
       var key = window.chartCandles.length + '_' + (window.chartCandles[window.chartCandles.length-1] ? window.chartCandles[window.chartCandles.length-1].c : 0);
-      if (window._pineLastKey !== key) {
-        window._pineLastKey = key;
-        _runPineScript();
+      if (window._FRACTALLastKey !== key) {
+        window._FRACTALLastKey = key;
+        _runFractalScript();
       }
     }
   }, 2000);
@@ -10165,15 +10165,15 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
   /* Close modal on Escape */
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      var m = document.getElementById('pineModal');
-      if (m && m.classList.contains('show')) { _closePineModal(); e.stopPropagation(); }
+      var m = document.getElementById('fractalModal');
+      if (m && m.classList.contains('show')) { _closefractalModal(); e.stopPropagation(); }
     }
   });
 
   /* Close modal on backdrop click */
-  var modal = document.getElementById('pineModal');
+  var modal = document.getElementById('fractalModal');
   if (modal) {
-    modal.addEventListener('click', function(e) { if (e.target === modal) _closePineModal(); });
+    modal.addEventListener('click', function(e) { if (e.target === modal) _closefractalModal(); });
   }
 })();
 </script>

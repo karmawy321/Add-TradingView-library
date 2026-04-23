@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
    FRACTAL GEOMETRY — alternating MA-cross bridge levels.
-   Port of the Pine Script "Machine Learning Level" idea:
+   Port of the FractalScript "Machine Learning Level" idea:
      Event A = SMA(900) x SMA(1500)
      Event B = SMA(100) x SMA(200)
      When A and B fire within 250 bars of each other, draw a
