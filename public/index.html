@@ -5104,20 +5104,31 @@ function renderChart() {
         /* extend logic */
         if (_L.extend === 'right' || _L.extend === 'extend.right') {
           var dx = _x2 - _x1, dy = _y2 - _y1;
-          if (dx !== 0 || dy !== 0) { _x2 += dx * 10000; _y2 += dy * 10000; }
+          if (dx !== 0 || dy !== 0) { _x2 += dx * 100; _y2 += dy * 100; }
         } else if (_L.extend === 'left' || _L.extend === 'extend.left') {
           var dx2 = _x1 - _x2, dy2 = _y1 - _y2;
-          if (dx2 !== 0 || dy2 !== 0) { _x1 += dx2 * 10000; _y1 += dy2 * 10000; }
+          if (dx2 !== 0 || dy2 !== 0) { _x1 += dx2 * 100; _y1 += dy2 * 100; }
         } else if (_L.extend === 'both' || _L.extend === 'extend.both') {
           var dx3 = _x2 - _x1, dy3 = _y2 - _y1;
           if (dx3 !== 0 || dy3 !== 0) {
-             _x1 -= dx3 * 10000; _y1 -= dy3 * 10000;
-             _x2 += dx3 * 10000; _y2 += dy3 * 10000;
+             _x1 -= dx3 * 100; _y1 -= dy3 * 100;
+             _x2 += dx3 * 100; _y2 += dy3 * 100;
           }
+        }
+        
+        /* Coordinate Clipping: Browser Canvas fails if coords are too large */
+        var LIMIT = 10000;
+        if (Math.abs(_x1) > LIMIT || Math.abs(_y1) > LIMIT || Math.abs(_x2) > LIMIT || Math.abs(_y2) > LIMIT) {
+           // Basic clipping to keep it within a few thousand pixels of the screen
+           if (_x1 < -LIMIT) _x1 = -LIMIT; if (_x1 > LIMIT) _x1 = LIMIT;
+           if (_y1 < -LIMIT) _y1 = -LIMIT; if (_y1 > LIMIT) _y1 = LIMIT;
+           if (_x2 < -LIMIT) _x2 = -LIMIT; if (_x2 > LIMIT) _x2 = LIMIT;
+           if (_y2 < -LIMIT) _y2 = -LIMIT; if (_y2 > LIMIT) _y2 = LIMIT;
         }
 
         chartCtx.beginPath();
-        chartCtx.moveTo(_x1, _y1); chartCtx.lineTo(_x2, _y2);
+        chartCtx.moveTo(_x1, _y1); 
+        chartCtx.lineTo(_x2, _y2);
         chartCtx.stroke();
       }
       chartCtx.restore();
