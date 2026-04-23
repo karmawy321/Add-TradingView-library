@@ -9999,7 +9999,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     if (!src || !src.trim()) return;
 
     /* Auto-strip RTF formatting if detected */
-    if (src.indexOf('{\\rtf') === 0 || src.indexOf('{\\rtf') >= 0) {
+    if (src.indexOf('{' + String.fromCharCode(92) + 'rtf') >= 0) {
       src = _stripRTF(src);
       if (ta) ta.value = src; /* Update textarea with cleaned version */
     }
@@ -10079,31 +10079,22 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
 
   /* RTF auto-stripper — converts RTF-formatted Pine scripts to plain text */
   function _stripRTF(rtf) {
-    /* Remove the RTF header up to the first //@version or first real content */
     var text = rtf;
-    /* Remove {\rtf1...} wrapper and font tables */
-    text = text.replace(/^\{\\rtf[^}]*\}\s*/i, '');
-    text = text.replace(/\{\\\*\\[^}]*\}/g, '');      /* {\*\generator ...} blocks */
-    text = text.replace(/\{\\fonttbl[^}]*\}/g, '');    /* font tables */
-    text = text.replace(/\{\\colortbl[^}]*\}/g, '');   /* color tables */
-    /* Remove \pard, \sa, \sl, \f0, \fs, \lang and other formatting commands */
-    text = text.replace(/\\pard[^\\]*/g, '');
-    text = text.replace(/\\(sa|sl|slmult|f|fs|lang|ansi|ansicpg|deff|nouicompat|deflang|viewkind|uc)\d*/g, '');
-    /* Convert \par to newline */
-    text = text.replace(/\\par\b\s*/g, '\n');
-    /* Remove remaining RTF control words (\word or \word0) */
-    text = text.replace(/\\[a-z]+\d*\s?/gi, '');
-    /* Remove braces */
-    text = text.replace(/[{}]/g, '');
-    /* Remove null bytes */
-    text = text.replace(/\x00/g, '');
-    /* Clean up extra whitespace */
-    text = text.replace(/\r/g, '');
-    text = text.replace(/\n{3,}/g, '\n\n');
+    /* Jump to //@version if present — skip all RTF header junk */
+    var vi = text.indexOf('//@version');
+    if (vi > 0) text = text.substring(vi);
+    /* Replace \par with newline */
+    text = text.split(String.fromCharCode(92) + 'par').join(String.fromCharCode(10));
+    /* Remove remaining backslash-commands like \f0 \fs22 \lang9 etc */
+    text = text.replace(/\\[a-zA-Z]+\d*\s?/g, '');
+    /* Remove braces and null bytes */
+    text = text.replace(/[{}]/g, '').replace(/\x00/g, '');
+    /* Clean up whitespace */
+    text = text.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n');
     return text.trim();
   }
 
-  /* Auto re-run on candle changes (debounced 1s) */
+    /* Auto re-run on candle changes (debounced 1s) */
   var _origRender = window.renderChart;
   if (typeof _origRender === 'function') {
     /* We don't wrap renderChart itself — instead, use a MutationObserver-like approach.
