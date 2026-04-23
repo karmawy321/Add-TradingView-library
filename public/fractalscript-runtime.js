@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   FractalScript (v5-compatible subset)
+   FractalScript (Pine Script v5-compatible subset)
    Lexer → Parser → AST → Bar-by-bar Evaluator → Draw Commands
 
    Supported: ta.sma/ema/rma/atr/crossover/crossunder/highest/lowest,

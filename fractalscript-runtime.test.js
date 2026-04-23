@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   fractalscript RUNTIME — Unit Tests
+   FRACTALSCRIPT RUNTIME — Unit Tests
    Run: node fractalscript-runtime.test.js
    ═══════════════════════════════════════════════════════════════ */
 
