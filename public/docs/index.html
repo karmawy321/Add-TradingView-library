@@ -285,7 +285,10 @@ line.new(bar_index-1, v[1], bar_index, v, color=isBull ? color.lime : color.red,
                             <div class="code-block">//@version=5
 indicator("MACD Visual", overlay=true)
 
-[macd, sig, hist] = ta.macd(close, 12, 26, 9)
+// Calculate MACD manually for parser safety
+macdLine = ta.ema(close, 12) - ta.ema(close, 26)
+signalLine = ta.ema(macdLine, 9)
+hist = macdLine - signalLine
 
 // Draw histogram as vertical lines from high/low
 if bar_index % 2 == 0
@@ -308,7 +311,9 @@ if bar_index % 2 == 0
 indicator("Level Grid", overlay=true)
 
 level = math.round(close / 100) * 100
-if level != level[1]
+isNew = level != level[1]
+
+if isNew
     line.new(bar_index, level, bar_index+1, level, color=color.white, extend=extend.both)</div>
                             <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
                         </div>
