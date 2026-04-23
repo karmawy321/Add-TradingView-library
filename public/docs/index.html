@@ -310,11 +310,12 @@ if bar_index % 2 == 0
                             <div class="code-block">//@version=5
 indicator("Level Grid", overlay=true)
 
-curLevel = math.round(close / 100) * 100
-prevLevel = curLevel[1]
+// Using simple price to demonstrate infinite extension
+curPrice = close
+prevPrice = close[1]
 
-if curLevel != prevLevel
-    line.new(bar_index, curLevel, bar_index+1, curLevel, color=color.white, extend=extend.both)</div>
+if curPrice != prevPrice
+    line.new(bar_index, curPrice, bar_index+1, curPrice, color=color.white, extend=extend.both)</div>
                             <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
                         </div>
                     </div>
