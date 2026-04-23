@@ -306,8 +306,31 @@
       if (at(TT.KW_BGCOLOR)) return parseBgColorCall();
       if (at(TT.KW_HLINE)) return parseHlineCall();
 
+      /* Tuple destructuring: [a, b, c] = expr  or  [a, b, c] := expr */
+      if (at(TT.LBRACKET)) return parseTupleAssign();
+
       /* Assignment or expression */
       return parseAssignmentOrExpr();
+    }
+
+    function parseTupleAssign() {
+      var l = loc(); pos++; // consume '['
+      var names = [];
+      skipNewlines();
+      while (!at(TT.RBRACKET)) {
+        var ident = eat(TT.IDENT); if (ident.error) return ident;
+        names.push(ident.value);
+        skipNewlines();
+        if (!tryEat(TT.COMMA)) break;
+        skipNewlines();
+      }
+      var rb = eat(TT.RBRACKET); if (rb && rb.error) return rb;
+      var isReassign = false;
+      if (at(TT.REASSIGN)) { isReassign = true; pos++; }
+      else { var ra = eat(TT.ASSIGN); if (ra && ra.error) return ra; }
+      var value = parseExpression();
+      if (value && value.error) return value;
+      return { type: 'TupleAssign', names: names, value: value, reassign: isReassign, line: l.line, col: l.col };
     }
 
     function parseIndicator() {
@@ -627,8 +650,13 @@
       /* Boolean */
       if (at(TT.KW_TRUE))  { pos++; return { type: 'BoolLiteral', value: true, line: t.line, col: t.col }; }
       if (at(TT.KW_FALSE)) { pos++; return { type: 'BoolLiteral', value: false, line: t.line, col: t.col }; }
-      /* na */
-      if (at(TT.KW_NA)) { pos++; return { type: 'NaLiteral', value: NA, line: t.line, col: t.col }; }
+      /* na — literal, OR function-call form na(expr) */
+      if (at(TT.KW_NA)) {
+        pos++;
+        /* If followed by '(', treat as identifier so parsePostfix forms a Call — execCall handles 'na' as test */
+        if (at(TT.LPAREN)) return { type: 'Identifier', name: 'na', line: t.line, col: t.col };
+        return { type: 'NaLiteral', value: NA, line: t.line, col: t.col };
+      }
 
       /* Identifier */
       if (at(TT.IDENT)) { pos++; return { type: 'Identifier', name: t.value, line: t.line, col: t.col }; }
@@ -933,6 +961,7 @@
       'abovebar': 'abovebar', 'belowbar': 'belowbar', 'top': 'top', 'bottom': 'bottom', 'absolute': 'absolute'
     };
     /* Parse indicator params */
+    var overlay = true; // default: overlay on main price chart
     if (ast.type === 'Program') {
       for (var i = 0; i < ast.body.length; i++) {
         if (ast.body[i].type === 'Indicator') {
@@ -942,6 +971,10 @@
                if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
                  max_lines_count = indArgs[j].value.value;
                }
+             }
+             if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'overlay') {
+               var ov = indArgs[j].value;
+               if (ov && ov.type === 'BoolLiteral') overlay = !!ov.value;
              }
            }
         }
@@ -1020,6 +1053,7 @@
       bgcolors: bgcolors,
       inputs: inputs,
       lines: lines,
+      overlay: overlay,
       errors: []
     };
 
@@ -1093,6 +1127,7 @@
         case 'Identifier':   return resolveVar(node.name);
         case 'VarDecl':      return execVarDecl(node);
         case 'Reassign':     return execReassign(node);
+        case 'TupleAssign':  return execTupleAssign(node);
         case 'BinaryExpr':   return execBinary(node);
         case 'UnaryExpr':    return execUnary(node);
         case 'Ternary':      return execTernary(node);
@@ -1152,6 +1187,25 @@
       if (val && val.__error__) return val;
       if (node.name in persistentVars) { persistentVars[node.name] = val; delete barVars[node.name]; }
       else { barVars[node.name] = val; }
+      return val;
+    }
+
+    function execTupleAssign(node) {
+      var val = execNode(node.value);
+      if (val && val.__error__) return val;
+      if (!Array.isArray(val)) {
+        return { __error__: { line: node.line, col: node.col,
+          message: 'Tuple destructuring requires an array/tuple on the right side' } };
+      }
+      for (var i = 0; i < node.names.length; i++) {
+        var name = node.names[i];
+        var v = i < val.length ? val[i] : NA;
+        if (node.reassign && (name in persistentVars)) {
+          persistentVars[name] = v; delete barVars[name];
+        } else {
+          barVars[name] = v;
+        }
+      }
       return val;
     }
 

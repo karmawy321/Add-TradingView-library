@@ -5006,7 +5006,59 @@ function renderChart() {
   /* ── FractalScript overlay ── */
   if (fractalOverlayOn && fractalResult && fractalResult.plots) {
     var _FRACTALLEdge = PAD.l, _FRACTALREdge = W - PAD.r;
-    /* bgcolors */
+    var _fsOverlay = fractalResult.overlay !== false; // default true
+
+    /* Sub-pane geometry for overlay=false — bottom 28% of chart area */
+    var _fsPaneTop = 0, _fsPaneBottom = 0, _fsPaneMin = 0, _fsPaneRange = 1;
+    if (!_fsOverlay) {
+      var _fsPaneH = Math.max(60, CH * 0.28);
+      _fsPaneBottom = PAD.t + CH;
+      _fsPaneTop = _fsPaneBottom - _fsPaneH;
+      /* Compute min/max over plot values + hlines for pane-local Y scale */
+      var _fsMin = Infinity, _fsMax = -Infinity;
+      for (var _fpi = 0; _fpi < fractalResult.plots.length; _fpi++) {
+        var _fpv = fractalResult.plots[_fpi].values;
+        for (var _fvi = 0; _fvi < _fpv.length; _fvi++) {
+          var _fv = _fpv[_fvi];
+          if (!isNaN(_fv)) { if (_fv < _fsMin) _fsMin = _fv; if (_fv > _fsMax) _fsMax = _fv; }
+        }
+      }
+      if (fractalResult.hlines) {
+        for (var _fhi = 0; _fhi < fractalResult.hlines.length; _fhi++) {
+          var _fhp = fractalResult.hlines[_fhi].price;
+          if (typeof _fhp === 'number' && !isNaN(_fhp)) {
+            if (_fhp < _fsMin) _fsMin = _fhp; if (_fhp > _fsMax) _fsMax = _fhp;
+          }
+        }
+      }
+      if (!isFinite(_fsMin) || !isFinite(_fsMax)) { _fsMin = 0; _fsMax = 1; }
+      if (_fsMin === _fsMax) { _fsMin -= 1; _fsMax += 1; }
+      var _fsPad = (_fsMax - _fsMin) * 0.08;
+      _fsMin -= _fsPad; _fsMax += _fsPad;
+      _fsPaneMin = _fsMin;
+      _fsPaneRange = _fsMax - _fsMin;
+      /* Pane background + top separator */
+      chartCtx.fillStyle = 'rgba(6,8,13,0.82)';
+      chartCtx.fillRect(PAD.l, _fsPaneTop, W - PAD.l - PAD.r, _fsPaneH);
+      chartCtx.strokeStyle = 'rgba(201,168,76,0.25)';
+      chartCtx.lineWidth = 1;
+      chartCtx.setLineDash([]);
+      chartCtx.beginPath();
+      chartCtx.moveTo(PAD.l, _fsPaneTop); chartCtx.lineTo(W - PAD.r, _fsPaneTop);
+      chartCtx.stroke();
+      /* Pane scale labels (min/max) */
+      chartCtx.fillStyle = 'rgba(180,190,210,0.6)';
+      chartCtx.font = '10px sans-serif';
+      chartCtx.textAlign = 'left';
+      chartCtx.fillText(_fsMax.toFixed(4), W - PAD.r + 2, _fsPaneTop + 10);
+      chartCtx.fillText(_fsMin.toFixed(4), W - PAD.r + 2, _fsPaneBottom - 2);
+    }
+    function _fsPy(v) {
+      if (_fsOverlay) return py(v);
+      return _fsPaneTop + (1 - (v - _fsPaneMin) / _fsPaneRange) * (_fsPaneBottom - _fsPaneTop);
+    }
+
+    /* bgcolors — always drawn on main chart */
     if (fractalResult.bgcolors) {
       for (var _bi = 0; _bi < fractalResult.bgcolors.length; _bi++) {
         var _bg = fractalResult.bgcolors[_bi];
@@ -5033,10 +5085,10 @@ function renderChart() {
           if (_ppDrew) chartCtx.stroke();
           chartCtx.strokeStyle = _pp.colors[_pgi];
           chartCtx.beginPath();
-          chartCtx.moveTo(px(_pj), py(_pv));
+          chartCtx.moveTo(px(_pj), _fsPy(_pv));
           _ppDrew = true; continue;
         }
-        var _ppY = py(_pv);
+        var _ppY = _fsPy(_pv);
         if (!_ppDrew) { chartCtx.moveTo(px(_pj), _ppY); _ppDrew = true; }
         else { chartCtx.lineTo(px(_pj), _ppY); }
       }
@@ -5048,7 +5100,7 @@ function renderChart() {
         var _sh = fractalResult.shapes[_si2];
         if (_sh.barIndex < startIdx || _sh.barIndex >= endIdx) continue;
         var _sx = worldToScreenX(_sh.barIndex);
-        var _sy = worldToScreenY(_sh.price);
+        var _sy = _fsOverlay ? worldToScreenY(_sh.price) : _fsPy(_sh.price);
         var _sOff = _sh.location === 'abovebar' ? -10 : _sh.location === 'belowbar' ? 10 : 0;
         _sy += _sOff;
         chartCtx.fillStyle = _sh.color || '#4CAF50';
@@ -5074,8 +5126,9 @@ function renderChart() {
     if (fractalResult.hlines) {
       for (var _hi = 0; _hi < fractalResult.hlines.length; _hi++) {
         var _hl = fractalResult.hlines[_hi];
-        var _hy = worldToScreenY(_hl.price);
-        if (_hy < PAD.t || _hy > H - PAD.b) continue;
+        var _hy = _fsOverlay ? worldToScreenY(_hl.price) : _fsPy(_hl.price);
+        if (_fsOverlay && (_hy < PAD.t || _hy > H - PAD.b)) continue;
+        if (!_fsOverlay && (_hy < _fsPaneTop || _hy > _fsPaneBottom)) continue;
         chartCtx.strokeStyle = _hl.color || '#FF9800';
         chartCtx.lineWidth = _hl.lineWidth || 1;
         chartCtx.setLineDash([4, 4]);
