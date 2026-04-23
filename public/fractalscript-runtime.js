@@ -1527,18 +1527,17 @@
           if (Array.isArray(arr)) arr.unshift(val);
           return NA;
         }
-        case 'array.get': {
-          var arr = evalArg(0);
-          var idx = evalArg(1);
-          if (Array.isArray(arr) && !isNa(idx) && idx >= 0 && idx < arr.length) return arr[idx];
-          console.log("ARRAY GET FAILED!", "arr:", arr, "idx:", idx, "isNa(idx):", isNa(idx));
-          return NA;
-        }
         case 'array.set': {
           var arr = evalArg(0);
           var idx = evalArg(1);
           var val = evalArg(2);
           if (Array.isArray(arr) && !isNa(idx) && idx >= 0 && idx < arr.length) arr[idx] = val;
+          return NA;
+        }
+        case 'array.get': {
+          var arr = evalArg(0);
+          var idx = evalArg(1);
+          if (Array.isArray(arr) && !isNa(idx) && idx >= 0 && idx < arr.length) return arr[idx];
           return NA;
         }
         case 'array.size': {
