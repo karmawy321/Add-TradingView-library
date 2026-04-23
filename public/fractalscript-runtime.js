@@ -1132,7 +1132,7 @@
     function execVarDecl(node) {
       if (node.persistent) {
         /* var x = ... → only initialize on the first bar */
-        if (barIndex === 0) {
+        if (!(node.name in persistentVars)) {
           var val = execNode(node.value);
           if (val && val.__error__) return val;
           persistentVars[node.name] = val;
@@ -1150,7 +1150,7 @@
     function execReassign(node) {
       var val = execNode(node.value);
       if (val && val.__error__) return val;
-      if (node.name in persistentVars) { persistentVars[node.name] = val; }
+      if (node.name in persistentVars) { persistentVars[node.name] = val; delete barVars[node.name]; }
       else { barVars[node.name] = val; }
       return val;
     }
