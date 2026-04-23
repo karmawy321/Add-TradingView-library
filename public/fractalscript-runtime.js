@@ -133,7 +133,7 @@
     var i = 0, line = 1, col = 1, len = source.length;
 
     function advance() { var ch = source[i++]; if (ch === '\n') { line++; col = 1; } else { col++; } return ch; }
-    function peek()    { return i < len ? source[i] : ''; }
+    function peek()    { return i + 1 < len ? source[i + 1] : ''; }
     function peek2()   { return i + 1 < len ? source[i] + source[i + 1] : source[i] || ''; }
 
     while (i < len) {
@@ -1255,7 +1255,7 @@
 
       /* Namespace roots */
       if (name === 'ta' || name === 'math' || name === 'color' || name === 'shape' ||
-          name === 'location' || name === 'size' || name === 'input') return name;
+          name === 'location' || name === 'size' || name === 'input' || name === 'str') return name;
 
       return NA;
     }
@@ -1348,6 +1348,7 @@
       if (obj === 'input') return 'input.' + node.member;
       if (obj === 'line') return LINE_STYLES[node.member] || 'line.' + node.member;
       if (obj === 'label') return LABEL_STYLES[node.member] || 'label.' + node.member;
+      if (obj === 'str') return 'str.' + node.member;
       if (obj === 'extend') return EXTEND_MODES[node.member] || 'extend.' + node.member;
 
       return NA;
@@ -1395,6 +1396,11 @@
       /* label.* functions */
       if (callName.indexOf('label.') === 0) {
         return execLabelCall(callName, node.args, node);
+      }
+
+      /* str.* functions */
+      if (callName.indexOf('str.') === 0) {
+        return execStrCall(callName, node.args, node);
       }
 
       /* array.* functions */
@@ -1828,6 +1834,88 @@
         case 'label.get_text': { var lg3 = evalArg(0); return (lg3 && lg3.id) ? lg3.text : NA; }
         default:
           return { __error__: { line: node.line, col: node.col, message: "Unknown label function '" + name + "'" } };
+      }
+    }
+
+    function execStrCall(name, args, node) {
+      var evalArg = function(idx) {
+        if (idx >= args.length) return NA;
+        var a = args[idx];
+        return execNode(a.type === 'NamedArg' ? a.value : a);
+      };
+
+      /* Helper: convert a Pine value to a display string */
+      function toStr(v, fmt) {
+        if (isNa(v)) return 'NaN';
+        if (typeof v === 'boolean') return v ? 'true' : 'false';
+        if (typeof v === 'string') return v;
+        var n = +v;
+        if (isNaN(n)) return String(v);
+        /* fmt can be a number (decimal places) or a format string like "#.##" or "0.0000" */
+        if (fmt !== undefined && fmt !== null && !isNa(fmt)) {
+          if (typeof fmt === 'number') return n.toFixed(Math.max(0, Math.round(fmt)));
+          if (typeof fmt === 'string') {
+            var decPart = fmt.split('.')[1] || '';
+            var places = decPart.replace(/[^#0]/g, '').length;
+            return n.toFixed(places);
+          }
+        }
+        /* Default: up to 4 significant decimal places, strip trailing zeros */
+        var s = n.toFixed(4);
+        return s.replace(/\.?0+$/, '');
+      }
+
+      switch (name) {
+        case 'str.tostring': {
+          var v = evalArg(0);
+          var fmt = args.length > 1 ? evalArg(1) : undefined;
+          return toStr(v, fmt);
+        }
+        case 'str.format': {
+          /* str.format("{0}", val1, val2, ...) — basic positional substitution */
+          var template = evalArg(0);
+          if (isNa(template) || typeof template !== 'string') return NA;
+          var result = template;
+          for (var fi = 1; fi < args.length; fi++) {
+            var fv = evalArg(fi);
+            result = result.split('{' + (fi - 1) + '}').join(toStr(fv));
+          }
+          return result;
+        }
+        case 'str.length': {
+          var s = evalArg(0);
+          return (isNa(s) || typeof s !== 'string') ? NA : s.length;
+        }
+        case 'str.substring': {
+          var s1 = evalArg(0); var from = evalArg(1); var to = evalArg(2);
+          if (isNa(s1) || typeof s1 !== 'string' || isNa(from)) return NA;
+          return isNa(to) ? s1.substring(+from) : s1.substring(+from, +to);
+        }
+        case 'str.contains': {
+          var s2 = evalArg(0); var sub = evalArg(1);
+          if (isNa(s2) || isNa(sub)) return NA;
+          return String(s2).indexOf(String(sub)) >= 0;
+        }
+        case 'str.startswith': {
+          var s3 = evalArg(0); var pre = evalArg(1);
+          if (isNa(s3) || isNa(pre)) return NA;
+          return String(s3).indexOf(String(pre)) === 0;
+        }
+        case 'str.endswith': {
+          var s4 = evalArg(0); var suf = evalArg(1);
+          if (isNa(s4) || isNa(suf)) return NA;
+          var str4 = String(s4), suf4 = String(suf);
+          return str4.lastIndexOf(suf4) === str4.length - suf4.length;
+        }
+        case 'str.lower':  { var s5 = evalArg(0); return isNa(s5) ? NA : String(s5).toLowerCase(); }
+        case 'str.upper':  { var s6 = evalArg(0); return isNa(s6) ? NA : String(s6).toUpperCase(); }
+        case 'str.replace': {
+          var s7 = evalArg(0); var pat = evalArg(1); var rep = evalArg(2);
+          if (isNa(s7) || isNa(pat) || isNa(rep)) return NA;
+          return String(s7).split(String(pat)).join(String(rep));
+        }
+        default:
+          return { __error__: { line: node.line, col: node.col, message: "Unknown str function '" + name + "'" } };
       }
     }
 
