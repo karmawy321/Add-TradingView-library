@@ -310,11 +310,11 @@ if bar_index % 2 == 0
                             <div class="code-block">//@version=5
 indicator("Level Grid", overlay=true)
 
-level = math.round(close / 100) * 100
-isNew = level != level[1]
+curLevel = math.round(close / 100) * 100
+prevLevel = curLevel[1]
 
-if isNew
-    line.new(bar_index, level, bar_index+1, level, color=color.white, extend=extend.both)</div>
+if curLevel != prevLevel
+    line.new(bar_index, curLevel, bar_index+1, curLevel, color=color.white, extend=extend.both)</div>
                             <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
                         </div>
                     </div>
