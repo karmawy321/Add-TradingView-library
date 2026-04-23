@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FractalScript Documentation | Fractal AI Agent</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --gold: #c9a84c;
+            --dark: #06080d;
+            --dark2: #0d1018;
+            --dark3: #131720;
+            --muted: #8a95a8;
+            --white: #f0f4fa;
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            background: var(--dark); 
+            color: var(--white); 
+            font-family: 'DM Sans', sans-serif; 
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container { max-width: 900px; margin: 0 auto; padding: 60px 20px; }
+        
+        header { text-align: center; margin-bottom: 80px; }
+        .logo-box { display: inline-block; padding: 20px; background: #000; border: 1px solid var(--gold); border-radius: 20px; margin-bottom: 24px; box-shadow: 0 0 40px rgba(201, 168, 76, 0.1); }
+        h1 { font-family: 'Cinzel', serif; font-size: 42px; letter-spacing: 0.1em; color: var(--gold); margin-bottom: 12px; }
+        .subtitle { color: var(--muted); font-size: 16px; letter-spacing: 0.05em; text-transform: uppercase; }
+
+        .article-section { margin-bottom: 100px; }
+        .article-section h2 { font-family: 'Cinzel', serif; font-size: 24px; margin-bottom: 24px; color: var(--white); border-left: 4px solid var(--gold); padding-left: 16px; }
+        .article-section p { margin-bottom: 20px; color: #b0b8c4; font-size: 17px; }
+
+        .example-card { 
+            background: var(--dark2); 
+            border: 1px solid var(--border); 
+            border-radius: 12px; 
+            margin-bottom: 40px; 
+            overflow: hidden; 
+            transition: transform 0.3s;
+        }
+        .example-card:hover { transform: translateY(-5px); border-color: rgba(201, 168, 76, 0.3); }
+        
+        .card-header { padding: 20px 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .card-title { font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 18px; color: var(--white); }
+        .card-tag { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--gold); text-transform: uppercase; border: 1px solid rgba(201,168,76,0.3); padding: 2px 8px; border-radius: 4px; }
+
+        .card-body { padding: 24px; }
+        .code-block { 
+            background: #020305; 
+            padding: 20px; 
+            border-radius: 8px; 
+            font-family: 'DM Mono', monospace; 
+            font-size: 13px; 
+            color: #d1d9e0; 
+            position: relative;
+            margin-top: 16px;
+            white-space: pre;
+            overflow-x: auto;
+            border: 1px solid rgba(255,255,255,0.03);
+        }
+        .copy-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--muted); font-size: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+        .copy-btn:hover { background: var(--gold); color: #000; border-color: var(--gold); }
+
+        footer { text-align: center; padding: 60px 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+        .back-link { display: inline-block; margin-top: 20px; color: var(--gold); text-decoration: none; font-weight: 600; font-size: 14px; }
+        .back-link:hover { text-decoration: underline; }
+
+        .ai-marker { color: #f0f4fa; background: linear-gradient(90deg, rgba(201,168,76,0.2), transparent); padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <div class="logo-box">
+                <svg width="48" height="48" viewBox="0 0 16 16" fill="none"><path d="M8 2 L4 7 L6 7 L3 13 L10 7 L7.5 7 L11 3 Z" fill="#c9a84c"/></svg>
+            </div>
+            <h1>FractalScript</h1>
+            <p class="subtitle">The Art of Algorithmic Intelligence</p>
+            <a href="index.html" class="back-link">← Return to Dashboard</a>
+        </header>
+
+        <section class="article-section">
+            <h2>Welcome to the Engine</h2>
+            <p>FractalScript is an independent, high-performance interpreter designed to unlock the full potential of your trading strategies. Fully compatible with <b>Pine Script® v5</b> syntax, it allows you to run industry-standard indicators while leveraging exclusive <span class="ai-marker">AI Extensions</span> native to the Fractal AI Agent platform.</p>
+        </section>
+
+        <!-- Example 1 -->
+        <div class="example-card">
+            <div class="card-header">
+                <span class="card-title">1. The Golden Cross Sniper</span>
+                <span class="card-tag">Core Basics</span>
+            </div>
+            <div class="card-body">
+                <p>A classic trend-following strategy using Exponential Moving Averages. This demonstrates the standard <code>f.</code> (Fractal) alias for technical analysis functions.</p>
+                <div class="code-block">
+//@version=5
+indicator("Golden Cross", overlay=true)
+
+fast = f.ema(close, 50)
+slow = f.ema(close, 200)
+
+plot(fast, color=color.aqua, linewidth=2, title="Fast EMA")
+plot(slow, color=color.orange, linewidth=2, title="Slow EMA")
+
+buySignal = ta.crossover(fast, slow)
+plotshape(buySignal, style=shape.triangleup, location=location.belowbar, color=color.green, size=size.large, text="BUY")
+                <button class="copy-btn" onclick="copyCode(this)">COPY</button></div>
+            </div>
+        </div>
+
+        <!-- Example 2 -->
+        <div class="example-card">
+            <div class="card-header">
+                <span class="card-title">2. AI Sentiment Filter</span>
+                <span class="card-tag">Exlusive AI</span>
+            </div>
+            <div class="card-body">
+                <p>Learn to integrate our proprietary AI sentiment analysis. This script only plots signals when the <code>ai.sentiment()</code> engine confirms the market "vibe" matches the price action.</p>
+                <div class="code-block">
+//@version=5
+indicator("AI Filter", overlay=true)
+
+// Get AI Market Sentiment (-1 to 1)
+vibe = ai.sentiment()
+
+// Plot sentiment as background intensity
+bgcolor(vibe > 0.8 ? color.new(color.green, 90) : vibe < -0.8 ? color.new(color.red, 90) : na)
+
+// Signal: Price crosses SMA but ONLY if AI is bullish
+ma = f.sma(close, 20)
+plot(ma, color=color.yellow)
+
+long = ta.crossover(close, ma) and vibe > 0
+plotshape(long, style=shape.labelup, location=location.belowbar, color=color.green, text="AI CONFIRMED")
+                <button class="copy-btn" onclick="copyCode(this)">COPY</button></div>
+            </div>
+        </div>
+
+        <!-- Example 3 -->
+        <div class="example-card">
+            <div class="card-header">
+                <span class="card-title">3. Dynamic Liquidity Zones</span>
+                <span class="card-tag">Structure</span>
+            </div>
+            <div class="card-body">
+                <p>Uses lookback functions to identify key "Liquidity Pools" (Highest/Lowest prices). This helps you see where big money might be hunting stop losses.</p>
+                <div class="code-block">
+//@version=5
+indicator("Liquidity Zones", overlay=true)
+
+// Find high/low over last 50 bars
+top = ta.highest(high, 50)
+bot = ta.lowest(low, 50)
+
+// Plot as levels
+hline(top, "Resistance", color=color.red, linewidth=1)
+hline(bot, "Support", color=color.green, linewidth=1)
+
+// Color zones when price is near extreme
+bgcolor(close > top * 0.99 ? color.new(color.red, 85) : close < bot * 1.01 ? color.new(color.green, 85) : na)
+                <button class="copy-btn" onclick="copyCode(this)">COPY</button></div>
+            </div>
+        </div>
+
+        <!-- Example 4 -->
+        <div class="example-card">
+            <div class="card-header">
+                <span class="card-title">4. Volatility regime Switch</span>
+                <span class="card-tag">Risk Management</span>
+            </div>
+            <div class="card-body">
+                <p>Uses the Average True Range (ATR) to detect "Expansion" vs "Compression" regimes. Perfect for timing entries when the market is about to explode.</p>
+                <div class="code-block">
+//@version=5
+indicator("Volatility Sniper", overlay=true)
+
+atr = ta.atr(14)
+ma_atr = f.sma(atr, 20)
+
+// High volatility = Red highlight, Low = Blue
+is_volatile = atr > ma_atr
+bgcolor(is_volatile ? color.new(color.red, 95) : color.new(color.aqua, 95))
+
+plot(f.sma(close, 50), color=is_volatile ? color.red : color.aqua, linewidth=2)
+                <button class="copy-btn" onclick="copyCode(this)">COPY</button></div>
+            </div>
+        </div>
+
+        <footer>
+            <p>&copy; 2026 Fractal AI Agent. Independent interpreter compatible with Pine Script® syntax.</p>
+            <p>Not affiliated with TradingView®.</p>
+        </footer>
+    </div>
+
+    <script>
+        function copyCode(btn) {
+            const code = btn.parentElement.innerText.replace('COPY', '').trim();
+            navigator.clipboard.writeText(code);
+            const originalText = btn.innerText;
+            btn.innerText = 'COPIED!';
+            btn.style.background = '#c9a84c';
+            btn.style.color = '#000';
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.style.background = 'rgba(255,255,255,0.05)';
+                btn.style.color = 'var(--muted)';
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
