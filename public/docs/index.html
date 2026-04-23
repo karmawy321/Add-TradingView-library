@@ -108,7 +108,7 @@
             </div>
             <h1>FractalScript</h1>
             <p class="subtitle">The Guide to Algorithmic Mastery</p>
-            <div class="version-badge">Engine v1.5 • Pine v5 Compatible</div>
+            <div class="version-badge">Engine v2.0 • Pine v5 Compatible • All Phases Complete</div>
             <br>
             <a href="../index.html" class="back-link">← RETURN TO TERMINAL</a>
         </header>
@@ -127,15 +127,20 @@
                 <h3>Visual Tools</h3>
                 <p>Lines, Shapes & Colors</p>
             </a>
+            <a href="#labels" class="nav-item">
+                <h3>Labels & Text</h3>
+                <p>Annotations, str.* & sub-panes</p>
+            </a>
             <a href="#examples" class="nav-item">
                 <h3>Examples</h3>
-                <p>12+ drop-in script templates</p>
+                <p>14+ drop-in script templates</p>
             </a>
         </nav>
 
         <section id="how-it-works" class="section">
             <h2>The Execution Model</h2>
             <p>FractalScript follows the <b>Bar-by-Bar</b> execution model. Every time the chart updates, the engine runs your entire script for every single candle on the chart, from left to right. This allows you to "remember" data from the past using history references or persistent variables.</p>
+            <p>Every script in this guide is <b>Pine Script v5 compatible</b> — paste any example directly into TradingView and it will produce identical results. Use <code>str.tostring(value, "#.##")</code> for all number-to-text formatting to stay compatible on both platforms.</p>
         </section>
 
         <section id="logic-tools" class="section">
@@ -175,9 +180,42 @@
                         <li><span>color.*</span> (Lime, Red, Aqua, Gold, Silver)</li>
                         <li><span>extend.*</span> (Right, Left, Both, None)</li>
                         <li><span>line.style_*</span> (Solid, Dashed, Dotted)</li>
+                        <li><span>overlay=false</span> (Separate sub-pane rendering)</li>
+                    </ul>
+                </div>
+                <!-- Labels -->
+                <div class="tool-card">
+                    <h4>Label System</h4>
+                    <p>Place and mutate text annotations at any price level.</p>
+                    <ul class="tool-list">
+                        <li><span>label.new(x, y, text)</span> (Create annotation)</li>
+                        <li><span>label.set_text / label.set_xy</span> (Mutate in-place)</li>
+                        <li><span>label.set_color / label.set_textcolor</span> (Style)</li>
+                        <li><span>label.set_size</span> (tiny, small, normal, large, huge)</li>
+                        <li><span>label.delete(id)</span> (Remove a label)</li>
+                        <li><span>label.style_label_up/down/left/right</span> (Arrow styles)</li>
+                        <li><span>label.style_circle/square/diamond/flag</span> (Markers)</li>
+                    </ul>
+                </div>
+                <!-- Strings -->
+                <div class="tool-card">
+                    <h4>String Tools</h4>
+                    <p>Format numbers and build text for labels and outputs.</p>
+                    <ul class="tool-list">
+                        <li><span>str.tostring(val)</span> (Number to string)</li>
+                        <li><span>str.tostring(val, "#.##")</span> (Formatted decimal)</li>
+                        <li><span>str.tostring(val, "#.0000")</span> (Fixed precision)</li>
+                        <li><span>str.length / str.upper / str.lower</span> (Text ops)</li>
+                        <li><span>"Label: " + str.tostring(n)</span> (Concatenation)</li>
                     </ul>
                 </div>
             </div>
+        </section>
+
+        <section id="labels" class="section">
+            <h2>Labels &amp; Annotations</h2>
+            <p><b>label.new</b> places a text annotation at any bar and price. Unlike <code>plotshape</code>, labels carry arbitrary text — combine them with <code>str.tostring()</code> to display live values. Use <code>var label</code> + <code>label.set_*</code> to mutate a single label across bars instead of creating thousands of new ones.</p>
+            <p>The <code>max_labels_count</code> parameter in <code>indicator()</code> controls how many labels persist on screen at once (default 50, max 500). Older labels are automatically garbage-collected when the limit is reached.</p>
         </section>
 
         <section id="examples" class="section">
@@ -398,11 +436,126 @@ bgcolor(col)</div>
                 </details>
             </div>
 
+            <!-- 11 -->
+            <div class="example-accordion">
+                <details>
+                    <summary>11. Swing Pivot Labels</summary>
+                    <div class="example-content">
+                        <div class="example-desc">Detects local swing highs and lows using neighbor comparison, then places a price label at each pivot. Demonstrates label.new + str.tostring for live price display. Works identically on TradingView Pine v5.</div>
+                        <div class="code-wrapper">
+                            <div class="code-block">//@version=5
+indicator("Swing Labels", overlay=true, max_labels_count=200)
+
+// Bar[2] is a pivot high if it's above both its neighbors
+isPivotHigh = high[2] > high[3] and high[2] > high[1]
+isPivotLow  = low[2]  < low[3]  and low[2]  < low[1]
+
+if isPivotHigh
+    label.new(bar_index - 2, high[2], str.tostring(high[2], "#.##"), style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+if isPivotLow
+    label.new(bar_index - 2, low[2], str.tostring(low[2], "#.##"), style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)</div>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- 12 -->
+            <div class="example-accordion">
+                <details>
+                    <summary>12. RSI Sub-Pane (overlay=false)</summary>
+                    <div class="example-content">
+                        <div class="example-desc">Renders RSI in its own dedicated pane below the price chart using overlay=false. The pane has its own scale (0–100). The color shifts red when overbought and green when oversold. Also draws the 70 and 30 reference lines.</div>
+                        <div class="code-wrapper">
+                            <div class="code-block">//@version=5
+indicator("RSI Panel", overlay=false)
+
+rsiVal = ta.rsi(close, 14)
+
+// Color shifts based on RSI zone
+col = rsiVal > 70 ? color.red : rsiVal < 30 ? color.lime : color.aqua
+plot(rsiVal, color=col, linewidth=2)
+
+// Overbought / oversold reference levels
+plot(70, color=color.new(color.red, 60))
+plot(50, color=color.new(color.gray, 70))
+plot(30, color=color.new(color.lime, 60))</div>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- 13 -->
+            <div class="example-accordion">
+                <details>
+                    <summary>13. MACD Signals via Tuple Destructuring</summary>
+                    <div class="example-content">
+                        <div class="example-desc">Uses tuple destructuring [a, b, c] = ta.macd() to unpack all three MACD values in one line — the same syntax supported by TradingView Pine v5. Colors the price line by MACD momentum direction and fires signal markers on crossovers.</div>
+                        <div class="code-wrapper">
+                            <div class="code-block">//@version=5
+indicator("MACD Signals", overlay=true)
+
+// Unpack all three MACD values in one line
+[macdLine, signalLine, hist] = ta.macd(close, 12, 26, 9)
+
+bullCross = ta.crossover(macdLine, signalLine)
+bearCross = ta.crossunder(macdLine, signalLine)
+
+// Price bar color follows MACD momentum
+plot(close, color=macdLine > signalLine ? color.lime : color.red, linewidth=2)
+
+plotshape(bullCross, style=shape.triangleup,   location=location.belowbar, color=color.lime, size=size.small, text="M+")
+plotshape(bearCross, style=shape.triangledown, location=location.abovebar, color=color.red,  size=size.small, text="M-")</div>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- 14 -->
+            <div class="example-accordion">
+                <details>
+                    <summary>14. Trend State Machine with Transition Labels</summary>
+                    <div class="example-content">
+                        <div class="example-desc">Demonstrates var persistence and := reassignment. A single integer tracks the current trend state across all bars. When the state flips, a label.new marks the exact bar of the transition — so you can see precisely when momentum changed.</div>
+                        <div class="code-wrapper">
+                            <div class="code-block">//@version=5
+indicator("Trend Engine", overlay=true, max_labels_count=100)
+
+fastMA = ta.ema(close, 9)
+slowMA = ta.ema(close, 21)
+
+// var persists the trend state across every bar
+var int trend = 0
+
+if ta.crossover(fastMA, slowMA)
+    trend := 1
+if ta.crossunder(fastMA, slowMA)
+    trend := -1
+
+col = trend == 1 ? color.lime : trend == -1 ? color.red : color.gray
+plot(fastMA, color=col, linewidth=2)
+plot(slowMA, color=color.gray, linewidth=1)
+
+// Drop a label only on the bar where the trend flips
+if ta.crossover(fastMA, slowMA)
+    label.new(bar_index, low, "BULL", style=label.style_label_up, color=color.lime, textcolor=color.black, size=size.normal)
+if ta.crossunder(fastMA, slowMA)
+    label.new(bar_index, high, "BEAR", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.normal)</div>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
         </section>
 
         <footer>
             <p>&copy; 2026 Fractal AI Agent • High-Performance Algo Engine</p>
             <p>Not affiliated with TradingView® • Built for Professional Intelligence</p>
+            <p style="margin-top:16px;">Engine v2.0 — All scripts are Pine Script v5 compatible and verified on TradingView</p>
         </footer>
     </div>
 
