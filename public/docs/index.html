@@ -88,7 +88,7 @@
 
         <section class="article-section">
             <h2>Welcome to the Engine</h2>
-            <p>FractalScript is an independent, high-performance interpreter designed to unlock the full potential of your trading strategies. Fully compatible with <b>Pine Script® v5</b> syntax, it allows you to run industry-standard indicators while leveraging exclusive <span class="ai-marker">AI Extensions</span> native to the Fractal AI Agent platform.</p>
+            <p>FractalScript is an independent, high-performance interpreter designed to unlock the full potential of your trading strategies. Fully compatible with <b>Pine Script® v5</b> syntax, it runs your existing indicators with zero rewrites — plus our exclusive <span class="ai-marker">ai.* extensions</span> native to the Fractal AI Agent platform.</p>
         </section>
 
         <!-- Example 1 -->
@@ -98,13 +98,13 @@
                 <span class="card-tag">Core Basics</span>
             </div>
             <div class="card-body">
-                <p>A classic trend-following strategy using Exponential Moving Averages. This demonstrates the standard <code>f.</code> (Fractal) alias for technical analysis functions.</p>
+                <p>A classic trend-following strategy using Exponential Moving Averages. Standard Pine Script syntax — paste it straight from TradingView.</p>
                 <div class="code-block">
 //@version=5
 indicator("Golden Cross", overlay=true)
 
-fast = f.ema(close, 50)
-slow = f.ema(close, 200)
+fast = ta.ema(close, 50)
+slow = ta.ema(close, 200)
 
 plot(fast, color=color.aqua, linewidth=2, title="Fast EMA")
 plot(slow, color=color.orange, linewidth=2, title="Slow EMA")
@@ -134,7 +134,7 @@ vibe = ai.sentiment()
 bgcolor(vibe > 0.8 ? color.new(color.green, 90) : vibe < -0.8 ? color.new(color.red, 90) : na)
 
 // Signal: Price crosses SMA but ONLY if AI is bullish
-ma = f.sma(close, 20)
+ma = ta.sma(close, 20)
 plot(ma, color=color.yellow)
 
 long = ta.crossover(close, ma) and vibe > 0
@@ -182,13 +182,13 @@ bgcolor(close > top * 0.99 ? color.new(color.red, 85) : close < bot * 1.01 ? col
 indicator("Volatility Sniper", overlay=true)
 
 atr = ta.atr(14)
-ma_atr = f.sma(atr, 20)
+ma_atr = ta.sma(atr, 20)
 
 // High volatility = Red highlight, Low = Blue
 is_volatile = atr > ma_atr
 bgcolor(is_volatile ? color.new(color.red, 95) : color.new(color.aqua, 95))
 
-plot(f.sma(close, 50), color=is_volatile ? color.red : color.aqua, linewidth=2)
+plot(ta.sma(close, 50), color=is_volatile ? color.red : color.aqua, linewidth=2)
                 <button class="copy-btn" onclick="copyCode(this)">COPY</button></div>
             </div>
         </div>

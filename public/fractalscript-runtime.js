@@ -5,7 +5,7 @@
    Supported: ta.sma/ema/rma/atr/crossover/crossunder/highest/lowest,
               plot/plotshape/hline/bgcolor, input.int/float/bool/string,
               var persistence, if/else, for, ternary, history refs close[1],
-              math.*, color.*, na semantics.
+              math.*, color.*, ai.sentiment/structure, na semantics.
 
    Security: Pure AST interpreter — no eval(), no Function(), no DOM access.
    Safety:   100k statement limit per run, v5-compatible syntax only.
@@ -1116,11 +1116,6 @@
       /* ta.* functions */
       if (callName.indexOf('ta.') === 0) {
         return execTaCall(callName, node.args, node);
-      }
-
-      /* f.* (Fractal alias for ta.*) */
-      if (callName.indexOf('f.') === 0) {
-        return execTaCall(callName.replace('f.', 'ta.'), node.args, node);
       }
 
       /* ai.* functions */
