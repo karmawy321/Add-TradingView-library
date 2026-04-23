@@ -5069,30 +5069,73 @@ function renderChart() {
         chartCtx.fillRect(_bgX - barW/2, PAD.t, barW, CH);
       }
     }
-    /* plots — draw as lines */
+    /* plots — draw as lines with per-bar color continuity */
     for (var _pi = 0; _pi < fractalResult.plots.length; _pi++) {
       var _pp = fractalResult.plots[_pi];
-      chartCtx.strokeStyle = _pp.color; chartCtx.lineWidth = _pp.lineWidth || 1;
-      chartCtx.setLineDash([]); chartCtx.beginPath();
+      chartCtx.lineWidth = _pp.lineWidth || 1;
+      chartCtx.setLineDash([]);
+      var _activeColor = _pp.color;
+      chartCtx.strokeStyle = _activeColor;
+      chartCtx.beginPath();
       var _ppDrew = false;
+      var _prevX = null, _prevY = null;
       for (var _pj = 0; _pj < n; _pj++) {
         var _pgi = startIdx + _pj;
-        if (_pgi < 0 || _pgi >= _pp.values.length) continue;
+        if (_pgi < 0 || _pgi >= _pp.values.length) { _prevX = _prevY = null; continue; }
         var _pv = _pp.values[_pgi];
-        if (isNaN(_pv)) { _ppDrew = false; continue; }
-        /* Dynamic per-bar color */
-        if (_pp.colors && _pp.colors[_pgi] && _pp.colors[_pgi] !== _pp.color) {
-          if (_ppDrew) chartCtx.stroke();
-          chartCtx.strokeStyle = _pp.colors[_pgi];
-          chartCtx.beginPath();
-          chartCtx.moveTo(px(_pj), _fsPy(_pv));
-          _ppDrew = true; continue;
+        if (isNaN(_pv)) {
+          if (_ppDrew) { chartCtx.stroke(); _ppDrew = false; }
+          _prevX = _prevY = null;
+          continue;
         }
-        var _ppY = _fsPy(_pv);
-        if (!_ppDrew) { chartCtx.moveTo(px(_pj), _ppY); _ppDrew = true; }
-        else { chartCtx.lineTo(px(_pj), _ppY); }
+        var _barColor = (_pp.colors && _pp.colors[_pgi]) ? _pp.colors[_pgi] : _pp.color;
+        var _curX = px(_pj), _curY = _fsPy(_pv);
+        if (_barColor !== _activeColor) {
+          /* Stroke the prior colored path, then start a new segment that
+             bridges from the previous point to maintain visual continuity. */
+          if (_ppDrew) chartCtx.stroke();
+          _activeColor = _barColor;
+          chartCtx.strokeStyle = _activeColor;
+          chartCtx.beginPath();
+          if (_prevX !== null) {
+            chartCtx.moveTo(_prevX, _prevY);
+            chartCtx.lineTo(_curX, _curY);
+          } else {
+            chartCtx.moveTo(_curX, _curY);
+          }
+          _ppDrew = true;
+        } else {
+          if (!_ppDrew) { chartCtx.moveTo(_curX, _curY); _ppDrew = true; }
+          else { chartCtx.lineTo(_curX, _curY); }
+        }
+        _prevX = _curX; _prevY = _curY;
       }
       if (_ppDrew) chartCtx.stroke();
+
+      /* Right-axis current-value badge (last non-NaN bar) */
+      var _lastV = null, _lastColor = _pp.color;
+      for (var _lvi = _pp.values.length - 1; _lvi >= 0; _lvi--) {
+        if (!isNaN(_pp.values[_lvi])) {
+          _lastV = _pp.values[_lvi];
+          _lastColor = (_pp.colors && _pp.colors[_lvi]) ? _pp.colors[_lvi] : _pp.color;
+          break;
+        }
+      }
+      if (_lastV !== null) {
+        var _lbY = _fsOverlay ? worldToScreenY(_lastV) : _fsPy(_lastV);
+        var _inPane = _fsOverlay ? (_lbY >= PAD.t && _lbY <= H - PAD.b)
+                                 : (_lbY >= _fsPaneTop && _lbY <= _fsPaneBottom);
+        if (_inPane) {
+          var _lbTxt = _lastV.toFixed(3);
+          chartCtx.font = 'bold 10px sans-serif';
+          var _lbTw = chartCtx.measureText(_lbTxt).width;
+          chartCtx.fillStyle = _lastColor;
+          chartCtx.fillRect(_FRACTALREdge + 2, _lbY - 7, _lbTw + 8, 14);
+          chartCtx.fillStyle = '#000';
+          chartCtx.textAlign = 'left';
+          chartCtx.fillText(_lbTxt, _FRACTALREdge + 6, _lbY + 4);
+        }
+      }
     }
     /* shapes */
     if (fractalResult.shapes) {
