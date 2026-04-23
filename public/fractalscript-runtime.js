@@ -799,7 +799,23 @@
     
     var nextLineId = 1;
     var max_lines_count = 50;
-    
+
+    var COLORS = {
+      'red': '#FF5252', 'green': '#4CAF50', 'blue': '#2196F3', 'orange': '#FF9800',
+      'yellow': '#FFEB3B', 'lime': '#8BC34A', 'white': '#FFFFFF', 'black': '#000000',
+      'gray': '#9E9E9E', 'silver': '#C0C0C0', 'fuchsia': '#E91E63', 'aqua': '#00BCD4',
+      'teal': '#009688', 'navy': '#3F51B5', 'maroon': '#880E4F', 'purple': '#9C27B0',
+      'olive': '#827717'
+    };
+    var SHAPES = {
+      'arrowup': 'arrowup', 'arrowdown': 'arrowdown', 'labelup': 'labelup', 'labeldown': 'labeldown',
+      'circle': 'circle', 'cross': 'cross', 'xcross': 'xcross', 'triangleup': 'triangleup', 'triangledown': 'triangledown'
+    };
+    var LINE_STYLES = { 'style_solid': 'solid', 'style_dashed': 'dashed', 'style_dotted': 'dotted' };
+    var EXTEND_MODES = { 'none': 'none', 'right': 'right', 'left': 'left', 'both': 'both' };
+    var LOCATIONS = {
+      'abovebar': 'abovebar', 'belowbar': 'belowbar', 'top': 'top', 'bottom': 'bottom', 'absolute': 'absolute'
+    };
     /* Parse indicator params */
     if (ast.type === 'Program') {
       for (var i = 0; i < ast.body.length; i++) {
@@ -1028,6 +1044,7 @@
       if (name === 'hlc3')   return (+curCandle.h + +curCandle.l + +curCandle.c) / 3;
       if (name === 'ohlc4')  return (+curCandle.o + +curCandle.h + +curCandle.l + +curCandle.c) / 4;
       if (name === 'bar_index') return barIndex;
+      if (name === 'last_bar_index') return N - 1;
       if (name === 'na')     return NA;
 
       /* User variables */
@@ -1121,6 +1138,8 @@
       if (obj === 'math') return MATH[node.member] !== undefined ? MATH[node.member] : NA;
       if (obj === 'ta') return 'ta.' + node.member;
       if (obj === 'input') return 'input.' + node.member;
+      if (obj === 'line') return LINE_STYLES[node.member] || 'line.' + node.member;
+      if (obj === 'extend') return EXTEND_MODES[node.member] || 'extend.' + node.member;
 
       return NA;
     }
