@@ -193,6 +193,33 @@ plot(ta.sma(close, 50), color=is_volatile ? color.red : color.aqua, linewidth=2)
             </div>
         </div>
 
+        <!-- Example 5 -->
+        <div class="example-card">
+            <div class="card-header">
+                <span class="card-title">5. Swing Connector</span>
+                <span class="card-tag">Arrays & Geometry</span>
+            </div>
+            <div class="card-body">
+                <p>Advanced script demonstrating the new <code>array.*</code> and <code>line.*</code> capabilities. Connects swing points dynamically across the chart.</p>
+                <div class="code-block">
+//@version=5
+indicator("Swing Connector", overlay=true, max_lines_count=50)
+
+var int[] swingBars = array.new_int()
+var float[] swingPrices = array.new_float()
+
+if ta.crossover(ta.sma(close, 20), ta.sma(close, 50))
+    array.push(swingBars, bar_index)
+    array.push(swingPrices, close)
+    if array.size(swingBars) > 1
+        n = array.size(swingBars)
+        line.new(array.get(swingBars, n-2), array.get(swingPrices, n-2),
+                 array.get(swingBars, n-1), array.get(swingPrices, n-1),
+                 color=color.aqua, width=2)
+                <button class="copy-btn" onclick="copyCode(this)">COPY</button></div>
+            </div>
+        </div>
+
         <footer>
             <p>&copy; 2026 Fractal AI Agent. Independent interpreter compatible with Pine Script® syntax.</p>
             <p>Not affiliated with TradingView®.</p>

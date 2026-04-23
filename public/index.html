@@ -5083,6 +5083,45 @@ function renderChart() {
         chartCtx.setLineDash([]);
       }
     }
+    /* lines */
+    if (fractalResult.lines) {
+      chartCtx.save();
+      chartCtx.beginPath();
+      chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, H - PAD.t - PAD.b);
+      chartCtx.clip();
+      for (var _li = 0; _li < fractalResult.lines.length; _li++) {
+        var _L = fractalResult.lines[_li];
+        var _x1 = worldToScreenX(_L.x1);
+        var _y1 = worldToScreenY(_L.y1);
+        var _x2 = worldToScreenX(_L.x2);
+        var _y2 = worldToScreenY(_L.y2);
+        chartCtx.strokeStyle = _L.color || '#c9a84c';
+        chartCtx.lineWidth   = _L.width || 1;
+        if (_L.style === 'dashed') chartCtx.setLineDash([4,4]);
+        else if (_L.style === 'dotted') chartCtx.setLineDash([2,2]);
+        else chartCtx.setLineDash([]);
+        
+        /* extend logic */
+        if (_L.extend === 'right' || _L.extend === 'extend.right') {
+          var dx = _x2 - _x1, dy = _y2 - _y1;
+          if (dx !== 0 || dy !== 0) { _x2 += dx * 10000; _y2 += dy * 10000; }
+        } else if (_L.extend === 'left' || _L.extend === 'extend.left') {
+          var dx2 = _x1 - _x2, dy2 = _y1 - _y2;
+          if (dx2 !== 0 || dy2 !== 0) { _x1 += dx2 * 10000; _y1 += dy2 * 10000; }
+        } else if (_L.extend === 'both' || _L.extend === 'extend.both') {
+          var dx3 = _x2 - _x1, dy3 = _y2 - _y1;
+          if (dx3 !== 0 || dy3 !== 0) {
+             _x1 -= dx3 * 10000; _y1 -= dy3 * 10000;
+             _x2 += dx3 * 10000; _y2 += dy3 * 10000;
+          }
+        }
+
+        chartCtx.beginPath();
+        chartCtx.moveTo(_x1, _y1); chartCtx.lineTo(_x2, _y2);
+        chartCtx.stroke();
+      }
+      chartCtx.restore();
+    }
   }
 
   /* smaCrossZoneOn SMAs hidden — bar pattern drawing shows the result */

@@ -273,6 +273,12 @@
         var s = parseStatement();
         if (s && s.error) return s;
         if (s) stmts.push(s);
+        while (at(TT.COMMA)) {
+          pos++;
+          var s2 = parseStatement();
+          if (s2 && s2.error) return s2;
+          if (s2) stmts.push(s2);
+        }
         skipNewlines();
       }
       return node('Program', { body: stmts });
@@ -315,11 +321,23 @@
 
     function parseVarDecl() {
       var l = loc(); pos++; // consume 'var'
-      var name = eat(TT.IDENT); if (name.error) return name;
+      var nameToken = eat(TT.IDENT); if (nameToken.error) return nameToken;
+      var name = nameToken.value;
+      
+      if (at(TT.LBRACKET)) {
+        pos++;
+        var rb = eat(TT.RBRACKET); if (rb && rb.error) return rb;
+        var actualName = eat(TT.IDENT); if (actualName.error) return actualName;
+        name = actualName.value;
+      } else if (at(TT.IDENT)) {
+        var actualName = eat(TT.IDENT); if (actualName.error) return actualName;
+        name = actualName.value;
+      }
+
       var r = eat(TT.ASSIGN); if (r && r.error) return r;
       var value = parseExpression();
       if (value && value.error) return value;
-      return { type: 'VarDecl', name: name.value, value: value, persistent: true, line: l.line, col: l.col };
+      return { type: 'VarDecl', name: name, value: value, persistent: true, line: l.line, col: l.col };
     }
 
     function parseAssignmentOrExpr() {
@@ -393,6 +411,12 @@
       var first = parseStatement();
       if (first && first.error) return first;
       if (first) stmts.push(first);
+      while (at(TT.COMMA)) {
+        pos++;
+        var s2 = parseStatement();
+        if (s2 && s2.error) return s2;
+        if (s2) stmts.push(s2);
+      }
 
       /* Try to read more indented statements — peek ahead for indentation */
       while (!at(TT.EOF)) {
@@ -408,6 +432,12 @@
         var s = parseStatement();
         if (s && s.error) return s;
         if (s) stmts.push(s);
+        while (at(TT.COMMA)) {
+          pos++;
+          var s2 = parseStatement();
+          if (s2 && s2.error) return s2;
+          if (s2) stmts.push(s2);
+        }
       }
 
       if (stmts.length === 1) return stmts[0];
@@ -770,6 +800,26 @@
     var hlines = [];      // {price, color, lineWidth}
     var bgcolors = [];    // {barIndex, color}
     var inputs = [];      // {name, type, default, value}
+    var lines = [];       // {id, x1, y1, x2, y2, color, width, style, extend}
+    
+    var nextLineId = 1;
+    var max_lines_count = 50;
+    
+    /* Parse indicator params */
+    if (ast.type === 'Program') {
+      for (var i = 0; i < ast.body.length; i++) {
+        if (ast.body[i].type === 'Indicator') {
+           var indArgs = ast.body[i].args;
+           for (var j = 0; j < indArgs.length; j++) {
+             if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'max_lines_count') {
+               if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
+                 max_lines_count = indArgs[j].value.value;
+               }
+             }
+           }
+        }
+      }
+    }
 
     /* Plot registry — maps plot call-site index to plot entry */
     var plotRegistry = {};
@@ -842,6 +892,7 @@
       hlines: hlines,
       bgcolors: bgcolors,
       inputs: inputs,
+      lines: lines,
       errors: []
     };
 
@@ -1113,6 +1164,16 @@
     function execCall(node) {
       var callName = getCallName(node.callee);
 
+      /* line.* functions */
+      if (callName.indexOf('line.') === 0) {
+        return execLineCall(callName, node.args, node);
+      }
+
+      /* array.* functions */
+      if (callName.indexOf('array.') === 0) {
+        return execArrayCall(callName, node.args, node);
+      }
+
       /* ta.* functions */
       if (callName.indexOf('ta.') === 0) {
         return execTaCall(callName, node.args, node);
@@ -1277,6 +1338,247 @@
         default:
           return { __error__: { line: node.line, col: node.col,
             message: "Unknown function '" + name + "' — not supported in this interpreter" } };
+      }
+    }
+
+    function execLineCall(name, args, node) {
+      var evalArg = function(idx) {
+        if (idx >= args.length) return NA;
+        var a = args[idx];
+        return execNode(a.type === 'NamedArg' ? a.value : a);
+      };
+      
+      var getNamedArg = function(argName, defaultIdx) {
+        for (var i = 0; i < args.length; i++) {
+          if (args[i].type === 'NamedArg' && args[i].name === argName) {
+            return execNode(args[i].value);
+          }
+        }
+        return defaultIdx !== undefined ? evalArg(defaultIdx) : NA;
+      };
+
+      switch (name) {
+        case 'line.new': {
+          var x1 = getNamedArg('x1', 0);
+          var y1 = getNamedArg('y1', 1);
+          var x2 = getNamedArg('x2', 2);
+          var y2 = getNamedArg('y2', 3);
+          var color = getNamedArg('color', 4);
+          var width = getNamedArg('width', 5);
+          var style = getNamedArg('style', 6);
+          var extend = getNamedArg('extend', 7);
+          
+          var lObj = {
+            id: nextLineId++,
+            x1: x1, y1: y1,
+            x2: x2, y2: y2,
+            color: isNa(color) ? '#c9a84c' : color,
+            width: isNa(width) ? 1 : width,
+            style: isNa(style) ? 'solid' : style,
+            extend: isNa(extend) ? 'none' : extend
+          };
+          lines.push(lObj);
+          if (lines.length > max_lines_count) {
+             lines.shift(); // FIFO drop oldest
+          }
+          return lObj; // return opaque handle
+        }
+        case 'line.delete': {
+          var l = evalArg(0);
+          if (l && l.id) {
+            for (var i = 0; i < lines.length; i++) {
+              if (lines[i].id === l.id) {
+                lines.splice(i, 1);
+                break;
+              }
+            }
+          }
+          return NA;
+        }
+        case 'line.set_xy1': {
+          var l = evalArg(0);
+          var x = evalArg(1);
+          var y = evalArg(2);
+          if (l && l.id) { l.x1 = x; l.y1 = y; }
+          return NA;
+        }
+        case 'line.set_xy2': {
+          var l = evalArg(0);
+          var x = evalArg(1);
+          var y = evalArg(2);
+          if (l && l.id) { l.x2 = x; l.y2 = y; }
+          return NA;
+        }
+        case 'line.set_color': {
+          var l = evalArg(0);
+          var c = evalArg(1);
+          if (l && l.id && !isNa(c)) { l.color = c; }
+          return NA;
+        }
+        case 'line.set_width': {
+          var l = evalArg(0);
+          var w = evalArg(1);
+          if (l && l.id && !isNa(w)) { l.width = w; }
+          return NA;
+        }
+        case 'line.get_x1': { var l1 = evalArg(0); return (l1 && l1.id) ? l1.x1 : NA; }
+        case 'line.get_y1': { var l2 = evalArg(0); return (l2 && l2.id) ? l2.y1 : NA; }
+        case 'line.get_x2': { var l3 = evalArg(0); return (l3 && l3.id) ? l3.x2 : NA; }
+        case 'line.get_y2': { var l4 = evalArg(0); return (l4 && l4.id) ? l4.y2 : NA; }
+        default:
+          return { __error__: { line: node.line, col: node.col, message: "Unknown line function '" + name + "'" } };
+      }
+    }
+
+    function execArrayCall(name, args, node) {
+      var evalArg = function(idx) {
+        if (idx >= args.length) return NA;
+        var a = args[idx];
+        return execNode(a.type === 'NamedArg' ? a.value : a);
+      };
+
+      switch (name) {
+        case 'array.new_int':
+        case 'array.new_float':
+        case 'array.new_bool':
+        case 'array.new_string': {
+          var size = evalArg(0);
+          var initial = evalArg(1);
+          var arr = [];
+          if (!isNa(size) && size > 0) {
+            for (var i = 0; i < size; i++) arr.push(isNa(initial) ? NA : initial);
+          }
+          return arr;
+        }
+        case 'array.push': {
+          var arr = evalArg(0);
+          var val = evalArg(1);
+          if (Array.isArray(arr)) arr.push(val);
+          return NA;
+        }
+        case 'array.pop': {
+          var arr = evalArg(0);
+          if (Array.isArray(arr) && arr.length > 0) return arr.pop();
+          return NA;
+        }
+        case 'array.shift': {
+          var arr = evalArg(0);
+          if (Array.isArray(arr) && arr.length > 0) return arr.shift();
+          return NA;
+        }
+        case 'array.unshift': {
+          var arr = evalArg(0);
+          var val = evalArg(1);
+          if (Array.isArray(arr)) arr.unshift(val);
+          return NA;
+        }
+        case 'array.get': {
+          var arr = evalArg(0);
+          var idx = evalArg(1);
+          if (Array.isArray(arr) && !isNa(idx) && idx >= 0 && idx < arr.length) return arr[idx];
+          return NA;
+        }
+        case 'array.set': {
+          var arr = evalArg(0);
+          var idx = evalArg(1);
+          var val = evalArg(2);
+          if (Array.isArray(arr) && !isNa(idx) && idx >= 0 && idx < arr.length) arr[idx] = val;
+          return NA;
+        }
+        case 'array.size': {
+          var arr = evalArg(0);
+          if (Array.isArray(arr)) return arr.length;
+          return NA;
+        }
+        case 'array.clear': {
+          var arr = evalArg(0);
+          if (Array.isArray(arr)) arr.length = 0;
+          return NA;
+        }
+        case 'array.slice': {
+          var arr = evalArg(0);
+          var from = evalArg(1);
+          var to = evalArg(2);
+          if (Array.isArray(arr)) return arr.slice(isNa(from) ? 0 : from, isNa(to) ? arr.length : to);
+          return [];
+        }
+        case 'array.insert': {
+          var arr = evalArg(0);
+          var idx = evalArg(1);
+          var val = evalArg(2);
+          if (Array.isArray(arr) && !isNa(idx)) arr.splice(Math.max(0, idx), 0, val);
+          return NA;
+        }
+        case 'array.remove': {
+          var arr = evalArg(0);
+          var idx = evalArg(1);
+          if (Array.isArray(arr) && !isNa(idx) && idx >= 0 && idx < arr.length) return arr.splice(idx, 1)[0];
+          return NA;
+        }
+        case 'array.sum': {
+          var arr = evalArg(0);
+          if (!Array.isArray(arr)) return NA;
+          var sum = 0;
+          for (var i = 0; i < arr.length; i++) if (!isNa(arr[i])) sum += arr[i];
+          return sum;
+        }
+        case 'array.avg': {
+          var arr = evalArg(0);
+          if (!Array.isArray(arr)) return NA;
+          var sum = 0, cnt = 0;
+          for (var i = 0; i < arr.length; i++) {
+            if (!isNa(arr[i])) { sum += arr[i]; cnt++; }
+          }
+          return cnt > 0 ? sum / cnt : NA;
+        }
+        case 'array.max': {
+          var arr = evalArg(0);
+          if (!Array.isArray(arr)) return NA;
+          var max = -Infinity;
+          for (var i = 0; i < arr.length; i++) {
+            if (!isNa(arr[i]) && arr[i] > max) max = arr[i];
+          }
+          return max === -Infinity ? NA : max;
+        }
+        case 'array.min': {
+          var arr = evalArg(0);
+          if (!Array.isArray(arr)) return NA;
+          var min = Infinity;
+          for (var i = 0; i < arr.length; i++) {
+            if (!isNa(arr[i]) && arr[i] < min) min = arr[i];
+          }
+          return min === Infinity ? NA : min;
+        }
+        case 'array.sort': {
+          var arr = evalArg(0);
+          var order = evalArg(1);
+          if (Array.isArray(arr)) {
+             arr.sort(function(a,b) {
+               if(isNa(a)) return 1; if(isNa(b)) return -1;
+               return (order === 'order.descending' || order === 'descending') ? b - a : a - b;
+             });
+          }
+          return NA;
+        }
+        case 'array.indexof': {
+          var arr = evalArg(0);
+          var val = evalArg(1);
+          if (Array.isArray(arr)) return arr.indexOf(val);
+          return -1;
+        }
+        case 'array.includes': {
+          var arr = evalArg(0);
+          var val = evalArg(1);
+          if (Array.isArray(arr)) return arr.indexOf(val) !== -1;
+          return false;
+        }
+        case 'array.reverse': {
+          var arr = evalArg(0);
+          if (Array.isArray(arr)) arr.reverse();
+          return NA;
+        }
+        default:
+          return { __error__: { line: node.line, col: node.col, message: "Unknown array function '" + name + "'" } };
       }
     }
 
