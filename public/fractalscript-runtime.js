@@ -1117,6 +1117,11 @@
       var end = execNode(node.end);
       var step = node.step ? execNode(node.step) : 1;
       if (isNa(start) || isNa(end) || isNa(step) || step === 0) return NA;
+      
+      // Safety: If range is invalid for the step direction, don't execute
+      if (step > 0 && start > end) return NA;
+      if (step < 0 && start < end) return NA;
+
       var last = NA;
       for (var i = start; step > 0 ? i <= end : i >= end; i += step) {
         barVars[node.varName] = i;

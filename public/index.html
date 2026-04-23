@@ -5089,6 +5089,9 @@ function renderChart() {
       chartCtx.beginPath();
       chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, H - PAD.t - PAD.b);
       chartCtx.clip();
+      if (fractalResult.lines.length > 0) {
+        console.log("Renderer drawing lines:", fractalResult.lines.length);
+      }
       for (var _li = 0; _li < fractalResult.lines.length; _li++) {
         var _L = fractalResult.lines[_li];
         var _x1 = worldToScreenX(_L.x1);
