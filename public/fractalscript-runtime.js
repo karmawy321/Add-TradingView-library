@@ -1393,6 +1393,26 @@
         return String(sv);
       }
 
+      /* input.int, input.float, input.bool, input.string */
+      if (callName.startsWith('input')) {
+        var inputTitle = '';
+        var defVal = NA;
+        for (var k = 0; k < node.args.length; k++) {
+          var a = node.args[k];
+          if (a.type === 'NamedArg') {
+            if (a.name === 'title') inputTitle = execNode(a.value);
+            if (a.name === 'defval') defVal = execNode(a.value);
+          } else {
+            if (k === 0) defVal = execNode(a);
+            if (k === 1) inputTitle = execNode(a);
+          }
+        }
+        if (inputOverrides && inputOverrides[inputTitle] !== undefined) {
+          return inputOverrides[inputTitle];
+        }
+        return defVal;
+      }
+
       return NA;
     }
 
@@ -1410,7 +1430,8 @@
     }
 
     function execTaCall(name, args, node) {
-      var id = 'ta_' + (plotCounter++) + '_' + name;
+      /* Unique ID based on the call node's position in the AST */
+      var id = 'ta_' + node.line + '_' + node.col + '_' + name;
 
       var evalArg = function(idx) {
         if (idx >= args.length) return NA;
@@ -1429,20 +1450,20 @@
 
       switch (name) {
         case 'ta.sma': {
-          var src = getNamedArg('source', 0);
-          var len = getNamedArg('length', 1);
+          var src = evalArg(0);
+          var len = evalArg(1);
           if (isNa(len)) return NA;
           return ta.sma(src, Math.round(len), id);
         }
         case 'ta.ema': {
-          var src2 = getNamedArg('source', 0);
-          var len2 = getNamedArg('length', 1);
+          var src2 = evalArg(0);
+          var len2 = evalArg(1);
           if (isNa(len2)) return NA;
           return ta.ema(src2, Math.round(len2), id);
         }
         case 'ta.rma': {
-          var src3 = getNamedArg('source', 0);
-          var len3 = getNamedArg('length', 1);
+          var src3 = evalArg(0);
+          var len3 = evalArg(1);
           if (isNa(len3)) return NA;
           return ta.rma(src3, Math.round(len3), id);
         }
@@ -1552,6 +1573,9 @@
           var y1 = getNamedArg('y1', 1);
           var x2 = getNamedArg('x2', 2);
           var y2 = getNamedArg('y2', 3);
+          
+          if (isNa(x1) || isNa(y1) || isNa(x2) || isNa(y2)) return NA;
+
           var color = getNamedArg('color', 4);
           var width = getNamedArg('width', 5);
           var style = getNamedArg('style', 6);
@@ -1567,10 +1591,10 @@
             extend: isNa(extend) ? 'none' : extend
           };
           lines.push(lObj);
-          if (lines.length > max_lines_count) {
-             lines.shift(); // FIFO drop oldest
+          if (lines.length > 500) {
+             lines.shift();
           }
-          return lObj; // return opaque handle
+          return lObj;
         }
         case 'line.delete': {
           var l = evalArg(0);
