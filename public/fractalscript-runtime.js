@@ -845,20 +845,22 @@
 
       crossover: function(a, b, id) {
         var c = getCache(id, function() { return { prevA: NA, prevB: NA }; });
-        var result = false;
-        if (!isNa(a) && !isNa(b) && !isNa(c.prevA) && !isNa(c.prevB)) {
-          result = c.prevA <= c.prevB && a > b;
+        if (isNa(a) || isNa(b) || isNa(c.prevA) || isNa(c.prevB)) {
+          c.prevA = a; c.prevB = b;
+          return false;
         }
+        var result = c.prevA <= c.prevB && a > b;
         c.prevA = a; c.prevB = b;
         return result;
       },
 
       crossunder: function(a, b, id) {
         var c = getCache(id, function() { return { prevA: NA, prevB: NA }; });
-        var result = false;
-        if (!isNa(a) && !isNa(b) && !isNa(c.prevA) && !isNa(c.prevB)) {
-          result = c.prevA >= c.prevB && a < b;
+        if (isNa(a) || isNa(b) || isNa(c.prevA) || isNa(c.prevB)) {
+          c.prevA = a; c.prevB = b;
+          return false;
         }
+        var result = c.prevA >= c.prevB && a < b;
         c.prevA = a; c.prevB = b;
         return result;
       },
@@ -1569,12 +1571,12 @@
 
       switch (name) {
         case 'line.new': {
-          var x1 = getNamedArg('x1', 0);
-          var y1 = getNamedArg('y1', 1);
-          var x2 = getNamedArg('x2', 2);
-          var y2 = getNamedArg('y2', 3);
+          var x1 = Number(getNamedArg('x1', 0));
+          var y1 = Number(getNamedArg('y1', 1));
+          var x2 = Number(getNamedArg('x2', 2));
+          var y2 = Number(getNamedArg('y2', 3));
           
-          if (isNa(x1) || isNa(y1) || isNa(x2) || isNa(y2)) return NA;
+          if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) return NA;
 
           var color = getNamedArg('color', 4);
           var width = getNamedArg('width', 5);
