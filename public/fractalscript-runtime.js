@@ -2153,6 +2153,7 @@
       if (!condition || isNa(condition)) return NA;
 
       var style = 'triangleup', loc = 'belowbar', color = '#4CAF50', sz = 'small', title = '';
+      var text = '', textcolor = '#2196F3'; // Pine v5 default textcolor is color.blue
       var price = NA;
 
       for (var i = 0; i < args.length; i++) {
@@ -2164,6 +2165,8 @@
           if (a.name === 'color') color = (typeof v === 'string') ? v : color;
           if (a.name === 'size') sz = v || sz;
           if (a.name === 'title') title = v || '';
+          if (a.name === 'text') text = (v !== undefined && v !== null) ? String(v) : '';
+          if (a.name === 'textcolor') textcolor = (typeof v === 'string') ? v : textcolor;
           if (a.name === 'series') { condition = v; if (!condition) return NA; }
           if (a.name === 'price') price = v;
         }
@@ -2183,7 +2186,9 @@
         location: loc,
         color: color,
         size: sz,
-        title: title
+        title: title,
+        text: text,
+        textcolor: textcolor
       });
       return NA;
     }

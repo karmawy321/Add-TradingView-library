@@ -4560,6 +4560,9 @@ var viewState = {
 };
 var _lastCH = 0;    /* chart-area height in px, set by renderChart */
 var _chartPAD = { l:8, r:75, t:16, b:56, vol:40 }; /* canonical PAD used by transforms */
+var _fsMaximized = false;      /* FractalScript sub-pane fullscreen state */
+var _fsMaxBtnBounds = null;    /* Click region for the maximize/restore button */
+var _fsBadges = [];            /* Badges collected during clipped render, drawn after restore */
 
 /* worldToScreenX(k) returns the screen X of the CENTRE of bar k */
 function worldToScreenX(barIndex) {
@@ -5008,12 +5011,24 @@ function renderChart() {
     var _FRACTALLEdge = PAD.l, _FRACTALREdge = W - PAD.r;
     var _fsOverlay = fractalResult.overlay !== false; // default true
 
-    /* Sub-pane geometry for overlay=false — bottom 28% of chart area */
+    /* Sub-pane geometry for overlay=false — bottom 28% of chart area, or full chart if maximized */
     var _fsPaneTop = 0, _fsPaneBottom = 0, _fsPaneMin = 0, _fsPaneRange = 1;
+    _fsBadges = [];
+    _fsMaxBtnBounds = null;
     if (!_fsOverlay) {
-      var _fsPaneH = Math.max(60, CH * 0.28);
-      _fsPaneBottom = PAD.t + CH;
-      _fsPaneTop = _fsPaneBottom - _fsPaneH;
+      var _fsPaneH;
+      if (_fsMaximized) {
+        _fsPaneTop = PAD.t;
+        _fsPaneBottom = PAD.t + CH;
+        _fsPaneH = CH;
+        /* Cover the price chart area with solid bg */
+        chartCtx.fillStyle = '#06080d';
+        chartCtx.fillRect(PAD.l, _fsPaneTop, W - PAD.l - PAD.r, _fsPaneH);
+      } else {
+        _fsPaneH = Math.max(60, CH * 0.28);
+        _fsPaneBottom = PAD.t + CH;
+        _fsPaneTop = _fsPaneBottom - _fsPaneH;
+      }
       /* Compute min/max over plot values + hlines for pane-local Y scale */
       var _fsMin = Infinity, _fsMax = -Infinity;
       for (var _fpi = 0; _fpi < fractalResult.plots.length; _fpi++) {
@@ -5046,12 +5061,36 @@ function renderChart() {
       chartCtx.beginPath();
       chartCtx.moveTo(PAD.l, _fsPaneTop); chartCtx.lineTo(W - PAD.r, _fsPaneTop);
       chartCtx.stroke();
-      /* Pane scale labels (min/max) */
-      chartCtx.fillStyle = 'rgba(180,190,210,0.6)';
-      chartCtx.font = '10px sans-serif';
-      chartCtx.textAlign = 'left';
-      chartCtx.fillText(_fsMax.toFixed(4), W - PAD.r + 2, _fsPaneTop + 10);
-      chartCtx.fillText(_fsMin.toFixed(4), W - PAD.r + 2, _fsPaneBottom - 2);
+      /* Queue pane scale labels (plain text — null color) */
+      _fsBadges.push({ y: _fsPaneTop + 10, text: _fsMax.toFixed(4), color: null });
+      _fsBadges.push({ y: _fsPaneBottom - 2, text: _fsMin.toFixed(4), color: null });
+      /* Maximize / restore button — top-right inside pane */
+      var _btnS = 18, _btnPad = 4;
+      var _btnX = _FRACTALREdge - _btnS - _btnPad;
+      var _btnY = _fsPaneTop + _btnPad;
+      chartCtx.fillStyle = 'rgba(201,168,76,0.12)';
+      chartCtx.fillRect(_btnX, _btnY, _btnS, _btnS);
+      chartCtx.strokeStyle = 'rgba(201,168,76,0.55)';
+      chartCtx.lineWidth = 1;
+      chartCtx.strokeRect(_btnX + 0.5, _btnY + 0.5, _btnS - 1, _btnS - 1);
+      chartCtx.strokeStyle = '#c9a84c';
+      chartCtx.lineWidth = 1.5;
+      chartCtx.setLineDash([]);
+      var _iCx = _btnX + _btnS / 2, _iCy = _btnY + _btnS / 2;
+      if (_fsMaximized) {
+        /* Restore icon: inner square */
+        chartCtx.strokeRect(_iCx - 4, _iCy - 4, 8, 8);
+      } else {
+        /* Maximize icon: 4 corner brackets pointing outward */
+        var _iIn = 2, _iArm = 3;
+        chartCtx.beginPath();
+        chartCtx.moveTo(_iCx - _iIn - _iArm, _iCy - _iIn); chartCtx.lineTo(_iCx - _iIn, _iCy - _iIn); chartCtx.lineTo(_iCx - _iIn, _iCy - _iIn - _iArm);
+        chartCtx.moveTo(_iCx + _iIn + _iArm, _iCy - _iIn); chartCtx.lineTo(_iCx + _iIn, _iCy - _iIn); chartCtx.lineTo(_iCx + _iIn, _iCy - _iIn - _iArm);
+        chartCtx.moveTo(_iCx - _iIn - _iArm, _iCy + _iIn); chartCtx.lineTo(_iCx - _iIn, _iCy + _iIn); chartCtx.lineTo(_iCx - _iIn, _iCy + _iIn + _iArm);
+        chartCtx.moveTo(_iCx + _iIn + _iArm, _iCy + _iIn); chartCtx.lineTo(_iCx + _iIn, _iCy + _iIn); chartCtx.lineTo(_iCx + _iIn, _iCy + _iIn + _iArm);
+        chartCtx.stroke();
+      }
+      _fsMaxBtnBounds = { x: _btnX, y: _btnY, w: _btnS, h: _btnS };
     }
     function _fsPy(v) {
       if (_fsOverlay) return py(v);
@@ -5126,14 +5165,7 @@ function renderChart() {
         var _inPane = _fsOverlay ? (_lbY >= PAD.t && _lbY <= H - PAD.b)
                                  : (_lbY >= _fsPaneTop && _lbY <= _fsPaneBottom);
         if (_inPane) {
-          var _lbTxt = _lastV.toFixed(3);
-          chartCtx.font = 'bold 10px sans-serif';
-          var _lbTw = chartCtx.measureText(_lbTxt).width;
-          chartCtx.fillStyle = _lastColor;
-          chartCtx.fillRect(_FRACTALREdge + 2, _lbY - 7, _lbTw + 8, 14);
-          chartCtx.fillStyle = '#000';
-          chartCtx.textAlign = 'left';
-          chartCtx.fillText(_lbTxt, _FRACTALREdge + 6, _lbY + 4);
+          _fsBadges.push({ y: _lbY, text: _lastV.toFixed(3), color: _lastColor });
         }
       }
     }
@@ -5163,6 +5195,17 @@ function renderChart() {
           chartCtx.arc(_sx, _sy, 4, 0, Math.PI * 2);
         }
         chartCtx.closePath(); chartCtx.fill();
+
+        /* Shape text label (Pine v5 plotshape text="..."") */
+        if (_sh.text) {
+          chartCtx.fillStyle = _sh.textcolor || '#2196F3';
+          chartCtx.font = 'bold 11px sans-serif';
+          chartCtx.textAlign = 'center';
+          var _stY = _sh.location === 'abovebar' ? (_sy - 12)
+                   : _sh.location === 'belowbar' ? (_sy + 18)
+                   : (_sy - 10);
+          chartCtx.fillText(_sh.text, _sx, _stY);
+        }
       }
     }
     /* hlines */
@@ -5181,16 +5224,9 @@ function renderChart() {
         else chartCtx.setLineDash([4, 4]);
         chartCtx.beginPath(); chartCtx.moveTo(_FRACTALLEdge, _hy); chartCtx.lineTo(_FRACTALREdge, _hy); chartCtx.stroke();
         chartCtx.setLineDash([]);
-        /* Right-axis price badge */
+        /* Queue right-axis price badge — drawn after outer clip is restored */
         var _hlTxt = typeof _hl.price === 'number' ? _hl.price.toFixed(3) : String(_hl.price);
-        chartCtx.font = 'bold 10px sans-serif';
-        var _hlTw = chartCtx.measureText(_hlTxt).width;
-        var _hlBx = _FRACTALREdge + 2, _hlBw = _hlTw + 8, _hlBh = 14;
-        chartCtx.fillStyle = _hlColor;
-        chartCtx.fillRect(_hlBx, _hy - _hlBh / 2, _hlBw, _hlBh);
-        chartCtx.fillStyle = '#000000';
-        chartCtx.textAlign = 'left';
-        chartCtx.fillText(_hlTxt, _hlBx + 4, _hy + 4);
+        _fsBadges.push({ y: _hy, text: _hlTxt, color: _hlColor });
       }
     }
     /* lines */
@@ -5613,6 +5649,27 @@ function renderChart() {
 
   /* ── Restore clip — drawing below this line may use full canvas ── */
   chartCtx.restore();
+
+  /* FractalScript sub-pane badges — queued during clipped render, drawn now */
+  if (_fsBadges && _fsBadges.length) {
+    chartCtx.textAlign = 'left';
+    var _fbREdge = W - _chartPAD.r;
+    for (var _fbI = 0; _fbI < _fsBadges.length; _fbI++) {
+      var _fb = _fsBadges[_fbI];
+      if (_fb.color) {
+        chartCtx.font = 'bold 10px sans-serif';
+        var _fbW = chartCtx.measureText(_fb.text).width + 8;
+        chartCtx.fillStyle = _fb.color;
+        chartCtx.fillRect(_fbREdge + 2, _fb.y - 7, _fbW, 14);
+        chartCtx.fillStyle = '#000';
+        chartCtx.fillText(_fb.text, _fbREdge + 6, _fb.y + 4);
+      } else {
+        chartCtx.font = '10px sans-serif';
+        chartCtx.fillStyle = 'rgba(180,190,210,0.6)';
+        chartCtx.fillText(_fb.text, _fbREdge + 4, _fb.y);
+      }
+    }
+  }
 
   /* Price badge — pinned to price axis, needs to draw outside clip */
   if (candles.length > 0) {
@@ -6585,6 +6642,22 @@ if(chartCanvas){
   chartCanvas.addEventListener('mouseleave',function(){
     if(window._panStart===null) chartCanvas.style.cursor='crosshair';
   });
+
+  /* ── FractalScript sub-pane maximize/restore button ── */
+  chartCanvas.addEventListener('mousedown', function(e) {
+    if (e.button !== 0 || !_fsMaxBtnBounds) return;
+    var dpr = window.devicePixelRatio || 1;
+    var r = chartCanvas.getBoundingClientRect();
+    var mx = (e.clientX - r.left);
+    var my = (e.clientY - r.top);
+    var b = _fsMaxBtnBounds;
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+      e.preventDefault();
+      e.stopPropagation();
+      _fsMaximized = !_fsMaximized;
+      renderChart();
+    }
+  }, true);
 
   /* ── VPVR drag: left-click on the handle pill to move it horizontally ── */
   chartCanvas.addEventListener('mousedown', function(e) {
