@@ -1256,25 +1256,26 @@
       },
 
       supertrend: function(high, low, close, prevClose, factor, atrPeriod, id) {
-        var c = getCache(id, function() { return { prevUp: NA, prevDn: NA, prevTrend: 1, prevClose: NA }; });
+        /* Pine convention: direction = -1 for uptrend, +1 for downtrend */
+        var c = getCache(id, function() { return { prevUp: NA, prevDn: NA, prevTrend: -1, prevClose: NA }; });
         var atr = this.atr(high, low, close, prevClose, atrPeriod, id + '_stAtr');
         if (isNa(atr)) { c.prevClose = close; return [NA, NA]; }
         var src = (high + low) / 2;
-        var up = src - factor * atr;
-        var dn = src + factor * atr;
+        var up = src - factor * atr;  /* lower band (shown during uptrend) */
+        var dn = src + factor * atr;  /* upper band (shown during downtrend) */
         var upF = !isNa(c.prevUp) && !isNa(c.prevClose) && c.prevClose > c.prevUp ? Math.max(up, c.prevUp) : up;
         var dnF = !isNa(c.prevDn) && !isNa(c.prevClose) && c.prevClose < c.prevDn ? Math.min(dn, c.prevDn) : dn;
         var trend;
         if (isNa(c.prevUp) || isNa(c.prevDn)) {
-          trend = 1;
-        } else if (c.prevTrend === -1 && close > c.prevDn) {
-          trend = 1;
-        } else if (c.prevTrend === 1 && close < c.prevUp) {
           trend = -1;
+        } else if (c.prevTrend === 1 && close > c.prevDn) {
+          trend = -1;  /* was downtrend; close broke above upper band → flip to uptrend */
+        } else if (c.prevTrend === -1 && close < c.prevUp) {
+          trend = 1;   /* was uptrend; close broke below lower band → flip to downtrend */
         } else {
           trend = c.prevTrend;
         }
-        var value = trend === 1 ? upF : dnF;
+        var value = trend === -1 ? upF : dnF;
         c.prevUp = upF; c.prevDn = dnF; c.prevTrend = trend; c.prevClose = close;
         return [value, trend];
       },
