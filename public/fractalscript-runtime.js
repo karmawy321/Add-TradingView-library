@@ -2722,6 +2722,7 @@
             cells: {}
           };
           tables.push(tObj);
+          if (tables.length > 50) tables.shift();
           return tObj;
         }
         case 'table.delete': {

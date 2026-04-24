@@ -5418,13 +5418,17 @@ function renderChart() {
     /* tables */
     if (!window._fsTableDebugDone) {
       window._fsTableDebugDone = true;
-      console.log('[FractalScript] Total tables:', fractalResult.tables ? fractalResult.tables.length : 'undefined');
-      if (fractalResult.tables) {
-        fractalResult.tables.forEach(function(T, i){
-          console.log('  table[' + i + ']:', { position: T.position, cols: T.cols, rows: T.rows, bgcolor: T.bgcolor, frame_color: T.frame_color, cell_count: Object.keys(T.cells||{}).length });
-          Object.keys(T.cells||{}).forEach(function(k){ console.log('    cell[' + k + ']:', T.cells[k]); });
+      var _allT = fractalResult.tables || [];
+      console.log('[FractalScript] Total tables:', _allT.length);
+      var _withCells = _allT.filter(function(T){ return Object.keys(T.cells||{}).length > 0; });
+      console.log('  tables WITH cells:', _withCells.length);
+      _withCells.forEach(function(T, i){
+        console.log('  [' + i + '] pos=' + T.position + ' cols=' + T.cols + ' rows=' + T.rows + ' bg=' + T.bgcolor + ' cells=' + Object.keys(T.cells).length);
+        Object.keys(T.cells).forEach(function(k){
+          var c = T.cells[k];
+          console.log('      cell[' + k + ']: text="' + c.text + '" text_color=' + c.text_color + ' bgcolor=' + c.bgcolor + ' size=' + c.text_size + ' halign=' + c.text_halign);
         });
-      }
+      });
     }
     if (fractalResult.tables && fractalResult.tables.length) {
       var _tSizePx = { tiny: 8, small: 10, normal: 12, large: 14, huge: 18, auto: 12 };
