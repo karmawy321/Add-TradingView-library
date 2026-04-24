@@ -2187,7 +2187,11 @@
             return execNode(args[i].value);
           }
         }
-        return defaultIdx !== undefined ? evalArg(defaultIdx) : NA;
+        /* Fallback to positional only if that slot is NOT a different named arg */
+        if (defaultIdx !== undefined && defaultIdx < args.length && args[defaultIdx].type !== 'NamedArg') {
+          return execNode(args[defaultIdx]);
+        }
+        return NA;
       };
 
       switch (name) {
@@ -2507,7 +2511,11 @@
             return execNode(args[i].value);
           }
         }
-        return defaultIdx !== undefined ? evalArg(defaultIdx) : NA;
+        /* Fallback to positional only if that slot is NOT a different named arg */
+        if (defaultIdx !== undefined && defaultIdx < args.length && args[defaultIdx].type !== 'NamedArg') {
+          return execNode(args[defaultIdx]);
+        }
+        return NA;
       };
 
       switch (name) {
@@ -2598,7 +2606,11 @@
             return execNode(args[i].value);
           }
         }
-        return defaultIdx !== undefined ? evalArg(defaultIdx) : NA;
+        /* Fallback to positional only if that slot is NOT a different named arg */
+        if (defaultIdx !== undefined && defaultIdx < args.length && args[defaultIdx].type !== 'NamedArg') {
+          return execNode(args[defaultIdx]);
+        }
+        return NA;
       };
 
       switch (name) {
@@ -2697,7 +2709,11 @@
             return execNode(args[i].value);
           }
         }
-        return defaultIdx !== undefined ? evalArg(defaultIdx) : NA;
+        /* Fallback to positional only if that slot is NOT a different named arg */
+        if (defaultIdx !== undefined && defaultIdx < args.length && args[defaultIdx].type !== 'NamedArg') {
+          return execNode(args[defaultIdx]);
+        }
+        return NA;
       };
 
       switch (name) {
