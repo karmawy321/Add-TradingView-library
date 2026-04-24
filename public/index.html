@@ -5231,14 +5231,6 @@ function renderChart() {
     }
     /* lines */
     if (fractalResult.lines) {
-      /* TEMP DEBUG: log each line's properties once per render */
-      if (!window._fsLineDebugDone) {
-        window._fsLineDebugDone = true;
-        console.log('[FractalScript] Total lines:', fractalResult.lines.length);
-        fractalResult.lines.forEach(function(L, i){
-          console.log('  line[' + i + ']:', { x1: L.x1, y1: L.y1, x2: L.x2, y2: L.y2, color: L.color, width: L.width, extend: L.extend, style: L.style });
-        });
-      }
       chartCtx.save();
       chartCtx.beginPath();
       chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, H - PAD.t - PAD.b);
@@ -5416,65 +5408,33 @@ function renderChart() {
       chartCtx.restore();
     }
     /* tables */
-    if (!window._fsTableDebugDone) {
-      window._fsTableDebugDone = true;
-      var _allT = fractalResult.tables || [];
-      console.log('[FractalScript] Total tables:', _allT.length);
-      var _withCells = _allT.filter(function(T){ return Object.keys(T.cells||{}).length > 0; });
-      console.log('  tables WITH cells:', _withCells.length);
-      _withCells.forEach(function(T, i){
-        console.log('  [' + i + '] pos=' + T.position + ' cols=' + T.cols + ' rows=' + T.rows + ' bg=' + T.bgcolor + ' cells=' + Object.keys(T.cells).length);
-        Object.keys(T.cells).forEach(function(k){
-          var c = T.cells[k];
-          console.log('      cell[' + k + ']: text="' + c.text + '" text_color=' + c.text_color + ' bgcolor=' + c.bgcolor + ' size=' + c.text_size + ' halign=' + c.text_halign);
-        });
-      });
-    }
     if (fractalResult.tables && fractalResult.tables.length) {
       chartCtx.save();
       var _tSizePx = { tiny: 8, small: 10, normal: 12, large: 14, huge: 18, auto: 12 };
       var _tPadX = 4, _tPadY = 2;
       var _tChartX = PAD.l, _tChartY = PAD.t;
       var _tChartW = W - PAD.l - PAD.r, _tChartH = CH;
-      /* TEMP: bright magenta proof-of-draw marker at top-right */
-      chartCtx.fillStyle = '#FF00FF';
-      chartCtx.fillRect(_tChartX + _tChartW - 25, _tChartY + 2, 20, 20);
-      var _tableEnterCount = 0;
       for (var _ti = 0; _ti < fractalResult.tables.length; _ti++) {
         var _T = fractalResult.tables[_ti];
         var cells = _T.cells || {};
         if (!Object.keys(cells).length) continue;
-        _tableEnterCount++;
-        if (!window._fsTableRenderLog) {
-          window._fsTableRenderLog = true;
-          console.log('[FractalScript] entering table render loop for table[' + _ti + '] pos=' + _T.position + ' cols=' + _T.cols + ' rows=' + _T.rows + ' cellCount=' + Object.keys(cells).length);
-        }
         /* compute column widths and row heights from cell text */
         var colW = new Array(_T.cols).fill(0);
         var rowH = new Array(_T.rows).fill(0);
-        var _iterCount = 0;
         for (var _ck in cells) {
-          _iterCount++;
           var _cell = cells[_ck];
-          console.log('[FractalScript]   iter _ck=' + _ck + ' _cell=', _cell);
-          if (_cell.col >= _T.cols || _cell.row >= _T.rows) {
-            console.log('[FractalScript]   skipped (bounds): col=' + _cell.col + ' cols=' + _T.cols + ' row=' + _cell.row + ' rows=' + _T.rows);
-            continue;
-          }
+          if (_cell.col >= _T.cols || _cell.row >= _T.rows) continue;
           var _fs = _tSizePx[_cell.text_size] || 12;
           chartCtx.font = _fs + 'px "DM Sans", sans-serif';
           var _txt = _cell.text || '';
           var _tw = chartCtx.measureText(_txt).width;
           var _cw = Math.max(_tw + _tPadX * 2, _cell.width || 0);
           var _ch = Math.max(_fs + _tPadY * 2, _cell.height || 0);
-          console.log('[FractalScript]   computed _fs=' + _fs + ' _tw=' + _tw + ' _cw=' + _cw + ' _ch=' + _ch);
           if (_cw > colW[_cell.col]) colW[_cell.col] = _cw;
           if (_ch > rowH[_cell.row]) rowH[_cell.row] = _ch;
         }
-        console.log('[FractalScript]   iterCount=' + _iterCount);
         var totalW = colW.reduce(function(a,b){return a+b;}, 0);
         var totalH = rowH.reduce(function(a,b){return a+b;}, 0);
-        console.log('[FractalScript] table[' + _ti + '] totalW=' + totalW + ' totalH=' + totalH + ' colW=' + JSON.stringify(colW) + ' rowH=' + JSON.stringify(rowH));
         if (totalW <= 0 || totalH <= 0) continue;
         /* anchor position */
         var pos = _T.position || 'top_right';
@@ -5485,10 +5445,6 @@ function renderChart() {
         if (pos.indexOf('_left') > 0)         ax = _tChartX + 4;
         else if (pos.indexOf('_center') > 0)  ax = _tChartX + (_tChartW - totalW) / 2;
         else                                  ax = _tChartX + _tChartW - totalW - 4;
-        if (window._fsTableDrawLogDone !== fractalResult.tables.length) {
-          window._fsTableDrawLogDone = fractalResult.tables.length;
-          console.log('[FractalScript] draw table at ax=' + ax + ' ay=' + ay + ' totalW=' + totalW + ' totalH=' + totalH + ' (chart: x=' + _tChartX + ' y=' + _tChartY + ' w=' + _tChartW + ' h=' + _tChartH + ')');
-        }
         /* frame bg */
         if (_T.bgcolor) {
           chartCtx.fillStyle = _T.bgcolor;
@@ -10556,16 +10512,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     var candles = window.chartCandles;
     if (!candles || candles.length < 2) { _showfractalError('No candle data available'); return; }
 
-    window._fsLineDebugDone = false; /* reset debug log on each run */
-    window._fsTableDebugDone = false;
-    window._fsTableDrawLogDone = undefined;
-    window._fsTableRenderLog = false;
     var result = window.FractalScriptEngine.run(src, candles, overrides);
-    /* TEMP DEBUG: log inputs so we can see color values */
-    if (result && result.inputs) {
-      console.log('[FractalScript] inputs resolved:');
-      result.inputs.forEach(function(inp){ console.log('  ', inp.name, '=', inp.value, '(default:', inp.default, ', type:', inp.type, ')'); });
-    }
     
     /* Sync button state */
     var glow = document.getElementById('fsBtnGlow');

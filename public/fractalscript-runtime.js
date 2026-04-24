@@ -88,7 +88,7 @@
     OP: 'OP', LPAREN: 'LPAREN', RPAREN: 'RPAREN',
     LBRACKET: 'LBRACKET', RBRACKET: 'RBRACKET',
     COMMA: 'COMMA', DOT: 'DOT', COLON: 'COLON',
-    ASSIGN: 'ASSIGN', REASSIGN: 'REASSIGN', QUESTION: 'QUESTION',
+    ASSIGN: 'ASSIGN', REASSIGN: 'REASSIGN', QUESTION: 'QUESTION', ARROW: 'ARROW',
     NEWLINE: 'NEWLINE', EOF: 'EOF',
     // keywords
     KW_IF: 'KW_IF', KW_ELSE: 'KW_ELSE', KW_FOR: 'KW_FOR',
@@ -204,6 +204,7 @@
       /* Two-char operators first */
       var two = peek2();
       if (two === ':=') { advance(); advance(); tokens.push(tok(TT.REASSIGN, ':=', startLine, startCol)); continue; }
+      if (two === '=>') { advance(); advance(); tokens.push(tok(TT.ARROW, '=>', startLine, startCol)); continue; }
       if (two === '==') { advance(); advance(); tokens.push(tok(TT.OP, '==', startLine, startCol)); continue; }
       if (two === '!=') { advance(); advance(); tokens.push(tok(TT.OP, '!=', startLine, startCol)); continue; }
       if (two === '>=') { advance(); advance(); tokens.push(tok(TT.OP, '>=', startLine, startCol)); continue; }
@@ -367,6 +368,33 @@
       var l = loc();
       var expr = parseExpression();
       if (expr && expr.error) return expr;
+
+      /* User-defined function: foo(a, b) => body */
+      if (expr && expr.type === 'Call' && at(TT.ARROW)) {
+        if (expr.callee.type !== 'Identifier') {
+          return { error: { line: l.line, col: l.col, message: 'Function name must be a simple identifier' } };
+        }
+        var params = [];
+        for (var pi = 0; pi < expr.args.length; pi++) {
+          var ap = expr.args[pi];
+          if (ap.type !== 'Identifier') {
+            return { error: { line: ap.line || l.line, col: ap.col || l.col, message: 'Function parameters must be plain identifiers' } };
+          }
+          params.push(ap.name);
+        }
+        pos++; // consume '=>'
+        var body;
+        if (at(TT.NEWLINE)) {
+          skipNewlines();
+          body = parseBlock(l.col);
+          if (body && body.error) return body;
+          if (!body) return { error: { line: l.line, col: l.col, message: 'Empty function body' } };
+        } else {
+          body = parseExpression();
+          if (body && body.error) return body;
+        }
+        return { type: 'FunctionDecl', name: expr.callee.name, params: params, body: body, line: l.line, col: l.col };
+      }
 
       /* Check for = or := after identifier */
       if (expr && expr.type === 'Identifier') {
