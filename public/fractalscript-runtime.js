@@ -2932,7 +2932,7 @@
       /* Find matching input */
       for (var j = 0; j < inputs.length; j++) {
         if (inputs[j].name === title || (title === '' && j === inputs.length - 1)) {
-          return inputs[j].value;
+          return inputs[j].value !== undefined ? inputs[j].value : defVal;
         }
       }
       return defVal;
