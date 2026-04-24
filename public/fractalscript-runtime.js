@@ -1773,6 +1773,25 @@
         return _d.getTime();
       }
 
+      /* P6: date/time decomposition as bare identifiers (Pine also supports year(), month(), ...) */
+      if (name === 'year' || name === 'month' || name === 'dayofmonth' ||
+          name === 'dayofweek' || name === 'hour' || name === 'minute' ||
+          name === 'second' || name === 'weekofyear') {
+        var _dt = new Date(curCandle.t || 0);
+        if (name === 'year')       return _dt.getUTCFullYear();
+        if (name === 'month')      return _dt.getUTCMonth() + 1;
+        if (name === 'dayofmonth') return _dt.getUTCDate();
+        if (name === 'dayofweek')  return _dt.getUTCDay() + 1;
+        if (name === 'hour')       return _dt.getUTCHours();
+        if (name === 'minute')     return _dt.getUTCMinutes();
+        if (name === 'second')     return _dt.getUTCSeconds();
+        if (name === 'weekofyear') {
+          var _jan1 = Date.UTC(_dt.getUTCFullYear(), 0, 1);
+          var _days = Math.floor((_dt.getTime() - _jan1) / 86400000);
+          return Math.ceil((_days + new Date(_jan1).getUTCDay() + 1) / 7);
+        }
+      }
+
       /* User variables */
       if (name in barVars) return barVars[name];
       if (name in persistentVars) return persistentVars[name];
