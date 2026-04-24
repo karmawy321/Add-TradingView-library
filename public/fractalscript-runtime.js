@@ -1420,9 +1420,11 @@
     var inputs = [];      // {name, type, default, value}
     var lines = [];       // {id, x1, y1, x2, y2, color, width, style, extend}
     var labels = [];      // {id, x, y, text, color, textcolor, style, size, textalign, tooltip}
+    var tables = [];      // {id, position, cols, rows, bgcolor, frame_color, frame_width, border_color, border_width, cells:{col,row -> {text, bgcolor, text_color, text_halign, text_valign, text_size, width, height, tooltip}}}
 
     var nextLineId = 1;
     var nextLabelId = 1;
+    var nextTableId = 1;
     var max_lines_count = 50;
     var max_labels_count = 50;
 
@@ -1453,6 +1455,15 @@
     };
     var LOCATIONS = {
       'abovebar': 'abovebar', 'belowbar': 'belowbar', 'top': 'top', 'bottom': 'bottom', 'absolute': 'absolute'
+    };
+    var POSITIONS = {
+      'top_left': 'top_left', 'top_center': 'top_center', 'top_right': 'top_right',
+      'middle_left': 'middle_left', 'middle_center': 'middle_center', 'middle_right': 'middle_right',
+      'bottom_left': 'bottom_left', 'bottom_center': 'bottom_center', 'bottom_right': 'bottom_right'
+    };
+    var TEXT_ALIGN = {
+      'align_left': 'left', 'align_center': 'center', 'align_right': 'right',
+      'align_top': 'top', 'align_bottom': 'bottom'
     };
     /* Parse indicator params */
     var overlay = true; // default: overlay on main price chart
@@ -1597,6 +1608,7 @@
       inputs: inputs,
       lines: lines,
       labels: labels,
+      tables: tables,
       overlay: overlay,
       errors: []
     };
@@ -1904,6 +1916,9 @@
       if (obj === 'str') return 'str.' + node.member;
       if (obj === 'extend') return EXTEND_MODES[node.member] || 'extend.' + node.member;
       if (obj === 'hline') return 'hline.' + node.member;
+      if (obj === 'position') return POSITIONS[node.member] || node.member;
+      if (obj === 'text') return TEXT_ALIGN[node.member] || node.member;
+      if (obj === 'table') return 'table.' + node.member;
 
       /* P6: barstate.* property lookups */
       if (obj === 'barstate') {
@@ -1981,6 +1996,11 @@
       /* label.* functions */
       if (callName.indexOf('label.') === 0) {
         return execLabelCall(callName, node.args, node);
+      }
+
+      /* table.* functions */
+      if (callName.indexOf('table.') === 0) {
+        return execTableCall(callName, node.args, node);
       }
 
       /* str.* functions */
@@ -2661,6 +2681,187 @@
         case 'label.get_text': { var lg3 = evalArg(0); return (lg3 && lg3.id) ? lg3.text : NA; }
         default:
           return { __error__: { line: node.line, col: node.col, message: "Unknown label function '" + name + "'" } };
+      }
+    }
+
+    function execTableCall(name, args, node) {
+      var evalArg = function(idx) {
+        if (idx >= args.length) return NA;
+        var a = args[idx];
+        return execNode(a.type === 'NamedArg' ? a.value : a);
+      };
+      var getNamedArg = function(argName, defaultIdx) {
+        for (var i = 0; i < args.length; i++) {
+          if (args[i].type === 'NamedArg' && args[i].name === argName) {
+            return execNode(args[i].value);
+          }
+        }
+        return defaultIdx !== undefined ? evalArg(defaultIdx) : NA;
+      };
+
+      switch (name) {
+        case 'table.new': {
+          var position = getNamedArg('position', 0);
+          var columns = Number(getNamedArg('columns', 1));
+          var rowsN = Number(getNamedArg('rows', 2));
+          if (isNaN(columns) || isNaN(rowsN)) return NA;
+          var tbgcolor = getNamedArg('bgcolor', 3);
+          var tframeColor = getNamedArg('frame_color', 4);
+          var tframeWidth = getNamedArg('frame_width', 5);
+          var tborderColor = getNamedArg('border_color', 6);
+          var tborderWidth = getNamedArg('border_width', 7);
+          var tObj = {
+            id: nextTableId++,
+            position: isNa(position) ? 'top_right' : position,
+            cols: columns, rows: rowsN,
+            bgcolor: isNa(tbgcolor) ? null : tbgcolor,
+            frame_color: isNa(tframeColor) ? null : tframeColor,
+            frame_width: isNa(tframeWidth) ? 0 : tframeWidth,
+            border_color: isNa(tborderColor) ? null : tborderColor,
+            border_width: isNa(tborderWidth) ? 0 : tborderWidth,
+            cells: {}
+          };
+          tables.push(tObj);
+          return tObj;
+        }
+        case 'table.delete': {
+          var td = evalArg(0);
+          if (td && td.id) {
+            for (var i = 0; i < tables.length; i++) {
+              if (tables[i].id === td.id) { tables.splice(i, 1); break; }
+            }
+          }
+          return NA;
+        }
+        case 'table.cell': {
+          var tc = evalArg(0);
+          var col = Number(evalArg(1));
+          var row = Number(evalArg(2));
+          if (!tc || !tc.id || isNaN(col) || isNaN(row)) return NA;
+          var cellText = getNamedArg('text', 3);
+          var cellWidth = getNamedArg('width', 4);
+          var cellHeight = getNamedArg('height', 5);
+          var cellTextColor = getNamedArg('text_color', 6);
+          var cellHalign = getNamedArg('text_halign', 7);
+          var cellValign = getNamedArg('text_valign', 8);
+          var cellBg = getNamedArg('bgcolor', 9);
+          var cellTooltip = getNamedArg('tooltip', 10);
+          var cellSize = getNamedArg('text_size', 11);
+          var key = col + ',' + row;
+          tc.cells[key] = {
+            col: col, row: row,
+            text: isNa(cellText) ? '' : String(cellText),
+            width: isNa(cellWidth) ? 0 : cellWidth,
+            height: isNa(cellHeight) ? 0 : cellHeight,
+            text_color: isNa(cellTextColor) ? '#000000' : cellTextColor,
+            text_halign: isNa(cellHalign) ? 'center' : cellHalign,
+            text_valign: isNa(cellValign) ? 'center' : cellValign,
+            bgcolor: isNa(cellBg) ? null : cellBg,
+            tooltip: isNa(cellTooltip) ? '' : String(cellTooltip),
+            text_size: isNa(cellSize) ? 'normal' : cellSize
+          };
+          return NA;
+        }
+        case 'table.clear': {
+          var tcl = evalArg(0);
+          if (!tcl || !tcl.id) return NA;
+          var sc = Number(evalArg(1));
+          var sr = Number(evalArg(2));
+          var ec = isNaN(Number(evalArg(3))) ? sc : Number(evalArg(3));
+          var er = isNaN(Number(evalArg(4))) ? sr : Number(evalArg(4));
+          if (isNaN(sc) || isNaN(sr)) { tcl.cells = {}; return NA; }
+          for (var cc = sc; cc <= ec; cc++) {
+            for (var rr = sr; rr <= er; rr++) {
+              delete tcl.cells[cc + ',' + rr];
+            }
+          }
+          return NA;
+        }
+        case 'table.set_bgcolor': {
+          var tsb = evalArg(0); var sbc = evalArg(1);
+          if (tsb && tsb.id) tsb.bgcolor = isNa(sbc) ? null : sbc;
+          return NA;
+        }
+        case 'table.set_frame_color': {
+          var tsf = evalArg(0); var sfc = evalArg(1);
+          if (tsf && tsf.id) tsf.frame_color = isNa(sfc) ? null : sfc;
+          return NA;
+        }
+        case 'table.set_border_color': {
+          var tsbr = evalArg(0); var sbrc = evalArg(1);
+          if (tsbr && tsbr.id) tsbr.border_color = isNa(sbrc) ? null : sbrc;
+          return NA;
+        }
+        case 'table.set_position': {
+          var tsp = evalArg(0); var spp = evalArg(1);
+          if (tsp && tsp.id && !isNa(spp)) tsp.position = spp;
+          return NA;
+        }
+        case 'table.cell_set_text': {
+          var tct = evalArg(0); var ctc = Number(evalArg(1)); var ctr = Number(evalArg(2)); var ctx = evalArg(3);
+          if (tct && tct.id && !isNaN(ctc) && !isNaN(ctr)) {
+            var k = ctc + ',' + ctr;
+            if (!tct.cells[k]) tct.cells[k] = { col: ctc, row: ctr, text: '', text_color: '#000000', text_halign: 'center', text_valign: 'center', bgcolor: null, text_size: 'normal', width: 0, height: 0, tooltip: '' };
+            tct.cells[k].text = isNa(ctx) ? '' : String(ctx);
+          }
+          return NA;
+        }
+        case 'table.cell_set_bgcolor': {
+          var tcb = evalArg(0); var cbc = Number(evalArg(1)); var cbr = Number(evalArg(2)); var cbx = evalArg(3);
+          if (tcb && tcb.id && !isNaN(cbc) && !isNaN(cbr)) {
+            var k2 = cbc + ',' + cbr;
+            if (!tcb.cells[k2]) tcb.cells[k2] = { col: cbc, row: cbr, text: '', text_color: '#000000', text_halign: 'center', text_valign: 'center', bgcolor: null, text_size: 'normal', width: 0, height: 0, tooltip: '' };
+            tcb.cells[k2].bgcolor = isNa(cbx) ? null : cbx;
+          }
+          return NA;
+        }
+        case 'table.cell_set_text_color': {
+          var tctc = evalArg(0); var tcc = Number(evalArg(1)); var tcr = Number(evalArg(2)); var tcx = evalArg(3);
+          if (tctc && tctc.id && !isNaN(tcc) && !isNaN(tcr)) {
+            var k3 = tcc + ',' + tcr;
+            if (!tctc.cells[k3]) tctc.cells[k3] = { col: tcc, row: tcr, text: '', text_color: '#000000', text_halign: 'center', text_valign: 'center', bgcolor: null, text_size: 'normal', width: 0, height: 0, tooltip: '' };
+            tctc.cells[k3].text_color = isNa(tcx) ? '#000000' : tcx;
+          }
+          return NA;
+        }
+        case 'table.cell_set_text_halign': {
+          var tcha = evalArg(0); var hac = Number(evalArg(1)); var har = Number(evalArg(2)); var hax = evalArg(3);
+          if (tcha && tcha.id && !isNaN(hac) && !isNaN(har)) {
+            var k4 = hac + ',' + har;
+            if (!tcha.cells[k4]) tcha.cells[k4] = { col: hac, row: har, text: '', text_color: '#000000', text_halign: 'center', text_valign: 'center', bgcolor: null, text_size: 'normal', width: 0, height: 0, tooltip: '' };
+            tcha.cells[k4].text_halign = isNa(hax) ? 'center' : hax;
+          }
+          return NA;
+        }
+        case 'table.cell_set_text_valign': {
+          var tcva = evalArg(0); var vac = Number(evalArg(1)); var var_ = Number(evalArg(2)); var vax = evalArg(3);
+          if (tcva && tcva.id && !isNaN(vac) && !isNaN(var_)) {
+            var k5 = vac + ',' + var_;
+            if (!tcva.cells[k5]) tcva.cells[k5] = { col: vac, row: var_, text: '', text_color: '#000000', text_halign: 'center', text_valign: 'center', bgcolor: null, text_size: 'normal', width: 0, height: 0, tooltip: '' };
+            tcva.cells[k5].text_valign = isNa(vax) ? 'center' : vax;
+          }
+          return NA;
+        }
+        case 'table.cell_set_text_size': {
+          var tcts = evalArg(0); var tsc = Number(evalArg(1)); var tsr = Number(evalArg(2)); var tsx = evalArg(3);
+          if (tcts && tcts.id && !isNaN(tsc) && !isNaN(tsr)) {
+            var k6 = tsc + ',' + tsr;
+            if (!tcts.cells[k6]) tcts.cells[k6] = { col: tsc, row: tsr, text: '', text_color: '#000000', text_halign: 'center', text_valign: 'center', bgcolor: null, text_size: 'normal', width: 0, height: 0, tooltip: '' };
+            tcts.cells[k6].text_size = isNa(tsx) ? 'normal' : tsx;
+          }
+          return NA;
+        }
+        case 'table.cell_set_tooltip': {
+          var tctt = evalArg(0); var ttc = Number(evalArg(1)); var ttr = Number(evalArg(2)); var ttx = evalArg(3);
+          if (tctt && tctt.id && !isNaN(ttc) && !isNaN(ttr)) {
+            var k7 = ttc + ',' + ttr;
+            if (!tctt.cells[k7]) tctt.cells[k7] = { col: ttc, row: ttr, text: '', text_color: '#000000', text_halign: 'center', text_valign: 'center', bgcolor: null, text_size: 'normal', width: 0, height: 0, tooltip: '' };
+            tctt.cells[k7].tooltip = isNa(ttx) ? '' : String(ttx);
+          }
+          return NA;
+        }
+        default:
+          return { __error__: { line: node.line, col: node.col, message: "Unknown table function '" + name + "'" } };
       }
     }
 

@@ -5231,6 +5231,14 @@ function renderChart() {
     }
     /* lines */
     if (fractalResult.lines) {
+      /* TEMP DEBUG: log each line's properties once per render */
+      if (!window._fsLineDebugDone) {
+        window._fsLineDebugDone = true;
+        console.log('[FractalScript] Total lines:', fractalResult.lines.length);
+        fractalResult.lines.forEach(function(L, i){
+          console.log('  line[' + i + ']:', { x1: L.x1, y1: L.y1, x2: L.x2, y2: L.y2, color: L.color, width: L.width, extend: L.extend, style: L.style });
+        });
+      }
       chartCtx.save();
       chartCtx.beginPath();
       chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, H - PAD.t - PAD.b);
@@ -5406,6 +5414,92 @@ function renderChart() {
         }
       }
       chartCtx.restore();
+    }
+    /* tables */
+    if (fractalResult.tables && fractalResult.tables.length) {
+      var _tSizePx = { tiny: 8, small: 10, normal: 12, large: 14, huge: 18, auto: 12 };
+      var _tPadX = 4, _tPadY = 2;
+      var _tChartX = PAD.l, _tChartY = PAD.t;
+      var _tChartW = W - PAD.l - PAD.r, _tChartH = CH;
+      for (var _ti = 0; _ti < fractalResult.tables.length; _ti++) {
+        var _T = fractalResult.tables[_ti];
+        var cells = _T.cells || {};
+        if (!Object.keys(cells).length) continue;
+        /* compute column widths and row heights from cell text */
+        var colW = new Array(_T.cols).fill(0);
+        var rowH = new Array(_T.rows).fill(0);
+        for (var _ck in cells) {
+          var _cell = cells[_ck];
+          if (_cell.col >= _T.cols || _cell.row >= _T.rows) continue;
+          var _fs = _tSizePx[_cell.text_size] || 12;
+          chartCtx.font = _fs + 'px "DM Sans", sans-serif';
+          var _txt = _cell.text || '';
+          var _tw = chartCtx.measureText(_txt).width;
+          var _cw = Math.max(_tw + _tPadX * 2, _cell.width || 0);
+          var _ch = Math.max(_fs + _tPadY * 2, _cell.height || 0);
+          if (_cw > colW[_cell.col]) colW[_cell.col] = _cw;
+          if (_ch > rowH[_cell.row]) rowH[_cell.row] = _ch;
+        }
+        var totalW = colW.reduce(function(a,b){return a+b;}, 0);
+        var totalH = rowH.reduce(function(a,b){return a+b;}, 0);
+        if (totalW <= 0 || totalH <= 0) continue;
+        /* anchor position */
+        var pos = _T.position || 'top_right';
+        var ax, ay;
+        if (pos.indexOf('top') === 0)         ay = _tChartY + 4;
+        else if (pos.indexOf('middle') === 0) ay = _tChartY + (_tChartH - totalH) / 2;
+        else                                  ay = _tChartY + _tChartH - totalH - 4;
+        if (pos.indexOf('_left') > 0)         ax = _tChartX + 4;
+        else if (pos.indexOf('_center') > 0)  ax = _tChartX + (_tChartW - totalW) / 2;
+        else                                  ax = _tChartX + _tChartW - totalW - 4;
+        /* frame bg */
+        if (_T.bgcolor) {
+          chartCtx.fillStyle = _T.bgcolor;
+          chartCtx.fillRect(ax, ay, totalW, totalH);
+        }
+        /* cells */
+        var cellX = ax;
+        for (var _cc = 0; _cc < _T.cols; _cc++) {
+          var cellY = ay;
+          for (var _rr = 0; _rr < _T.rows; _rr++) {
+            var _c = cells[_cc + ',' + _rr];
+            if (_c) {
+              if (_c.bgcolor) {
+                chartCtx.fillStyle = _c.bgcolor;
+                chartCtx.fillRect(cellX, cellY, colW[_cc], rowH[_rr]);
+              }
+              if (_T.border_color && _T.border_width > 0) {
+                chartCtx.strokeStyle = _T.border_color;
+                chartCtx.lineWidth = _T.border_width;
+                chartCtx.strokeRect(cellX, cellY, colW[_cc], rowH[_rr]);
+              }
+              if (_c.text) {
+                var _cfs = _tSizePx[_c.text_size] || 12;
+                chartCtx.font = _cfs + 'px "DM Sans", sans-serif';
+                chartCtx.fillStyle = _c.text_color || '#000000';
+                var _cha = _c.text_halign || 'center';
+                var _cva = _c.text_valign || 'center';
+                var _ctx, _cty;
+                if (_cha === 'left')       { chartCtx.textAlign = 'left';   _ctx = cellX + _tPadX; }
+                else if (_cha === 'right') { chartCtx.textAlign = 'right';  _ctx = cellX + colW[_cc] - _tPadX; }
+                else                       { chartCtx.textAlign = 'center'; _ctx = cellX + colW[_cc] / 2; }
+                if (_cva === 'top')         { chartCtx.textBaseline = 'top';    _cty = cellY + _tPadY; }
+                else if (_cva === 'bottom') { chartCtx.textBaseline = 'bottom'; _cty = cellY + rowH[_rr] - _tPadY; }
+                else                        { chartCtx.textBaseline = 'middle'; _cty = cellY + rowH[_rr] / 2; }
+                chartCtx.fillText(_c.text, _ctx, _cty);
+              }
+            }
+            cellY += rowH[_rr];
+          }
+          cellX += colW[_cc];
+        }
+        /* outer frame */
+        if (_T.frame_color && _T.frame_width > 0) {
+          chartCtx.strokeStyle = _T.frame_color;
+          chartCtx.lineWidth = _T.frame_width;
+          chartCtx.strokeRect(ax, ay, totalW, totalH);
+        }
+      }
     }
   }
 
@@ -10419,7 +10513,13 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     var candles = window.chartCandles;
     if (!candles || candles.length < 2) { _showfractalError('No candle data available'); return; }
 
+    window._fsLineDebugDone = false; /* reset debug log on each run */
     var result = window.FractalScriptEngine.run(src, candles, overrides);
+    /* TEMP DEBUG: log inputs so we can see color values */
+    if (result && result.inputs) {
+      console.log('[FractalScript] inputs resolved:');
+      result.inputs.forEach(function(inp){ console.log('  ', inp.name, '=', inp.value, '(default:', inp.default, ', type:', inp.type, ')'); });
+    }
     
     /* Sync button state */
     var glow = document.getElementById('fsBtnGlow');
