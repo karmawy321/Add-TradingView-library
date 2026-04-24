@@ -1820,7 +1820,8 @@
       if (name === 'ta' || name === 'math' || name === 'color' || name === 'shape' ||
           name === 'location' || name === 'size' || name === 'input' || name === 'str' ||
           name === 'hline' || name === 'barstate' || name === 'timeframe' ||
-          name === 'line' || name === 'extend' || name === 'label') return name;
+          name === 'line' || name === 'extend' || name === 'label' ||
+          name === 'position' || name === 'table' || name === 'text') return name;
 
       return NA;
     }
