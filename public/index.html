@@ -5431,10 +5431,14 @@ function renderChart() {
       });
     }
     if (fractalResult.tables && fractalResult.tables.length) {
+      chartCtx.save();
       var _tSizePx = { tiny: 8, small: 10, normal: 12, large: 14, huge: 18, auto: 12 };
       var _tPadX = 4, _tPadY = 2;
       var _tChartX = PAD.l, _tChartY = PAD.t;
       var _tChartW = W - PAD.l - PAD.r, _tChartH = CH;
+      /* TEMP: bright magenta proof-of-draw marker at top-right */
+      chartCtx.fillStyle = '#FF00FF';
+      chartCtx.fillRect(_tChartX + _tChartW - 25, _tChartY + 2, 20, 20);
       for (var _ti = 0; _ti < fractalResult.tables.length; _ti++) {
         var _T = fractalResult.tables[_ti];
         var cells = _T.cells || {};
@@ -5518,6 +5522,7 @@ function renderChart() {
           chartCtx.strokeRect(ax, ay, totalW, totalH);
         }
       }
+      chartCtx.restore();
     }
   }
 
@@ -10538,6 +10543,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
 
     window._fsLineDebugDone = false; /* reset debug log on each run */
     window._fsTableDebugDone = false;
+    window._fsTableDrawLogDone = undefined;
     var result = window.FractalScriptEngine.run(src, candles, overrides);
     /* TEMP DEBUG: log inputs so we can see color values */
     if (result && result.inputs) {
