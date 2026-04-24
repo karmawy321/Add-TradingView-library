@@ -5466,6 +5466,10 @@ function renderChart() {
         if (pos.indexOf('_left') > 0)         ax = _tChartX + 4;
         else if (pos.indexOf('_center') > 0)  ax = _tChartX + (_tChartW - totalW) / 2;
         else                                  ax = _tChartX + _tChartW - totalW - 4;
+        if (window._fsTableDrawLogDone !== fractalResult.tables.length) {
+          window._fsTableDrawLogDone = fractalResult.tables.length;
+          console.log('[FractalScript] draw table at ax=' + ax + ' ay=' + ay + ' totalW=' + totalW + ' totalH=' + totalH + ' (chart: x=' + _tChartX + ' y=' + _tChartY + ' w=' + _tChartW + ' h=' + _tChartH + ')');
+        }
         /* frame bg */
         if (_T.bgcolor) {
           chartCtx.fillStyle = _T.bgcolor;
