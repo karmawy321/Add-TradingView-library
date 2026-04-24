@@ -5452,18 +5452,26 @@ function renderChart() {
         /* compute column widths and row heights from cell text */
         var colW = new Array(_T.cols).fill(0);
         var rowH = new Array(_T.rows).fill(0);
+        var _iterCount = 0;
         for (var _ck in cells) {
+          _iterCount++;
           var _cell = cells[_ck];
-          if (_cell.col >= _T.cols || _cell.row >= _T.rows) continue;
+          console.log('[FractalScript]   iter _ck=' + _ck + ' _cell=', _cell);
+          if (_cell.col >= _T.cols || _cell.row >= _T.rows) {
+            console.log('[FractalScript]   skipped (bounds): col=' + _cell.col + ' cols=' + _T.cols + ' row=' + _cell.row + ' rows=' + _T.rows);
+            continue;
+          }
           var _fs = _tSizePx[_cell.text_size] || 12;
           chartCtx.font = _fs + 'px "DM Sans", sans-serif';
           var _txt = _cell.text || '';
           var _tw = chartCtx.measureText(_txt).width;
           var _cw = Math.max(_tw + _tPadX * 2, _cell.width || 0);
           var _ch = Math.max(_fs + _tPadY * 2, _cell.height || 0);
+          console.log('[FractalScript]   computed _fs=' + _fs + ' _tw=' + _tw + ' _cw=' + _cw + ' _ch=' + _ch);
           if (_cw > colW[_cell.col]) colW[_cell.col] = _cw;
           if (_ch > rowH[_cell.row]) rowH[_cell.row] = _ch;
         }
+        console.log('[FractalScript]   iterCount=' + _iterCount);
         var totalW = colW.reduce(function(a,b){return a+b;}, 0);
         var totalH = rowH.reduce(function(a,b){return a+b;}, 0);
         console.log('[FractalScript] table[' + _ti + '] totalW=' + totalW + ' totalH=' + totalH + ' colW=' + JSON.stringify(colW) + ' rowH=' + JSON.stringify(rowH));
