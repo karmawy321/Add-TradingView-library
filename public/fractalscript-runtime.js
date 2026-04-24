@@ -915,6 +915,474 @@
           if (!isNa(c.buf[i]) && c.buf[i] < min) min = c.buf[i];
         }
         return min === Infinity ? NA : min;
+      },
+
+      /* ════════ P5: Moving averages ════════ */
+      hma: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [], rawBuf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var halfLen = Math.max(1, Math.floor(length / 2));
+        var sqrtLen = Math.max(1, Math.floor(Math.sqrt(length)));
+        /* WMA over last halfLen of buf */
+        var wHalf = 0, wSumH = 0;
+        for (var i = 0; i < halfLen; i++) {
+          var idx = length - halfLen + i;
+          var w = i + 1;
+          wHalf += c.buf[idx] * w; wSumH += w;
+        }
+        wHalf = wSumH === 0 ? NA : wHalf / wSumH;
+        /* WMA over full length */
+        var wFull = 0, wSumF = 0;
+        for (var j = 0; j < length; j++) {
+          var wf = j + 1;
+          wFull += c.buf[j] * wf; wSumF += wf;
+        }
+        wFull = wSumF === 0 ? NA : wFull / wSumF;
+        if (isNa(wHalf) || isNa(wFull)) return NA;
+        var raw = 2 * wHalf - wFull;
+        c.rawBuf.push(raw);
+        if (c.rawBuf.length > sqrtLen) c.rawBuf.shift();
+        if (c.rawBuf.length < sqrtLen) return NA;
+        var sum = 0, wSum = 0;
+        for (var k = 0; k < sqrtLen; k++) {
+          var ww = k + 1;
+          sum += c.rawBuf[k] * ww; wSum += ww;
+        }
+        return wSum === 0 ? NA : sum / wSum;
+      },
+
+      dema: function(source, length, id) {
+        var e1 = this.ema(source, length, id + '_e1');
+        if (isNa(e1)) return NA;
+        var e2 = this.ema(e1, length, id + '_e2');
+        if (isNa(e2)) return NA;
+        return 2 * e1 - e2;
+      },
+
+      tema: function(source, length, id) {
+        var e1 = this.ema(source, length, id + '_e1');
+        if (isNa(e1)) return NA;
+        var e2 = this.ema(e1, length, id + '_e2');
+        if (isNa(e2)) return NA;
+        var e3 = this.ema(e2, length, id + '_e3');
+        if (isNa(e3)) return NA;
+        return 3 * e1 - 3 * e2 + e3;
+      },
+
+      alma: function(source, length, offset, sigma, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var m = offset * (length - 1);
+        var s = length / sigma;
+        var sum = 0, norm = 0;
+        for (var i = 0; i < length; i++) {
+          var w = Math.exp(-((i - m) * (i - m)) / (2 * s * s));
+          sum += c.buf[i] * w; norm += w;
+        }
+        return norm === 0 ? NA : sum / norm;
+      },
+
+      swma: function(source, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > 4) c.buf.shift();
+        if (c.buf.length < 4) return NA;
+        /* Pine: close*1/6 + close[1]*2/6 + close[2]*2/6 + close[3]*1/6 — buf[3]=newest */
+        return c.buf[3] * (1/6) + c.buf[2] * (2/6) + c.buf[1] * (2/6) + c.buf[0] * (1/6);
+      },
+
+      linreg: function(source, length, offset, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var sx = 0, sy = 0, sxy = 0, sx2 = 0;
+        for (var i = 0; i < length; i++) {
+          sx += i; sy += c.buf[i];
+          sxy += i * c.buf[i]; sx2 += i * i;
+        }
+        var n = length;
+        var denom = n * sx2 - sx * sx;
+        if (denom === 0) return NA;
+        var slope = (n * sxy - sx * sy) / denom;
+        var intercept = (sy - slope * sx) / n;
+        return slope * (length - 1 - (offset || 0)) + intercept;
+      },
+
+      /* ════════ P5: Oscillators ════════ */
+      cci: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var mean = 0;
+        for (var i = 0; i < length; i++) mean += c.buf[i];
+        mean /= length;
+        var mad = 0;
+        for (var j = 0; j < length; j++) mad += Math.abs(c.buf[j] - mean);
+        mad /= length;
+        if (mad === 0) return 0;
+        return (source - mean) / (0.015 * mad);
+      },
+
+      mfi: function(high, low, close, volume, length, id) {
+        var c = getCache(id, function() { return { prevTp: NA, posBuf: [], negBuf: [] }; });
+        if (isNa(high) || isNa(low) || isNa(close) || isNa(volume)) return NA;
+        var tp = (high + low + close) / 3;
+        if (isNa(c.prevTp)) { c.prevTp = tp; return NA; }
+        var mf = tp * volume;
+        var pos = tp > c.prevTp ? mf : 0;
+        var neg = tp < c.prevTp ? mf : 0;
+        c.prevTp = tp;
+        c.posBuf.push(pos); c.negBuf.push(neg);
+        if (c.posBuf.length > length) { c.posBuf.shift(); c.negBuf.shift(); }
+        if (c.posBuf.length < length) return NA;
+        var ps = 0, ns = 0;
+        for (var i = 0; i < length; i++) { ps += c.posBuf[i]; ns += c.negBuf[i]; }
+        if (ns === 0) return 100;
+        var mfr = ps / ns;
+        return 100 - (100 / (1 + mfr));
+      },
+
+      wpr: function(high, low, close, length, id) {
+        var c = getCache(id, function() { return { hBuf: [], lBuf: [] }; });
+        if (isNa(high) || isNa(low) || isNa(close)) return NA;
+        c.hBuf.push(high); c.lBuf.push(low);
+        if (c.hBuf.length > length) { c.hBuf.shift(); c.lBuf.shift(); }
+        if (c.hBuf.length < length) return NA;
+        var hh = -Infinity, ll = Infinity;
+        for (var i = 0; i < length; i++) {
+          if (c.hBuf[i] > hh) hh = c.hBuf[i];
+          if (c.lBuf[i] < ll) ll = c.lBuf[i];
+        }
+        if (hh === ll) return -50;
+        return -100 * (hh - close) / (hh - ll);
+      },
+
+      mom: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length + 1) c.buf.shift();
+        if (c.buf.length < length + 1) return NA;
+        return source - c.buf[0];
+      },
+
+      roc: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length + 1) c.buf.shift();
+        if (c.buf.length < length + 1) return NA;
+        var old = c.buf[0];
+        if (old === 0) return NA;
+        return 100 * (source - old) / old;
+      },
+
+      tsi: function(source, shortLen, longLen, id) {
+        var c = getCache(id, function() { return { prev: NA }; });
+        if (isNa(source)) return NA;
+        var m = isNa(c.prev) ? 0 : source - c.prev;
+        c.prev = source;
+        var m1 = this.ema(m, longLen, id + '_m1');
+        if (isNa(m1)) return NA;
+        var m2 = this.ema(m1, shortLen, id + '_m2');
+        if (isNa(m2)) return NA;
+        var am = Math.abs(m);
+        var a1 = this.ema(am, longLen, id + '_a1');
+        if (isNa(a1)) return NA;
+        var a2 = this.ema(a1, shortLen, id + '_a2');
+        if (isNa(a2) || a2 === 0) return NA;
+        return 100 * m2 / a2;
+      },
+
+      trix: function(source, length, id) {
+        var c = getCache(id, function() { return { prevE3: NA }; });
+        var e1 = this.ema(source, length, id + '_t1');
+        if (isNa(e1)) return NA;
+        var e2 = this.ema(e1, length, id + '_t2');
+        if (isNa(e2)) return NA;
+        var e3 = this.ema(e2, length, id + '_t3');
+        if (isNa(e3)) return NA;
+        if (isNa(c.prevE3) || c.prevE3 === 0) { c.prevE3 = e3; return NA; }
+        var val = 100 * (e3 - c.prevE3) / c.prevE3;
+        c.prevE3 = e3;
+        return val;
+      },
+
+      cog: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var num = 0, den = 0;
+        /* Pine: newest is source[0], weight = 1; oldest is source[length-1], weight = length */
+        for (var i = 0; i < length; i++) {
+          var val = c.buf[length - 1 - i];
+          num += val * (i + 1); den += val;
+        }
+        if (den === 0) return NA;
+        return -num / den;
+      },
+
+      /* ════════ P5: Volatility ════════ */
+      stdev: function(source, length, biased, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var mean = 0;
+        for (var i = 0; i < length; i++) mean += c.buf[i];
+        mean /= length;
+        var sq = 0;
+        for (var j = 0; j < length; j++) { var d = c.buf[j] - mean; sq += d * d; }
+        var divisor = biased === false ? (length - 1) : length;
+        if (divisor <= 0) return NA;
+        return Math.sqrt(sq / divisor);
+      },
+
+      variance: function(source, length, biased, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var mean = 0;
+        for (var i = 0; i < length; i++) mean += c.buf[i];
+        mean /= length;
+        var sq = 0;
+        for (var j = 0; j < length; j++) { var d = c.buf[j] - mean; sq += d * d; }
+        var divisor = biased === false ? (length - 1) : length;
+        if (divisor <= 0) return NA;
+        return sq / divisor;
+      },
+
+      dev: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var mean = 0;
+        for (var i = 0; i < length; i++) mean += c.buf[i];
+        mean /= length;
+        var ad = 0;
+        for (var j = 0; j < length; j++) ad += Math.abs(c.buf[j] - mean);
+        return ad / length;
+      },
+
+      bb: function(source, length, mult, id) {
+        var mid = this.sma(source, length, id + '_bmid');
+        if (isNa(mid)) return [NA, NA, NA];
+        var d = this.stdev(source, length, true, id + '_bdev');
+        if (isNa(d)) return [mid, NA, NA];
+        return [mid, mid + mult * d, mid - mult * d];
+      },
+
+      bbw: function(source, length, mult, id) {
+        var r = this.bb(source, length, mult, id + '_bbw');
+        if (isNa(r[0]) || isNa(r[1]) || isNa(r[2]) || r[0] === 0) return NA;
+        return (r[1] - r[2]) / r[0];
+      },
+
+      kc: function(source, high, low, close, prevClose, length, mult, useTR, id) {
+        var mid = this.ema(source, length, id + '_kmid');
+        if (isNa(mid)) return [NA, NA, NA];
+        var rng;
+        if (useTR === false) {
+          rng = isNa(high) || isNa(low) ? NA : high - low;
+        } else {
+          if (isNa(prevClose)) rng = isNa(high) || isNa(low) ? NA : high - low;
+          else rng = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+        }
+        var avgRng = this.sma(rng, length, id + '_krng');
+        if (isNa(avgRng)) return [mid, NA, NA];
+        return [mid, mid + mult * avgRng, mid - mult * avgRng];
+      },
+
+      kcw: function(source, high, low, close, prevClose, length, mult, useTR, id) {
+        var r = this.kc(source, high, low, close, prevClose, length, mult, useTR, id + '_kcw');
+        if (isNa(r[0]) || isNa(r[1]) || isNa(r[2]) || r[0] === 0) return NA;
+        return (r[1] - r[2]) / r[0];
+      },
+
+      /* ════════ P5: Structure ════════ */
+      pivothigh: function(source, leftbars, rightbars, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        c.buf.push(source);
+        var total = leftbars + rightbars + 1;
+        if (c.buf.length > total) c.buf.shift();
+        if (c.buf.length < total) return NA;
+        var cand = c.buf[leftbars];
+        if (isNa(cand)) return NA;
+        for (var i = 0; i < total; i++) {
+          if (i === leftbars) continue;
+          if (isNa(c.buf[i]) || c.buf[i] >= cand) return NA;
+        }
+        return cand;
+      },
+
+      pivotlow: function(source, leftbars, rightbars, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        c.buf.push(source);
+        var total = leftbars + rightbars + 1;
+        if (c.buf.length > total) c.buf.shift();
+        if (c.buf.length < total) return NA;
+        var cand = c.buf[leftbars];
+        if (isNa(cand)) return NA;
+        for (var i = 0; i < total; i++) {
+          if (i === leftbars) continue;
+          if (isNa(c.buf[i]) || c.buf[i] <= cand) return NA;
+        }
+        return cand;
+      },
+
+      supertrend: function(high, low, close, prevClose, factor, atrPeriod, id) {
+        var c = getCache(id, function() { return { prevUp: NA, prevDn: NA, prevTrend: 1, prevClose: NA }; });
+        var atr = this.atr(high, low, close, prevClose, atrPeriod, id + '_stAtr');
+        if (isNa(atr)) { c.prevClose = close; return [NA, NA]; }
+        var src = (high + low) / 2;
+        var up = src - factor * atr;
+        var dn = src + factor * atr;
+        var upF = !isNa(c.prevUp) && !isNa(c.prevClose) && c.prevClose > c.prevUp ? Math.max(up, c.prevUp) : up;
+        var dnF = !isNa(c.prevDn) && !isNa(c.prevClose) && c.prevClose < c.prevDn ? Math.min(dn, c.prevDn) : dn;
+        var trend;
+        if (isNa(c.prevUp) || isNa(c.prevDn)) {
+          trend = 1;
+        } else if (c.prevTrend === -1 && close > c.prevDn) {
+          trend = 1;
+        } else if (c.prevTrend === 1 && close < c.prevUp) {
+          trend = -1;
+        } else {
+          trend = c.prevTrend;
+        }
+        var value = trend === 1 ? upF : dnF;
+        c.prevUp = upF; c.prevDn = dnF; c.prevTrend = trend; c.prevClose = close;
+        return [value, trend];
+      },
+
+      valuewhen: function(cond, source, occurrence, id) {
+        var c = getCache(id, function() { return { hist: [] }; });
+        if (cond) {
+          c.hist.unshift(source);
+          if (c.hist.length > 100) c.hist.length = 100;
+        }
+        var o = Math.max(0, Math.round(occurrence || 0));
+        return c.hist[o] !== undefined ? c.hist[o] : NA;
+      },
+
+      barssince: function(cond, id) {
+        var c = getCache(id, function() { return { count: -1 }; });
+        if (cond) { c.count = 0; return 0; }
+        if (c.count < 0) return NA;
+        c.count++;
+        return c.count;
+      },
+
+      /* ════════ P5: Change / aggregate ════════ */
+      change: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        c.buf.push(source);
+        var L = Math.max(1, length || 1);
+        if (c.buf.length > L + 1) c.buf.shift();
+        if (c.buf.length < L + 1) return NA;
+        if (isNa(source) || isNa(c.buf[0])) return NA;
+        return source - c.buf[0];
+      },
+
+      cum: function(source, id) {
+        var c = getCache(id, function() { return { sum: 0, hasAny: false }; });
+        if (!isNa(source)) { c.sum += source; c.hasAny = true; }
+        return c.hasAny ? c.sum : NA;
+      },
+
+      tr: function(high, low, prevClose, handleGaps) {
+        if (isNa(high) || isNa(low)) return NA;
+        if (isNa(prevClose)) return handleGaps === false ? NA : high - low;
+        return Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+      },
+
+      rising: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        c.buf.push(source);
+        if (c.buf.length > length + 1) c.buf.shift();
+        if (c.buf.length < length + 1) return false;
+        for (var i = 1; i <= length; i++) {
+          if (isNa(c.buf[i]) || isNa(c.buf[i-1]) || c.buf[i] <= c.buf[i-1]) return false;
+        }
+        return true;
+      },
+
+      falling: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        c.buf.push(source);
+        if (c.buf.length > length + 1) c.buf.shift();
+        if (c.buf.length < length + 1) return false;
+        for (var i = 1; i <= length; i++) {
+          if (isNa(c.buf[i]) || isNa(c.buf[i-1]) || c.buf[i] >= c.buf[i-1]) return false;
+        }
+        return true;
+      },
+
+      /* ════════ P5: Statistical ════════ */
+      correlation: function(src1, src2, length, id) {
+        var c = getCache(id, function() { return { b1: [], b2: [] }; });
+        if (isNa(src1) || isNa(src2)) return NA;
+        c.b1.push(src1); c.b2.push(src2);
+        if (c.b1.length > length) { c.b1.shift(); c.b2.shift(); }
+        if (c.b1.length < length) return NA;
+        var m1 = 0, m2 = 0;
+        for (var i = 0; i < length; i++) { m1 += c.b1[i]; m2 += c.b2[i]; }
+        m1 /= length; m2 /= length;
+        var cov = 0, v1 = 0, v2 = 0;
+        for (var j = 0; j < length; j++) {
+          var d1 = c.b1[j] - m1, d2 = c.b2[j] - m2;
+          cov += d1 * d2; v1 += d1 * d1; v2 += d2 * d2;
+        }
+        if (v1 === 0 || v2 === 0) return NA;
+        return cov / Math.sqrt(v1 * v2);
+      },
+
+      percentrank: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length + 1) c.buf.shift();
+        if (c.buf.length < length + 1) return NA;
+        var cnt = 0;
+        for (var i = 0; i < length; i++) {
+          if (!isNa(c.buf[i]) && c.buf[i] <= source) cnt++;
+        }
+        return 100 * cnt / length;
+      },
+
+      median: function(source, length, id) {
+        var c = getCache(id, function() { return { buf: [] }; });
+        if (isNa(source)) return NA;
+        c.buf.push(source);
+        if (c.buf.length > length) c.buf.shift();
+        if (c.buf.length < length) return NA;
+        var sorted = c.buf.slice().sort(function(a,b){return a-b;});
+        var mid = Math.floor(length / 2);
+        return length % 2 === 0 ? (sorted[mid-1] + sorted[mid]) / 2 : sorted[mid];
+      },
+
+      range: function(source, length, id) {
+        var hi = this.highest(source, length, id + '_rhi');
+        var lo = this.lowest(source, length, id + '_rlo');
+        if (isNa(hi) || isNa(lo)) return NA;
+        return hi - lo;
       }
     };
   }
@@ -1016,6 +1484,50 @@
     var barIndex = 0;
     var curCandle = null;
     var prevCandle = null;
+
+    /* P6: Detect timeframe from candle spacing (ms between closes) */
+    var _tfMs = 0;
+    if (candles.length >= 2 && candles[1].t && candles[0].t) {
+      _tfMs = candles[1].t - candles[0].t;
+      /* Resample against a few pairs to reduce gap-based errors */
+      for (var _ti = 2; _ti < Math.min(5, candles.length); _ti++) {
+        var _d = candles[_ti].t - candles[_ti-1].t;
+        if (_d > 0 && _d < _tfMs) _tfMs = _d;
+      }
+    }
+    /* Pine timeframe.period string: "1"/"5"/"60"/"240"/"D"/"W"/"M" */
+    var _tfPeriod = '1', _tfMultiplier = 1;
+    var _tfIsIntraday = false, _tfIsDaily = false, _tfIsWeekly = false, _tfIsMonthly = false;
+    var _tfIsSeconds = false, _tfIsMinutes = false, _tfIsHours = false;
+    if (_tfMs > 0) {
+      if (_tfMs < 60000) {
+        _tfPeriod = String(Math.round(_tfMs / 1000)) + 'S';
+        _tfMultiplier = Math.round(_tfMs / 1000);
+        _tfIsSeconds = true; _tfIsIntraday = true;
+      } else if (_tfMs < 3600000) {
+        var _mins = Math.round(_tfMs / 60000);
+        _tfPeriod = String(_mins);
+        _tfMultiplier = _mins;
+        _tfIsMinutes = true; _tfIsIntraday = true;
+      } else if (_tfMs < 86400000) {
+        var _hrs = Math.round(_tfMs / 3600000);
+        _tfPeriod = String(_hrs * 60);  /* Pine: hours are expressed in minutes */
+        _tfMultiplier = _hrs;
+        _tfIsHours = true; _tfIsIntraday = true;
+      } else if (_tfMs < 7 * 86400000) {
+        _tfPeriod = 'D';
+        _tfMultiplier = Math.max(1, Math.round(_tfMs / 86400000));
+        _tfIsDaily = true;
+      } else if (_tfMs < 28 * 86400000) {
+        _tfPeriod = 'W';
+        _tfMultiplier = Math.max(1, Math.round(_tfMs / (7 * 86400000)));
+        _tfIsWeekly = true;
+      } else {
+        _tfPeriod = 'M';
+        _tfMultiplier = Math.max(1, Math.round(_tfMs / (30 * 86400000)));
+        _tfIsMonthly = true;
+      }
+    }
 
     /* Extract inputs first (single pass) */
     extractInputs(ast, inputOverrides);
@@ -1244,6 +1756,15 @@
       if (name === 'last_bar_index') return N - 1;
       if (name === 'na')     return NA;
 
+      /* P6: time built-ins */
+      if (name === 'time')           return curCandle.t || 0;
+      if (name === 'time_close')     return (curCandle.t || 0) + _tfMs;
+      if (name === 'time_tradingday') {
+        var _d = new Date(curCandle.t || 0);
+        _d.setUTCHours(0, 0, 0, 0);
+        return _d.getTime();
+      }
+
       /* User variables */
       if (name in barVars) return barVars[name];
       if (name in persistentVars) return persistentVars[name];
@@ -1256,7 +1777,7 @@
       /* Namespace roots */
       if (name === 'ta' || name === 'math' || name === 'color' || name === 'shape' ||
           name === 'location' || name === 'size' || name === 'input' || name === 'str' ||
-          name === 'hline') return name;
+          name === 'hline' || name === 'barstate' || name === 'timeframe') return name;
 
       return NA;
     }
@@ -1352,6 +1873,37 @@
       if (obj === 'str') return 'str.' + node.member;
       if (obj === 'extend') return EXTEND_MODES[node.member] || 'extend.' + node.member;
       if (obj === 'hline') return 'hline.' + node.member;
+
+      /* P6: barstate.* property lookups */
+      if (obj === 'barstate') {
+        switch (node.member) {
+          case 'isfirst': return barIndex === 0;
+          case 'islast': return barIndex === N - 1;
+          case 'isconfirmed': return barIndex < N - 1;
+          case 'isnew': return true;
+          case 'isrealtime': return false;
+          case 'ishistory': return true;
+          case 'islastconfirmedhistory': return barIndex === N - 2;
+          default: return NA;
+        }
+      }
+
+      /* P6: timeframe.* property lookups */
+      if (obj === 'timeframe') {
+        switch (node.member) {
+          case 'period': return _tfPeriod;
+          case 'multiplier': return _tfMultiplier;
+          case 'isintraday': return _tfIsIntraday;
+          case 'isdaily': return _tfIsDaily;
+          case 'isweekly': return _tfIsWeekly;
+          case 'ismonthly': return _tfIsMonthly;
+          case 'isseconds': return _tfIsSeconds;
+          case 'isminutes': return _tfIsMinutes;
+          case 'ishours': return _tfIsHours;
+          case 'isdwm': return _tfIsDaily || _tfIsWeekly || _tfIsMonthly;
+          default: return NA;
+        }
+      }
 
       return NA;
     }
@@ -1468,6 +2020,47 @@
         var src = node.args[0] ? execNode(node.args[0].type === 'NamedArg' ? node.args[0].value : node.args[0]) : NA;
         if (!isNa(src)) { persistentVars['__fixnan__'] = src; return src; }
         return persistentVars['__fixnan__'] !== undefined ? persistentVars['__fixnan__'] : NA;
+      }
+
+      /* P6: Date/time decomposition functions — default arg = current bar's time */
+      if (callName === 'year' || callName === 'month' || callName === 'dayofmonth' ||
+          callName === 'dayofweek' || callName === 'hour' || callName === 'minute' ||
+          callName === 'second' || callName === 'weekofyear') {
+        var dtArg = node.args[0]
+          ? execNode(node.args[0].type === 'NamedArg' ? node.args[0].value : node.args[0])
+          : (curCandle.t || 0);
+        if (isNa(dtArg)) return NA;
+        var _dt = new Date(dtArg);
+        switch (callName) {
+          case 'year':       return _dt.getUTCFullYear();
+          case 'month':      return _dt.getUTCMonth() + 1;          /* Pine: 1–12 */
+          case 'dayofmonth': return _dt.getUTCDate();
+          case 'dayofweek':  return _dt.getUTCDay() + 1;            /* Pine: 1=Sun..7=Sat */
+          case 'hour':       return _dt.getUTCHours();
+          case 'minute':     return _dt.getUTCMinutes();
+          case 'second':     return _dt.getUTCSeconds();
+          case 'weekofyear': {
+            var _jan1 = Date.UTC(_dt.getUTCFullYear(), 0, 1);
+            var _days = Math.floor((_dt.getTime() - _jan1) / 86400000);
+            return Math.ceil((_days + new Date(_jan1).getUTCDay() + 1) / 7);
+          }
+        }
+      }
+
+      /* P6: timestamp(year, month, day, hour?, minute?, second?) → ms since epoch */
+      if (callName === 'timestamp') {
+        var tsArgs = [];
+        for (var ti = 0; ti < node.args.length; ti++) {
+          var ta2 = node.args[ti];
+          tsArgs.push(execNode(ta2.type === 'NamedArg' ? ta2.value : ta2));
+        }
+        /* Handle optional timezone string as first arg */
+        var tsIdx = 0;
+        if (tsArgs.length > 0 && typeof tsArgs[0] === 'string') tsIdx = 1;
+        var _y = tsArgs[tsIdx], _mo = tsArgs[tsIdx + 1], _d = tsArgs[tsIdx + 2];
+        var _h = tsArgs[tsIdx + 3], _mi = tsArgs[tsIdx + 4], _s = tsArgs[tsIdx + 5];
+        if (isNa(_y) || isNa(_mo) || isNa(_d)) return NA;
+        return Date.UTC(_y, _mo - 1, _d, isNa(_h) ? 0 : _h, isNa(_mi) ? 0 : _mi, isNa(_s) ? 0 : _s);
       }
 
       /* color.new() */
@@ -1642,6 +2235,202 @@
           if (isNa(len8)) return NA;
           return ta.lowestbars(src7, Math.round(len8), id);
         }
+
+        /* ════════ P5: Moving averages ════════ */
+        case 'ta.hma': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.hma(s, Math.round(l), id);
+        }
+        case 'ta.dema': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.dema(s, Math.round(l), id);
+        }
+        case 'ta.tema': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.tema(s, Math.round(l), id);
+        }
+        case 'ta.alma': {
+          var s = evalArg(0), l = evalArg(1), o = evalArg(2), sg = evalArg(3);
+          if (isNa(l) || isNa(o) || isNa(sg)) return NA;
+          return ta.alma(s, Math.round(l), o, sg, id);
+        }
+        case 'ta.swma': {
+          return ta.swma(evalArg(0), id);
+        }
+        case 'ta.linreg': {
+          var s = evalArg(0), l = evalArg(1), o = evalArg(2);
+          if (isNa(l)) return NA;
+          return ta.linreg(s, Math.round(l), isNa(o) ? 0 : Math.round(o), id);
+        }
+
+        /* ════════ P5: Oscillators ════════ */
+        case 'ta.cci': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.cci(s, Math.round(l), id);
+        }
+        case 'ta.mfi': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          /* Pine: ta.mfi(source, length) — source usually hlc3; uses curCandle.v for volume */
+          return ta.mfi(+curCandle.h, +curCandle.l, +curCandle.c, +curCandle.v || 0, Math.round(l), id);
+        }
+        case 'ta.wpr': {
+          var l = evalArg(0);
+          if (isNa(l)) return NA;
+          return ta.wpr(+curCandle.h, +curCandle.l, +curCandle.c, Math.round(l), id);
+        }
+        case 'ta.mom': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.mom(s, Math.round(l), id);
+        }
+        case 'ta.roc': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.roc(s, Math.round(l), id);
+        }
+        case 'ta.tsi': {
+          var s = evalArg(0), sh = evalArg(1), lg = evalArg(2);
+          if (isNa(sh) || isNa(lg)) return NA;
+          return ta.tsi(s, Math.round(sh), Math.round(lg), id);
+        }
+        case 'ta.trix': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.trix(s, Math.round(l), id);
+        }
+        case 'ta.cog': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.cog(s, Math.round(l), id);
+        }
+
+        /* ════════ P5: Volatility ════════ */
+        case 'ta.stdev': {
+          var s = evalArg(0), l = evalArg(1), b = evalArg(2);
+          if (isNa(l)) return NA;
+          return ta.stdev(s, Math.round(l), isNa(b) ? true : !!b, id);
+        }
+        case 'ta.variance': {
+          var s = evalArg(0), l = evalArg(1), b = evalArg(2);
+          if (isNa(l)) return NA;
+          return ta.variance(s, Math.round(l), isNa(b) ? true : !!b, id);
+        }
+        case 'ta.dev': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.dev(s, Math.round(l), id);
+        }
+        case 'ta.bb': {
+          var s = evalArg(0), l = evalArg(1), m = evalArg(2);
+          if (isNa(l) || isNa(m)) return [NA, NA, NA];
+          return ta.bb(s, Math.round(l), m, id);
+        }
+        case 'ta.bbw': {
+          var s = evalArg(0), l = evalArg(1), m = evalArg(2);
+          if (isNa(l) || isNa(m)) return NA;
+          return ta.bbw(s, Math.round(l), m, id);
+        }
+        case 'ta.kc': {
+          var s = evalArg(0), l = evalArg(1), m = evalArg(2), ut = evalArg(3);
+          if (isNa(l) || isNa(m)) return [NA, NA, NA];
+          var pc = prevCandle ? +prevCandle.c : NA;
+          return ta.kc(s, +curCandle.h, +curCandle.l, +curCandle.c, pc, Math.round(l), m, isNa(ut) ? true : !!ut, id);
+        }
+        case 'ta.kcw': {
+          var s = evalArg(0), l = evalArg(1), m = evalArg(2), ut = evalArg(3);
+          if (isNa(l) || isNa(m)) return NA;
+          var pc = prevCandle ? +prevCandle.c : NA;
+          return ta.kcw(s, +curCandle.h, +curCandle.l, +curCandle.c, pc, Math.round(l), m, isNa(ut) ? true : !!ut, id);
+        }
+
+        /* ════════ P5: Structure ════════ */
+        case 'ta.pivothigh': {
+          /* Pine signatures: ta.pivothigh(left, right)  OR  ta.pivothigh(source, left, right) */
+          var s, lb, rb;
+          if (args.length === 2) {
+            s = +curCandle.h; lb = evalArg(0); rb = evalArg(1);
+          } else {
+            s = evalArg(0); lb = evalArg(1); rb = evalArg(2);
+          }
+          if (isNa(lb) || isNa(rb)) return NA;
+          return ta.pivothigh(s, Math.round(lb), Math.round(rb), id);
+        }
+        case 'ta.pivotlow': {
+          var s, lb, rb;
+          if (args.length === 2) {
+            s = +curCandle.l; lb = evalArg(0); rb = evalArg(1);
+          } else {
+            s = evalArg(0); lb = evalArg(1); rb = evalArg(2);
+          }
+          if (isNa(lb) || isNa(rb)) return NA;
+          return ta.pivotlow(s, Math.round(lb), Math.round(rb), id);
+        }
+        case 'ta.supertrend': {
+          var f = evalArg(0), p = evalArg(1);
+          if (isNa(f) || isNa(p)) return [NA, NA];
+          var pc = prevCandle ? +prevCandle.c : NA;
+          return ta.supertrend(+curCandle.h, +curCandle.l, +curCandle.c, pc, f, Math.round(p), id);
+        }
+        case 'ta.valuewhen': {
+          var cnd = evalArg(0), s = evalArg(1), occ = evalArg(2);
+          return ta.valuewhen(!!cnd, s, isNa(occ) ? 0 : Math.round(occ), id);
+        }
+        case 'ta.barssince': {
+          var cnd = evalArg(0);
+          return ta.barssince(!!cnd, id);
+        }
+
+        /* ════════ P5: Change / aggregate ════════ */
+        case 'ta.change': {
+          var s = evalArg(0), l = evalArg(1);
+          return ta.change(s, isNa(l) ? 1 : Math.round(l), id);
+        }
+        case 'ta.cum': {
+          return ta.cum(evalArg(0), id);
+        }
+        case 'ta.tr': {
+          var hg = evalArg(0);
+          var pc = prevCandle ? +prevCandle.c : NA;
+          return ta.tr(+curCandle.h, +curCandle.l, pc, isNa(hg) ? true : !!hg);
+        }
+        case 'ta.rising': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return false;
+          return ta.rising(s, Math.round(l), id);
+        }
+        case 'ta.falling': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return false;
+          return ta.falling(s, Math.round(l), id);
+        }
+
+        /* ════════ P5: Statistical ════════ */
+        case 'ta.correlation': {
+          var a = evalArg(0), b = evalArg(1), l = evalArg(2);
+          if (isNa(l)) return NA;
+          return ta.correlation(a, b, Math.round(l), id);
+        }
+        case 'ta.percentrank': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.percentrank(s, Math.round(l), id);
+        }
+        case 'ta.median': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.median(s, Math.round(l), id);
+        }
+        case 'ta.range': {
+          var s = evalArg(0), l = evalArg(1);
+          if (isNa(l)) return NA;
+          return ta.range(s, Math.round(l), id);
+        }
+
         default:
           return { __error__: { line: node.line, col: node.col,
             message: "Unknown function '" + name + "' — not supported in this interpreter" } };
