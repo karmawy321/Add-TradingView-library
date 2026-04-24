@@ -1807,7 +1807,8 @@
       /* Namespace roots */
       if (name === 'ta' || name === 'math' || name === 'color' || name === 'shape' ||
           name === 'location' || name === 'size' || name === 'input' || name === 'str' ||
-          name === 'hline' || name === 'barstate' || name === 'timeframe') return name;
+          name === 'hline' || name === 'barstate' || name === 'timeframe' ||
+          name === 'line' || name === 'extend' || name === 'label') return name;
 
       return NA;
     }
