@@ -661,6 +661,13 @@
       /* Identifier */
       if (at(TT.IDENT)) { pos++; return { type: 'Identifier', name: t.value, line: t.line, col: t.col }; }
 
+      /* Statement keywords used as namespace identifiers in expressions:
+         e.g. `linestyle=hline.style_dashed` — `hline` is KW_HLINE but here it's a namespace. */
+      if (at(TT.KW_HLINE) || at(TT.KW_PLOT) || at(TT.KW_PLOTSHAPE) || at(TT.KW_BGCOLOR)) {
+        pos++;
+        return { type: 'Identifier', name: t.value, line: t.line, col: t.col };
+      }
+
       /* Parenthesized expression */
       if (at(TT.LPAREN)) {
         pos++;
