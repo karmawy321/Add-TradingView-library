@@ -499,10 +499,13 @@
       if (at(TT.RPAREN)) return args;
       while (true) {
         skipNewlines();
-        /* Named argument: name = expr */
+        /* Named argument: name = expr (keywords like bgcolor/hline/plot can also be param names) */
         var namedArg = null;
-        if (at(TT.IDENT) && pos + 1 < tokens.length && tokens[pos + 1].type === TT.ASSIGN) {
-          namedArg = tokens[pos].value;
+        var curTok = cur();
+        if (pos + 1 < tokens.length && tokens[pos + 1].type === TT.ASSIGN &&
+            (curTok.type === TT.IDENT || curTok.type === TT.KW_BGCOLOR || curTok.type === TT.KW_HLINE ||
+             curTok.type === TT.KW_PLOT || curTok.type === TT.KW_PLOTSHAPE)) {
+          namedArg = curTok.value;
           pos += 2; // skip name and =
         }
         var val = parseExpression();
