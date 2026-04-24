@@ -5416,6 +5416,16 @@ function renderChart() {
       chartCtx.restore();
     }
     /* tables */
+    if (!window._fsTableDebugDone) {
+      window._fsTableDebugDone = true;
+      console.log('[FractalScript] Total tables:', fractalResult.tables ? fractalResult.tables.length : 'undefined');
+      if (fractalResult.tables) {
+        fractalResult.tables.forEach(function(T, i){
+          console.log('  table[' + i + ']:', { position: T.position, cols: T.cols, rows: T.rows, bgcolor: T.bgcolor, frame_color: T.frame_color, cell_count: Object.keys(T.cells||{}).length });
+          Object.keys(T.cells||{}).forEach(function(k){ console.log('    cell[' + k + ']:', T.cells[k]); });
+        });
+      }
+    }
     if (fractalResult.tables && fractalResult.tables.length) {
       var _tSizePx = { tiny: 8, small: 10, normal: 12, large: 14, huge: 18, auto: 12 };
       var _tPadX = 4, _tPadY = 2;
@@ -10519,6 +10529,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     if (!candles || candles.length < 2) { _showfractalError('No candle data available'); return; }
 
     window._fsLineDebugDone = false; /* reset debug log on each run */
+    window._fsTableDebugDone = false;
     var result = window.FractalScriptEngine.run(src, candles, overrides);
     /* TEMP DEBUG: log inputs so we can see color values */
     if (result && result.inputs) {
