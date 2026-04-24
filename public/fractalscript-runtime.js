@@ -2223,6 +2223,11 @@
           var b2 = evalArg(1);
           return ta.crossunder(a2, b2, id);
         }
+        case 'ta.cross': {
+          var aC = evalArg(0);
+          var bC = evalArg(1);
+          return ta.crossover(aC, bC, id + '_o') || ta.crossunder(aC, bC, id + '_u');
+        }
         case 'ta.ema': {
           var srcE = evalArg(0);
           var lenE = evalArg(1);
