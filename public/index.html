@@ -5439,10 +5439,16 @@ function renderChart() {
       /* TEMP: bright magenta proof-of-draw marker at top-right */
       chartCtx.fillStyle = '#FF00FF';
       chartCtx.fillRect(_tChartX + _tChartW - 25, _tChartY + 2, 20, 20);
+      var _tableEnterCount = 0;
       for (var _ti = 0; _ti < fractalResult.tables.length; _ti++) {
         var _T = fractalResult.tables[_ti];
         var cells = _T.cells || {};
         if (!Object.keys(cells).length) continue;
+        _tableEnterCount++;
+        if (!window._fsTableRenderLog) {
+          window._fsTableRenderLog = true;
+          console.log('[FractalScript] entering table render loop for table[' + _ti + '] pos=' + _T.position + ' cols=' + _T.cols + ' rows=' + _T.rows + ' cellCount=' + Object.keys(cells).length);
+        }
         /* compute column widths and row heights from cell text */
         var colW = new Array(_T.cols).fill(0);
         var rowH = new Array(_T.rows).fill(0);
@@ -5460,6 +5466,7 @@ function renderChart() {
         }
         var totalW = colW.reduce(function(a,b){return a+b;}, 0);
         var totalH = rowH.reduce(function(a,b){return a+b;}, 0);
+        console.log('[FractalScript] table[' + _ti + '] totalW=' + totalW + ' totalH=' + totalH + ' colW=' + JSON.stringify(colW) + ' rowH=' + JSON.stringify(rowH));
         if (totalW <= 0 || totalH <= 0) continue;
         /* anchor position */
         var pos = _T.position || 'top_right';
@@ -10544,6 +10551,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     window._fsLineDebugDone = false; /* reset debug log on each run */
     window._fsTableDebugDone = false;
     window._fsTableDrawLogDone = undefined;
+    window._fsTableRenderLog = false;
     var result = window.FractalScriptEngine.run(src, candles, overrides);
     /* TEMP DEBUG: log inputs so we can see color values */
     if (result && result.inputs) {
