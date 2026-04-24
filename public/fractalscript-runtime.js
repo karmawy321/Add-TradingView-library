@@ -1639,7 +1639,7 @@
             }
             var itype = callName.replace('input.', '') || 'int';
             var dv = defVal ? (defVal.type === 'NamedArg' ? defVal.value.value : defVal.value) : 0;
-            var actualVal = overrides[title] !== undefined ? overrides[title] : dv;
+            var actualVal = (overrides[title] !== undefined && overrides[title] !== '') ? overrides[title] : dv;
             inputs.push({ name: title || ('Input ' + (inputs.length + 1)), type: itype, default: dv, value: actualVal });
           }
         }

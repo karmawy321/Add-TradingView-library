@@ -10501,12 +10501,17 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     window.fractalSource = src;
     localStorage.setItem('fractalSource', src);
 
-    /* Gather input overrides */
+    /* Gather input overrides — skip empty fields so script defaults are used */
     var overrides = {};
     var fields = document.querySelectorAll('#fractalInputs input');
     for (var i = 0; i < fields.length; i++) {
       var f = fields[i];
-      overrides[f.dataset.name] = f.type === 'checkbox' ? f.checked : parseFloat(f.value) || f.value;
+      if (f.type === 'checkbox') {
+        overrides[f.dataset.name] = f.checked;
+      } else if (f.value !== '') {
+        var _n = parseFloat(f.value);
+        overrides[f.dataset.name] = !isNaN(_n) ? _n : f.value;
+      }
     }
 
     if (!window.FractalScriptEngine) { _showfractalError('FractalScript engine not loaded'); return; }
