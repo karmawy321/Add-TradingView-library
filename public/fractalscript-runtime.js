@@ -2756,7 +2756,12 @@
         case 'array.new_int':
         case 'array.new_float':
         case 'array.new_bool':
-        case 'array.new_string': {
+        case 'array.new_string':
+        case 'array.new_label':
+        case 'array.new_line':
+        case 'array.new_box':
+        case 'array.new_table':
+        case 'array.new_color': {
           var size = evalArg(0);
           var initial = evalArg(1);
           var arr = [];
