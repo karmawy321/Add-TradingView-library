@@ -723,6 +723,26 @@
         return expr;
       }
 
+      /* Tuple/array literal as expression: [a, b, c]
+         Used in named-arg values (e.g. `options = ["Live", "All History"]`)
+         and as function return values. Statement-level `[a,b,c] = expr` is
+         handled separately via parseTupleAssign. */
+      if (at(TT.LBRACKET)) {
+        var llt = loc(); pos++; // consume [
+        var lelems = [];
+        skipNewlines();
+        while (!at(TT.RBRACKET)) {
+          var lel = parseExpression();
+          if (lel && lel.error) return lel;
+          lelems.push(lel);
+          skipNewlines();
+          if (!tryEat(TT.COMMA)) break;
+          skipNewlines();
+        }
+        var lrb = eat(TT.RBRACKET); if (lrb && lrb.error) return lrb;
+        return { type: 'TupleLiteral', elems: lelems, line: llt.line, col: llt.col };
+      }
+
       return { error: { line: t.line, col: t.col,
         message: 'Unexpected token: ' + t.type + " ('" + t.value + "')" } };
     }
