@@ -99,7 +99,7 @@
     KW_PLOT: 'KW_PLOT', KW_PLOTSHAPE: 'KW_PLOTSHAPE',
     KW_BGCOLOR: 'KW_BGCOLOR', KW_HLINE: 'KW_HLINE',
     KW_SWITCH: 'KW_SWITCH', KW_WHILE: 'KW_WHILE', KW_BREAK: 'KW_BREAK',
-    KW_CONTINUE: 'KW_CONTINUE', KW_IN: 'KW_IN'
+    KW_CONTINUE: 'KW_CONTINUE', KW_IN: 'KW_IN', KW_TYPE: 'KW_TYPE'
   };
 
   var KEYWORDS = {
@@ -111,7 +111,7 @@
     'plot': TT.KW_PLOT, 'plotshape': TT.KW_PLOTSHAPE,
     'bgcolor': TT.KW_BGCOLOR, 'hline': TT.KW_HLINE,
     'switch': TT.KW_SWITCH, 'while': TT.KW_WHILE, 'break': TT.KW_BREAK,
-    'continue': TT.KW_CONTINUE, 'in': TT.KW_IN
+    'continue': TT.KW_CONTINUE, 'in': TT.KW_IN, 'type': TT.KW_TYPE
   };
 
   var OPS_2CHAR = [':=', '==', '!=', '>=', '<='];
@@ -328,6 +328,7 @@
       if (at(TT.KW_BREAK))  { var lb = loc(); pos++; return { type: 'Break',    line: lb.line, col: lb.col }; }
       if (at(TT.KW_CONTINUE)) { var lc = loc(); pos++; return { type: 'Continue', line: lc.line, col: lc.col }; }
       if (at(TT.KW_SWITCH)) return parseSwitch();
+      if (at(TT.KW_TYPE)) return parseTypeDecl();
 
       /* plot / plotshape / bgcolor / hline */
       if (at(TT.KW_PLOT)) return parsePlotCall();
@@ -403,6 +404,36 @@
         cases.push({ value: cval, body: cbody });
       }
       return { type: 'Switch', subject: subject, cases: cases, defaultBody: defaultBody, line: l.line, col: l.col };
+    }
+
+    function parseTypeDecl() {
+      var l = loc(); pos++; // consume 'type'
+      var nameToken = eat(TT.IDENT); if (nameToken.error) return nameToken;
+      var typeName = nameToken.value;
+      skipNewlines();
+      var fields = [];
+      while (!at(TT.EOF)) {
+        skipNewlines();
+        if (at(TT.EOF)) break;
+        if (at(TT.KW_TYPE)) break;
+        var t = cur();
+        if (t.col <= l.col) break;
+        // field: <type> <name> [= default]
+        var fieldTypeToken = eat(TT.IDENT); if (fieldTypeToken.error) return fieldTypeToken;
+        var fieldNameToken = eat(TT.IDENT); if (fieldNameToken.error) return fieldNameToken;
+        var fieldDefault = null;
+        if (at(TT.ASSIGN)) {
+          pos++; // consume =
+          fieldDefault = parseExpression();
+          if (fieldDefault && fieldDefault.error) return fieldDefault;
+        }
+        fields.push({ type: fieldTypeToken.value, name: fieldNameToken.value, def: fieldDefault });
+        skipNewlines();
+      }
+      if (fields.length === 0) {
+        return { error: { line: l.line, col: l.col, message: 'Type "' + typeName + '" must have at least one field' } };
+      }
+      return { type: 'TypeDecl', name: typeName, fields: fields, line: l.line, col: l.col };
     }
 
     function parseTupleAssign() {
@@ -502,6 +533,13 @@
         return { type: 'FunctionDecl', name: expr.callee.name, params: params, body: body, line: l.line, col: l.col };
       }
 
+      /* Member assignment: obj.field := value */
+      if (expr && expr.type === 'MemberAccess' && at(TT.REASSIGN)) {
+        pos++;
+        var val3 = parseExpression();
+        if (val3 && val3.error) return val3;
+        return { type: 'MemberAssign', object: expr.object, member: expr.member, value: val3, line: l.line, col: l.col };
+      }
       /* Check for = or := after identifier */
       if (expr && expr.type === 'Identifier') {
         if (at(TT.ASSIGN)) {
@@ -1683,7 +1721,8 @@
     /* Variable scopes */
     var persistentVars = {};  // var x = ...  (survives across bars)
     var barVars = {};         // x = ...      (resets each bar)
-    var userFunctions = {};   // P7: name -> { params, body }
+    var userFunctions = {};
+    var typeRegistry = {};   // P7: name -> { params, body }
     var fnCallDepth = 0;      // P7: prevent runaway recursion
 
     /* History buffers for series variables */
@@ -1904,6 +1943,11 @@
           /* P7: register user-defined function (declaration is a no-op at runtime) */
           userFunctions[node.name] = { params: node.params, body: node.body };
           return NA;
+        case 'TypeDecl':
+          typeRegistry[node.name] = { fields: node.fields };
+          return NA;
+        case 'MemberAssign':
+          return execMemberAssign(node);
         default:             return NA;
       }
     }
@@ -2172,6 +2216,16 @@
       return NA;
     }
 
+    function execMemberAssign(node) {
+      var obj = execNode(node.object);
+      if (obj && obj.__error__) return obj;
+      if (!obj || typeof obj !== 'object' || obj.__fractal_na__) return NA;
+      var val = execNode(node.value);
+      if (val && val.__error__) return val;
+      obj[node.member] = val;
+      return val;
+    }
+
     function execMember(node) {
       var obj = execNode(node.object);
       if (obj && obj.__error__) return obj;
@@ -2236,6 +2290,21 @@
       if (obj === 'position') return POSITIONS[node.member] || node.member;
       if (obj === 'text') return TEXT_ALIGN[node.member] || node.member;
       if (obj === 'table') return 'table.' + node.member;
+
+      /* UDT field access */
+      if (obj && typeof obj === 'object' && !obj.__fractal_na__ && obj.__type__) {
+        if (obj.hasOwnProperty(node.member)) return obj[node.member];
+        var tdef = typeRegistry[obj.__type__];
+        if (tdef) {
+          for (var fi = 0; fi < tdef.fields.length; fi++) {
+            if (tdef.fields[fi].name === node.member) {
+              if (tdef.fields[fi].def) return execNode(tdef.fields[fi].def);
+              return NA;
+            }
+          }
+        }
+        return NA;
+      }
 
       /* P6: barstate.* property lookups */
       if (obj === 'barstate') {
@@ -2303,6 +2372,27 @@
     }
 
     function execCall(node) {
+      /* UDT constructor: TypeName.new(...) */
+      if (node.callee.type === 'MemberAccess' && node.callee.member === 'new') {
+        var typeName = node.callee.object.name;
+        var tdef = typeRegistry[typeName];
+        if (!tdef) { return { __error__: { line: node.line, col: node.col, message: 'Unknown type: ' + typeName } }; }
+        var rec = { __type__: typeName };
+        for (var fi = 0; fi < tdef.fields.length; fi++) {
+          var fld = tdef.fields[fi];
+          rec[fld.name] = fld.def ? execNode(fld.def) : NA;
+        }
+        for (var ai = 0; ai < node.args.length; ai++) {
+          var a = node.args[ai];
+          if (a.type === 'NamedArg') {
+            rec[a.name] = execNode(a.value);
+          } else if (ai < tdef.fields.length) {
+            rec[tdef.fields[ai].name] = execNode(a);
+          }
+        }
+        return rec;
+      }
+
       var callName = getCallName(node.callee);
 
       /* P7: user-defined functions — checked before built-ins so users can shadow */
