@@ -1927,7 +1927,19 @@
           var id  = getArg(0);
           var dir = getNamedArg('direction', getArg(1)) || 'long';
           var qty = getNamedArg('qty', stratDefaultQty);
-          if (!id || positions[id]) return NA;
+          if (!id) return NA;
+          /* Auto-reversal: close any existing position in opposite direction */
+          for (var _ek in positions) {
+            if (positions[_ek].direction !== dir) {
+              var _ep = positions[_ek];
+              var _epnl = (_ep.direction === 'long' ? ec - _ep.entryPrice : _ep.entryPrice - ec) * _ep.qty;
+              var _ecom = stratCommission * ec * _ep.qty / 100;
+              _epnl -= (_ep.commission + _ecom);
+              closedTrades.push({ id: _ek, direction: _ep.direction, entryBar: _ep.entryBar, entryPrice: _ep.entryPrice, exitBar: barIndex, exitPrice: ec, profit: _epnl, qty: _ep.qty });
+              delete positions[_ek];
+            }
+          }
+          if (positions[id]) return NA; // already in same-dir position with this id
           var com = stratCommission * ec * qty / 100;
           positions[id] = { direction: dir, qty: qty, entryPrice: ec, entryClose: ec, entryBar: barIndex, commission: com };
           return NA;
@@ -1951,24 +1963,35 @@
           var sl     = getNamedArg('loss',   NA);
           if (!fromId || !positions[fromId]) return NA;
           var epos = positions[fromId];
-          var triggered = false;
-          if (!isNa(tp)) {
-            var tpPrice = epos.direction === 'long' ? epos.entryPrice + +tp : epos.entryPrice - +tp;
-            if ((epos.direction === 'long' && ec >= tpPrice) || (epos.direction === 'short' && ec <= tpPrice)) {
-              ec = tpPrice; triggered = true;
+          var hi = +curCandle.h, lo = +curCandle.l, op = +curCandle.o, cl = +curCandle.c;
+          var tpPrice = NA, slPrice = NA;
+          if (!isNa(tp)) tpPrice = epos.direction === 'long' ? epos.entryPrice + +tp : epos.entryPrice - +tp;
+          if (!isNa(sl)) slPrice = epos.direction === 'long' ? epos.entryPrice - +sl : epos.entryPrice + +sl;
+          /* Intrabar hit detection using high/low */
+          var tpHit = !isNa(tpPrice) && (epos.direction === 'long' ? hi >= tpPrice : lo <= tpPrice);
+          var slHit = !isNa(slPrice) && (epos.direction === 'long' ? lo <= slPrice : hi >= slPrice);
+          var triggered = false, exitPrice = cl;
+          if (tpHit && slHit) {
+            /* OHLC path heuristic: green candle assumed Open→Low→High→Close, red assumed Open→High→Low→Close */
+            var greenPath = cl >= op;
+            if (epos.direction === 'long') {
+              /* long: green path hits SL (low) first, red path hits TP (high) first */
+              if (greenPath) { exitPrice = slPrice; } else { exitPrice = tpPrice; }
+            } else {
+              /* short: green path hits TP (low) first, red path hits SL (high) first */
+              if (greenPath) { exitPrice = tpPrice; } else { exitPrice = slPrice; }
             }
-          }
-          if (!triggered && !isNa(sl)) {
-            var slPrice = epos.direction === 'long' ? epos.entryPrice - +sl : epos.entryPrice + +sl;
-            if ((epos.direction === 'long' && ec <= slPrice) || (epos.direction === 'short' && ec >= slPrice)) {
-              ec = slPrice; triggered = true;
-            }
+            triggered = true;
+          } else if (tpHit) {
+            exitPrice = tpPrice; triggered = true;
+          } else if (slHit) {
+            exitPrice = slPrice; triggered = true;
           }
           if (!triggered) return NA;
-          var epnl = (epos.direction === 'long' ? ec - epos.entryPrice : epos.entryPrice - ec) * epos.qty;
-          var ecom = stratCommission * ec * epos.qty / 100;
+          var epnl = (epos.direction === 'long' ? exitPrice - epos.entryPrice : epos.entryPrice - exitPrice) * epos.qty;
+          var ecom = stratCommission * exitPrice * epos.qty / 100;
           epnl -= (epos.commission + ecom);
-          closedTrades.push({ id: fromId, direction: epos.direction, entryBar: epos.entryBar, entryPrice: epos.entryPrice, exitBar: barIndex, exitPrice: ec, profit: epnl, qty: epos.qty });
+          closedTrades.push({ id: fromId, direction: epos.direction, entryBar: epos.entryBar, entryPrice: epos.entryPrice, exitBar: barIndex, exitPrice: exitPrice, profit: epnl, qty: epos.qty });
           delete positions[fromId];
           return NA;
         }
@@ -2217,7 +2240,7 @@
           name === 'line' || name === 'extend' || name === 'label' ||
           name === 'position' || name === 'table' || name === 'text' ||
           name === 'box' || name === 'syminfo' || name === 'barmerge' ||
-          name === 'plot' || name === 'order') return name;
+          name === 'plot' || name === 'order' || name === 'strategy') return name;
 
       return NA;
     }
