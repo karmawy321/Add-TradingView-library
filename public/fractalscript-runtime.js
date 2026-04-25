@@ -99,7 +99,8 @@
     KW_PLOT: 'KW_PLOT', KW_PLOTSHAPE: 'KW_PLOTSHAPE',
     KW_BGCOLOR: 'KW_BGCOLOR', KW_HLINE: 'KW_HLINE',
     KW_SWITCH: 'KW_SWITCH', KW_WHILE: 'KW_WHILE', KW_BREAK: 'KW_BREAK',
-    KW_CONTINUE: 'KW_CONTINUE', KW_IN: 'KW_IN', KW_TYPE: 'KW_TYPE'
+    KW_CONTINUE: 'KW_CONTINUE', KW_IN: 'KW_IN', KW_TYPE: 'KW_TYPE',
+    KW_STRATEGY: 'KW_STRATEGY'
   };
 
   var KEYWORDS = {
@@ -111,7 +112,8 @@
     'plot': TT.KW_PLOT, 'plotshape': TT.KW_PLOTSHAPE,
     'bgcolor': TT.KW_BGCOLOR, 'hline': TT.KW_HLINE,
     'switch': TT.KW_SWITCH, 'while': TT.KW_WHILE, 'break': TT.KW_BREAK,
-    'continue': TT.KW_CONTINUE, 'in': TT.KW_IN, 'type': TT.KW_TYPE
+    'continue': TT.KW_CONTINUE, 'in': TT.KW_IN, 'type': TT.KW_TYPE,
+    'strategy': TT.KW_STRATEGY
   };
 
   var OPS_2CHAR = [':=', '==', '!=', '>=', '<='];
@@ -311,8 +313,9 @@
       skipNewlines();
       if (at(TT.EOF)) return null;
 
-      /* indicator() declaration */
+      /* indicator() / strategy() declaration — only when followed by '(', not '.' */
       if (at(TT.KW_INDICATOR)) return parseIndicator();
+      if (at(TT.KW_STRATEGY) && tokens[pos + 1] && tokens[pos + 1].type === TT.LPAREN) return parseIndicator();
 
       /* var declarations */
       if (at(TT.KW_VAR)) return parseVarDecl();
@@ -472,12 +475,14 @@
     }
 
     function parseIndicator() {
-      var l = loc(); pos++; // consume 'indicator'
+      var l = loc();
+      var isStrat = at(TT.KW_STRATEGY);
+      pos++; // consume 'indicator' or 'strategy'
       var r = eat(TT.LPAREN); if (r && r.error) return r;
       var args = parseArgList();
       if (args.error) return args;
       r = eat(TT.RPAREN); if (r && r.error) return r;
-      return { type: 'Indicator', args: args, line: l.line, col: l.col };
+      return { type: isStrat ? 'Strategy' : 'Indicator', args: args, line: l.line, col: l.col };
     }
 
     function parseVarDecl() {
@@ -851,7 +856,7 @@
 
       /* Statement keywords used as namespace identifiers in expressions:
          e.g. `linestyle=hline.style_dashed` — `hline` is KW_HLINE but here it's a namespace. */
-      if (at(TT.KW_HLINE) || at(TT.KW_PLOT) || at(TT.KW_PLOTSHAPE) || at(TT.KW_BGCOLOR)) {
+      if (at(TT.KW_HLINE) || at(TT.KW_PLOT) || at(TT.KW_PLOTSHAPE) || at(TT.KW_BGCOLOR) || at(TT.KW_STRATEGY)) {
         pos++;
         return { type: 'Identifier', name: t.value, line: t.line, col: t.col };
       }
@@ -1683,10 +1688,31 @@
       'align_left': 'left', 'align_center': 'center', 'align_right': 'right',
       'align_top': 'top', 'align_bottom': 'bottom'
     };
-    /* Parse indicator params */
+    /* Strategy state */
+    var isStrategy = false;
+    var stratCapital = 10000;
+    var stratCommission = 0;
+    var stratDefaultQty = 1;
+    var positions = {};
+    var closedTrades = [];
+    var equityCurve = [];
+
+    /* Parse indicator / strategy params */
     var overlay = true; // default: overlay on main price chart
     if (ast.type === 'Program') {
       for (var i = 0; i < ast.body.length; i++) {
+        if (ast.body[i].type === 'Strategy') {
+          isStrategy = true;
+          var stratArgs = ast.body[i].args;
+          for (var sj = 0; sj < stratArgs.length; sj++) {
+            var sa = stratArgs[sj];
+            if (sa.type === 'NamedArg') {
+              if (sa.name === 'initial_capital' && sa.value && sa.value.type === 'NumLiteral') stratCapital = sa.value.value;
+              if (sa.name === 'commission_value' && sa.value && sa.value.type === 'NumLiteral') stratCommission = sa.value.value;
+              if (sa.name === 'default_qty_value' && sa.value && sa.value.type === 'NumLiteral') stratDefaultQty = sa.value.value;
+            }
+          }
+        }
         if (ast.body[i].type === 'Indicator') {
            var indArgs = ast.body[i].args;
            for (var j = 0; j < indArgs.length; j++) {
@@ -1804,6 +1830,17 @@
         if (!seriesHistory[vn2]) seriesHistory[vn2] = [];
         seriesHistory[vn2].push(barVars[vn2]);
       }
+      /* Strategy equity snapshot */
+      if (isStrategy) {
+        var eq = stratCapital;
+        for (var _ct = 0; _ct < closedTrades.length; _ct++) eq += closedTrades[_ct].profit;
+        for (var _pk in positions) {
+          var _p = positions[_pk];
+          if (_p.direction === 'long') eq += (+curCandle.c - _p.entryClose) * _p.qty;
+          else eq += (_p.entryClose - +curCandle.c) * _p.qty;
+        }
+        equityCurve.push(eq);
+      }
     }
 
     /* Build Float64Array for plot values */
@@ -1837,8 +1874,112 @@
       tables: tables,
       boxes: boxes,
       overlay: overlay,
-      errors: []
+      errors: [],
+      strategyResult: isStrategy ? (function() {
+        var netProfit = 0, grossProfit = 0, grossLoss = 0, winCount = 0;
+        for (var _t = 0; _t < closedTrades.length; _t++) {
+          var _tr = closedTrades[_t];
+          netProfit += _tr.profit;
+          if (_tr.profit > 0) { grossProfit += _tr.profit; winCount++; }
+          else grossLoss += _tr.profit;
+        }
+        var peak = stratCapital, mdd = 0;
+        for (var _ei = 0; _ei < equityCurve.length; _ei++) {
+          if (equityCurve[_ei] > peak) peak = equityCurve[_ei];
+          var _dd = peak > 0 ? (peak - equityCurve[_ei]) / peak : 0;
+          if (_dd > mdd) mdd = _dd;
+        }
+        var total = closedTrades.length;
+        return {
+          trades: closedTrades,
+          equityCurve: new Float64Array(equityCurve),
+          summary: {
+            netProfit: netProfit,
+            grossProfit: grossProfit,
+            grossLoss: grossLoss,
+            maxDrawdown: mdd,
+            winRate: total > 0 ? winCount / total : 0,
+            totalTrades: total,
+            profitFactor: grossLoss !== 0 ? Math.abs(grossProfit / grossLoss) : (grossProfit > 0 ? Infinity : 0),
+            initialCapital: stratCapital,
+            finalEquity: stratCapital + netProfit
+          }
+        };
+      })() : null
     };
+
+    /* ── Strategy order execution ── */
+    function execStrategyCall(callName, args) {
+      function getArg(idx) {
+        var a = args[idx];
+        if (!a) return NA;
+        return execNode(a.type === 'NamedArg' ? a.value : a);
+      }
+      function getNamedArg(name, def) {
+        for (var i = 0; i < args.length; i++) {
+          if (args[i].type === 'NamedArg' && args[i].name === name) return execNode(args[i].value);
+        }
+        return def;
+      }
+      var ec = +curCandle.c;
+      switch (callName) {
+        case 'strategy.entry': {
+          var id  = getArg(0);
+          var dir = getNamedArg('direction', getArg(1)) || 'long';
+          var qty = getNamedArg('qty', stratDefaultQty);
+          if (!id || positions[id]) return NA;
+          var com = stratCommission * ec * qty / 100;
+          positions[id] = { direction: dir, qty: qty, entryPrice: ec, entryClose: ec, entryBar: barIndex, commission: com };
+          return NA;
+        }
+        case 'strategy.close': {
+          var cid = getArg(0) || getNamedArg('id', null);
+          if (!cid || !positions[cid]) return NA;
+          var pos = positions[cid];
+          var xc  = ec;
+          var pnl = (pos.direction === 'long' ? xc - pos.entryPrice : pos.entryPrice - xc) * pos.qty;
+          var xcom = stratCommission * xc * pos.qty / 100;
+          pnl -= (pos.commission + xcom);
+          closedTrades.push({ id: cid, direction: pos.direction, entryBar: pos.entryBar, entryPrice: pos.entryPrice, exitBar: barIndex, exitPrice: xc, profit: pnl, qty: pos.qty });
+          delete positions[cid];
+          return NA;
+        }
+        case 'strategy.exit': {
+          var eid    = getArg(0) || getNamedArg('id', null);
+          var fromId = getNamedArg('from_entry', eid);
+          var tp     = getNamedArg('profit', NA);
+          var sl     = getNamedArg('loss',   NA);
+          if (!fromId || !positions[fromId]) return NA;
+          var epos = positions[fromId];
+          var triggered = false;
+          if (!isNa(tp)) {
+            var tpPrice = epos.direction === 'long' ? epos.entryPrice + +tp : epos.entryPrice - +tp;
+            if ((epos.direction === 'long' && ec >= tpPrice) || (epos.direction === 'short' && ec <= tpPrice)) {
+              ec = tpPrice; triggered = true;
+            }
+          }
+          if (!triggered && !isNa(sl)) {
+            var slPrice = epos.direction === 'long' ? epos.entryPrice - +sl : epos.entryPrice + +sl;
+            if ((epos.direction === 'long' && ec <= slPrice) || (epos.direction === 'short' && ec >= slPrice)) {
+              ec = slPrice; triggered = true;
+            }
+          }
+          if (!triggered) return NA;
+          var epnl = (epos.direction === 'long' ? ec - epos.entryPrice : epos.entryPrice - ec) * epos.qty;
+          var ecom = stratCommission * ec * epos.qty / 100;
+          epnl -= (epos.commission + ecom);
+          closedTrades.push({ id: fromId, direction: epos.direction, entryBar: epos.entryBar, entryPrice: epos.entryPrice, exitBar: barIndex, exitPrice: ec, profit: epnl, qty: epos.qty });
+          delete positions[fromId];
+          return NA;
+        }
+        case 'strategy.cancel': {
+          var cancelId = getArg(0) || getNamedArg('id', null);
+          if (cancelId && positions[cancelId]) delete positions[cancelId];
+          return NA;
+        }
+        default: return NA;
+      }
+    }
 
     /* ── Helper: extract input() calls from AST ── */
     function extractInputs(node, overrides) {
@@ -1902,7 +2043,8 @@
 
       switch (node.type) {
         case 'Program':      return execProgram(node);
-        case 'Indicator':    return NA; // declaration only
+        case 'Indicator':
+        case 'Strategy':     return NA; // declaration only
         case 'NumLiteral':   return node.value;
         case 'StrLiteral':   return node.value;
         case 'BoolLiteral':  return node.value;
@@ -2287,6 +2429,29 @@
           default: return 'order.' + node.member;
         }
       }
+
+      /* strategy.* property reads */
+      if (obj === 'strategy') {
+        switch (node.member) {
+          case 'long':  return 'long';
+          case 'short': return 'short';
+          case 'position_size': {
+            var _sz = 0;
+            for (var _k in positions) { if (positions[_k].direction === 'long') _sz += positions[_k].qty; else _sz -= positions[_k].qty; }
+            return _sz;
+          }
+          case 'opentrades':   return Object.keys(positions).length;
+          case 'closedtrades': return closedTrades.length;
+          case 'equity':       return equityCurve.length > 0 ? equityCurve[equityCurve.length - 1] : stratCapital;
+          case 'netprofit': {
+            var _np = 0;
+            for (var _nt = 0; _nt < closedTrades.length; _nt++) _np += closedTrades[_nt].profit;
+            return _np;
+          }
+          case 'initial_capital': return stratCapital;
+          default: return NA;
+        }
+      }
       if (obj === 'position') return POSITIONS[node.member] || node.member;
       if (obj === 'text') return TEXT_ALIGN[node.member] || node.member;
       if (obj === 'table') return 'table.' + node.member;
@@ -2513,6 +2678,8 @@
       }
       /* request.dividends/earnings/financial — no-op, return NA */
       if (callName.indexOf('request.') === 0) return NA;
+
+      if (callName.indexOf('strategy.') === 0) return execStrategyCall(callName, node.args);
 
       /* fixnan — persist last non-na */
       if (callName === 'fixnan') {
