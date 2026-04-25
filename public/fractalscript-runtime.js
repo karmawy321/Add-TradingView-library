@@ -813,6 +813,15 @@
         return { type: 'Identifier', name: t.value, line: t.line, col: t.col };
       }
 
+      /* switch as expression: `x = switch cond \n case => val ...` */
+      if (at(TT.KW_SWITCH)) {
+        return parseSwitch();
+      }
+      /* if as expression: `x = if cond \n  val1 \n else \n  val2` */
+      if (at(TT.KW_IF)) {
+        return parseIf();
+      }
+
       /* Parenthesized expression */
       if (at(TT.LPAREN)) {
         pos++;
