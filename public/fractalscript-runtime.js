@@ -756,6 +756,11 @@
       var expr = parsePrimary();
       if (expr && expr.error) return expr;
 
+      /* Statement-style expressions (switch / if) consumed multi-line content;
+         don't apply postfix operators — otherwise the `[` of a following tuple
+         literal would be misread as a history-ref index on the switch result. */
+      if (expr && (expr.type === 'Switch' || expr.type === 'If')) return expr;
+
       while (true) {
         /* History reference: expr[n] */
         if (at(TT.LBRACKET)) {
