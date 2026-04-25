@@ -97,7 +97,9 @@
     KW_AND: 'KW_AND', KW_OR: 'KW_OR', KW_NOT: 'KW_NOT',
     KW_INDICATOR: 'KW_INDICATOR',
     KW_PLOT: 'KW_PLOT', KW_PLOTSHAPE: 'KW_PLOTSHAPE',
-    KW_BGCOLOR: 'KW_BGCOLOR', KW_HLINE: 'KW_HLINE'
+    KW_BGCOLOR: 'KW_BGCOLOR', KW_HLINE: 'KW_HLINE',
+    KW_SWITCH: 'KW_SWITCH', KW_WHILE: 'KW_WHILE', KW_BREAK: 'KW_BREAK',
+    KW_CONTINUE: 'KW_CONTINUE', KW_IN: 'KW_IN'
   };
 
   var KEYWORDS = {
@@ -107,7 +109,9 @@
     'and': TT.KW_AND, 'or': TT.KW_OR, 'not': TT.KW_NOT,
     'indicator': TT.KW_INDICATOR,
     'plot': TT.KW_PLOT, 'plotshape': TT.KW_PLOTSHAPE,
-    'bgcolor': TT.KW_BGCOLOR, 'hline': TT.KW_HLINE
+    'bgcolor': TT.KW_BGCOLOR, 'hline': TT.KW_HLINE,
+    'switch': TT.KW_SWITCH, 'while': TT.KW_WHILE, 'break': TT.KW_BREAK,
+    'continue': TT.KW_CONTINUE, 'in': TT.KW_IN
   };
 
   var OPS_2CHAR = [':=', '==', '!=', '>=', '<='];
@@ -319,6 +323,12 @@
       /* for */
       if (at(TT.KW_FOR)) return parseFor();
 
+      /* while / break / switch */
+      if (at(TT.KW_WHILE))  return parseWhile();
+      if (at(TT.KW_BREAK))  { var lb = loc(); pos++; return { type: 'Break',    line: lb.line, col: lb.col }; }
+      if (at(TT.KW_CONTINUE)) { var lc = loc(); pos++; return { type: 'Continue', line: lc.line, col: lc.col }; }
+      if (at(TT.KW_SWITCH)) return parseSwitch();
+
       /* plot / plotshape / bgcolor / hline */
       if (at(TT.KW_PLOT)) return parsePlotCall();
       if (at(TT.KW_PLOTSHAPE)) return parsePlotShapeCall();
@@ -330,6 +340,69 @@
 
       /* Assignment or expression */
       return parseAssignmentOrExpr();
+    }
+
+    function parseWhile() {
+      var l = loc(); pos++; // consume 'while'
+      var cond = parseExpression();
+      if (cond && cond.error) return cond;
+      skipNewlines();
+      var body = parseBlock(l.col);
+      if (body && body.error) return body;
+      return { type: 'While', condition: cond, body: body, line: l.line, col: l.col };
+    }
+
+    function parseSwitch() {
+      var l = loc(); pos++; // consume 'switch'
+      /* Two forms:
+         (1)  switch x       <- expression-form, then `value => result` cases
+              1 => "one"
+              2 => "two"
+              => "default"
+         (2)  switch          <- predicate-form, then `cond => result` cases
+              x > 5 => "big"
+              x < 0 => "neg"
+              => "other" */
+      var subject = null;
+      if (!at(TT.NEWLINE)) {
+        subject = parseExpression();
+        if (subject && subject.error) return subject;
+      }
+      skipNewlines();
+      /* Determine indent from first case */
+      if (at(TT.EOF)) return { error: { line: l.line, col: l.col, message: 'switch needs at least one case' } };
+      var firstCol = cur().col;
+      var cases = [];
+      var defaultBody = null;
+      while (!at(TT.EOF)) {
+        skipNewlines();
+        if (at(TT.EOF)) break;
+        if (cur().col < firstCol) break;
+        /* Default case: starts with `=>` directly */
+        if (at(TT.ARROW)) {
+          pos++;
+          var dbody;
+          if (at(TT.NEWLINE)) { skipNewlines(); dbody = parseBlock(firstCol + 1); }
+          else dbody = parseExpression();
+          if (dbody && dbody.error) return dbody;
+          defaultBody = dbody;
+          continue;
+        }
+        /* Regular case: <expr> => <body> */
+        var cval = parseExpression();
+        if (cval && cval.error) return cval;
+        if (!at(TT.ARROW)) {
+          return { error: { line: cur().line, col: cur().col,
+            message: "Expected '=>' in switch case" } };
+        }
+        pos++; // consume =>
+        var cbody;
+        if (at(TT.NEWLINE)) { skipNewlines(); cbody = parseBlock(firstCol + 1); }
+        else cbody = parseExpression();
+        if (cbody && cbody.error) return cbody;
+        cases.push({ value: cval, body: cbody });
+      }
+      return { type: 'Switch', subject: subject, cases: cases, defaultBody: defaultBody, line: l.line, col: l.col };
     }
 
     function parseTupleAssign() {
@@ -473,6 +546,14 @@
     function parseFor() {
       var l = loc(); pos++; // consume 'for'
       var varName = eat(TT.IDENT); if (varName.error) return varName;
+      /* `for x in arr` form (Pine v5 array iteration) */
+      if (at(TT.KW_IN)) {
+        pos++;
+        var iter = parseExpression(); if (iter && iter.error) return iter;
+        skipNewlines();
+        var body2 = parseBlock(l.col); if (body2 && body2.error) return body2;
+        return { type: 'ForIn', varName: varName.value, iter: iter, body: body2, line: l.line, col: l.col };
+      }
       var r = eat(TT.ASSIGN); if (r && r.error) return r;
       var start = parseExpression(); if (start && start.error) return start;
       r = eat(TT.KW_TO); if (r && r.error) return r;
@@ -1791,6 +1872,11 @@
         case 'Ternary':      return execTernary(node);
         case 'If':           return execIf(node);
         case 'For':          return execFor(node);
+        case 'ForIn':        return execForIn(node);
+        case 'While':        return execWhile(node);
+        case 'Switch':       return execSwitch(node);
+        case 'Break':        return { __break__: true };
+        case 'Continue':     return { __continue__: true };
         case 'Block':        return execBlock(node);
         case 'MemberAccess': return execMember(node);
         case 'HistoryRef':   return execHistoryRef(node);
@@ -1822,6 +1908,8 @@
       for (var i = 0; i < node.body.length; i++) {
         last = execNode(node.body[i]);
         if (last && last.__error__) return last;
+        /* Bubble break/continue up to the nearest loop */
+        if (last && (last.__break__ || last.__continue__)) return last;
       }
       return last;
     }
@@ -1928,7 +2016,8 @@
           name === 'hline' || name === 'barstate' || name === 'timeframe' ||
           name === 'line' || name === 'extend' || name === 'label' ||
           name === 'position' || name === 'table' || name === 'text' ||
-          name === 'box') return name;
+          name === 'box' || name === 'syminfo' || name === 'barmerge' ||
+          name === 'plot' || name === 'order') return name;
 
       return NA;
     }
@@ -1993,18 +2082,80 @@
       var end = execNode(node.end);
       var step = node.step ? execNode(node.step) : 1;
       if (isNa(start) || isNa(end) || isNa(step) || step === 0) return NA;
-      
-      // Safety: If range is invalid for the step direction, don't execute
-      if (step > 0 && start > end) return NA;
-      if (step < 0 && start < end) return NA;
+
+      /* Pine `for i = N to 0` (descending) auto-flips step to -1 if not given */
+      if (step > 0 && start > end) {
+        if (!node.step) step = -1;
+        else return NA;
+      } else if (step < 0 && start < end) {
+        return NA;
+      }
 
       var last = NA;
       for (var i = start; step > 0 ? i <= end : i >= end; i += step) {
         barVars[node.varName] = i;
         last = execNode(node.body);
         if (last && last.__error__) return last;
+        if (last && last.__break__) { last = NA; break; }
+        if (last && last.__continue__) { last = NA; continue; }
       }
       return last;
+    }
+
+    function execForIn(node) {
+      var iter = execNode(node.iter);
+      if (iter && iter.__error__) return iter;
+      if (!iter || typeof iter.length !== 'number') return NA;
+      var last = NA;
+      for (var i = 0; i < iter.length; i++) {
+        barVars[node.varName] = iter[i];
+        last = execNode(node.body);
+        if (last && last.__error__) return last;
+        if (last && last.__break__) { last = NA; break; }
+        if (last && last.__continue__) { last = NA; continue; }
+      }
+      return last;
+    }
+
+    function execWhile(node) {
+      var last = NA;
+      var safety = 0;
+      while (true) {
+        if (++safety > 100000) {
+          return { __error__: { line: node.line, col: node.col,
+            message: 'while-loop iteration limit exceeded (100,000) — likely infinite loop' } };
+        }
+        var cond = execNode(node.condition);
+        if (cond && cond.__error__) return cond;
+        if (!cond) break;
+        last = execNode(node.body);
+        if (last && last.__error__) return last;
+        if (last && last.__break__) { last = NA; break; }
+        if (last && last.__continue__) { last = NA; continue; }
+      }
+      return last;
+    }
+
+    function execSwitch(node) {
+      if (node.subject) {
+        /* expression-form: match each case value against subject */
+        var subj = execNode(node.subject);
+        if (subj && subj.__error__) return subj;
+        for (var i = 0; i < node.cases.length; i++) {
+          var cv = execNode(node.cases[i].value);
+          if (cv && cv.__error__) return cv;
+          if (cv === subj) return execNode(node.cases[i].body);
+        }
+      } else {
+        /* predicate-form: each case is a boolean expression */
+        for (var j = 0; j < node.cases.length; j++) {
+          var cb = execNode(node.cases[j].value);
+          if (cb && cb.__error__) return cb;
+          if (cb) return execNode(node.cases[j].body);
+        }
+      }
+      if (node.defaultBody) return execNode(node.defaultBody);
+      return NA;
     }
 
     function execMember(node) {
@@ -2025,6 +2176,49 @@
       if (obj === 'str') return 'str.' + node.member;
       if (obj === 'extend') return EXTEND_MODES[node.member] || 'extend.' + node.member;
       if (obj === 'hline') return 'hline.' + node.member;
+
+      /* syminfo.* — stub values (real values would require chart context) */
+      if (obj === 'syminfo') {
+        switch (node.member) {
+          case 'tickerid': return 'UNKNOWN:UNKNOWN';
+          case 'ticker':   return 'UNKNOWN';
+          case 'prefix':   return '';
+          case 'mintick':  return 0.01;
+          case 'pointvalue': return 1;
+          case 'currency': return 'USD';
+          case 'basecurrency': return 'USD';
+          case 'description': return '';
+          case 'type':     return 'crypto';
+          case 'session':  return 'regular';
+          case 'timezone': return 'UTC';
+          default: return NA;
+        }
+      }
+
+      /* barmerge.* — sentinel values for request.security() flags */
+      if (obj === 'barmerge') {
+        switch (node.member) {
+          case 'gaps_on':       return 'gaps_on';
+          case 'gaps_off':      return 'gaps_off';
+          case 'lookahead_on':  return 'lookahead_on';
+          case 'lookahead_off': return 'lookahead_off';
+          default: return NA;
+        }
+      }
+
+      /* plot.* style enum — used as `style=plot.style_circles` etc */
+      if (obj === 'plot') {
+        return 'plot.' + node.member;
+      }
+
+      /* order.* — strategy direction enum */
+      if (obj === 'order') {
+        switch (node.member) {
+          case 'ascending':  return 'ascending';
+          case 'descending': return 'descending';
+          default: return 'order.' + node.member;
+        }
+      }
       if (obj === 'position') return POSITIONS[node.member] || node.member;
       if (obj === 'text') return TEXT_ALIGN[node.member] || node.member;
       if (obj === 'table') return 'table.' + node.member;
@@ -2184,6 +2378,37 @@
         var v2 = node.args[1] ? execNode(node.args[1].type === 'NamedArg' ? node.args[1].value : node.args[1]) : 0;
         return isNa(v1) ? v2 : v1;
       }
+
+      /* Type casts: int(x), float(x), bool(x), string(x) — Pine v5 explicit conversions */
+      if (callName === 'int' || callName === 'float' || callName === 'bool' || callName === 'string') {
+        var castVal = node.args[0] ? execNode(node.args[0].type === 'NamedArg' ? node.args[0].value : node.args[0]) : NA;
+        if (isNa(castVal)) return NA;
+        if (callName === 'int')    return Math.trunc(Number(castVal));
+        if (callName === 'float')  return Number(castVal);
+        if (callName === 'bool')   return !!castVal;
+        if (callName === 'string') return String(castVal);
+      }
+
+      /* alertcondition() — no-op stub. Pine fires alerts via UI configuration; we just absorb args. */
+      if (callName === 'alertcondition') return NA;
+
+      /* alert() — same no-op stub */
+      if (callName === 'alert') return NA;
+
+      /* plotcandle() — no-op stub for now (renderer doesn't support custom candle painting). */
+      if (callName === 'plotcandle') return NA;
+
+      /* request.security() — stub: return the source expression evaluated on the current
+         timeframe. Real MTF resolution is P8 (not yet done). This lets scripts that call
+         request.security() RUN rather than crash, but the values reflect the current TF
+         instead of the requested HTF. */
+      if (callName === 'request.security' || callName === 'request.security_lower_tf') {
+        if (node.args.length < 3) return NA;
+        var srcArg = node.args[2];
+        return execNode(srcArg.type === 'NamedArg' ? srcArg.value : srcArg);
+      }
+      /* request.dividends/earnings/financial — no-op, return NA */
+      if (callName.indexOf('request.') === 0) return NA;
 
       /* fixnan — persist last non-na */
       if (callName === 'fixnan') {
