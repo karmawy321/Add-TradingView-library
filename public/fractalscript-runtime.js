@@ -1526,6 +1526,8 @@
     /* Variable scopes */
     var persistentVars = {};  // var x = ...  (survives across bars)
     var barVars = {};         // x = ...      (resets each bar)
+    var userFunctions = {};   // P7: name -> { params, body }
+    var fnCallDepth = 0;      // P7: prevent runaway recursion
 
     /* History buffers for series variables */
     var seriesHistory = {};   // varName -> [val_at_bar0, val_at_bar1, ...]
@@ -1726,6 +1728,10 @@
         case 'Bgcolor':      return execBgcolor(node);
         case 'Hline':        return execHline(node);
         case 'NamedArg':     return execNode(node.value);
+        case 'FunctionDecl':
+          /* P7: register user-defined function (declaration is a no-op at runtime) */
+          userFunctions[node.name] = { params: node.params, body: node.body };
+          return NA;
         default:             return NA;
       }
     }
@@ -2017,6 +2023,11 @@
     function execCall(node) {
       var callName = getCallName(node.callee);
 
+      /* P7: user-defined functions — checked before built-ins so users can shadow */
+      if (userFunctions[callName]) {
+        return execUserFunction(callName, node.args, node);
+      }
+
       /* line.* functions */
       if (callName.indexOf('line.') === 0) {
         return execLineCall(callName, node.args, node);
@@ -2184,6 +2195,58 @@
       }
 
       return NA;
+    }
+
+    /* P7: user-defined function call.
+       Pine semantics:
+       - new local scope for params + locally-declared vars
+       - returns the LAST expression's value from the body
+       - `var` inside a fn persists per-call-site (not implemented yet — for now it persists per-fn)
+       - no recursion (Pine disallows; we cap depth as a safety)
+       - closure: identifiers not in local scope fall through to the outer scope (built-ins, globals) */
+    function execUserFunction(name, callArgs, node) {
+      if (fnCallDepth > 50) {
+        return { __error__: { line: node.line, col: node.col,
+          message: "Recursion limit exceeded calling '" + name + "' (Pine disallows recursion)" } };
+      }
+      var fn = userFunctions[name];
+
+      /* Evaluate args in caller scope BEFORE swapping scope */
+      var evaluatedArgs = [];
+      for (var ai = 0; ai < callArgs.length; ai++) {
+        var a = callArgs[ai];
+        var v = execNode(a.type === 'NamedArg' ? a.value : a);
+        if (v && v.__error__) return v;
+        evaluatedArgs.push(v);
+      }
+
+      /* Save outer barVars; swap in fresh scope with params bound */
+      var savedBarVars = barVars;
+      var localScope = {};
+      for (var pi = 0; pi < fn.params.length; pi++) {
+        localScope[fn.params[pi]] = pi < evaluatedArgs.length ? evaluatedArgs[pi] : NA;
+      }
+      barVars = localScope;
+      fnCallDepth++;
+
+      var result;
+      try {
+        if (fn.body && fn.body.type === 'Block') {
+          /* Multi-line body — return value of last statement */
+          result = NA;
+          for (var bi = 0; bi < fn.body.body.length; bi++) {
+            result = execNode(fn.body.body[bi]);
+            if (result && result.__error__) break;
+          }
+        } else {
+          /* Single-line body — body is an expression node */
+          result = execNode(fn.body);
+        }
+      } finally {
+        barVars = savedBarVars;
+        fnCallDepth--;
+      }
+      return result;
     }
 
     function applyTransparency(color, transp) {
