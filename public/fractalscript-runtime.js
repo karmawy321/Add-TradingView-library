@@ -316,22 +316,37 @@
 
     function parseTupleAssign() {
       var l = loc(); pos++; // consume '['
-      var names = [];
+      var elems = [];
       skipNewlines();
       while (!at(TT.RBRACKET)) {
-        var ident = eat(TT.IDENT); if (ident.error) return ident;
-        names.push(ident.value);
+        var elem = parseExpression();
+        if (elem && elem.error) return elem;
+        elems.push(elem);
         skipNewlines();
         if (!tryEat(TT.COMMA)) break;
         skipNewlines();
       }
       var rb = eat(TT.RBRACKET); if (rb && rb.error) return rb;
-      var isReassign = false;
-      if (at(TT.REASSIGN)) { isReassign = true; pos++; }
-      else { var ra = eat(TT.ASSIGN); if (ra && ra.error) return ra; }
-      var value = parseExpression();
-      if (value && value.error) return value;
-      return { type: 'TupleAssign', names: names, value: value, reassign: isReassign, line: l.line, col: l.col };
+
+      /* Destructuring assignment: [a, b, c] = expr  OR  [a, b, c] := expr */
+      if (at(TT.ASSIGN) || at(TT.REASSIGN)) {
+        var isReassign = at(TT.REASSIGN);
+        pos++;
+        var names = [];
+        for (var ni = 0; ni < elems.length; ni++) {
+          if (elems[ni].type !== 'Identifier') {
+            return { error: { line: l.line, col: l.col,
+              message: 'Tuple destructuring target must be a list of identifiers' } };
+          }
+          names.push(elems[ni].name);
+        }
+        var value = parseExpression();
+        if (value && value.error) return value;
+        return { type: 'TupleAssign', names: names, value: value, reassign: isReassign, line: l.line, col: l.col };
+      }
+
+      /* No assignment — it's a tuple literal expression (e.g., return value of a user fn) */
+      return { type: 'TupleLiteral', elems: elems, line: l.line, col: l.col };
     }
 
     function parseIndicator() {
@@ -1714,6 +1729,15 @@
         case 'VarDecl':      return execVarDecl(node);
         case 'Reassign':     return execReassign(node);
         case 'TupleAssign':  return execTupleAssign(node);
+        case 'TupleLiteral': {
+          var _arr = [];
+          for (var _li = 0; _li < node.elems.length; _li++) {
+            var _v = execNode(node.elems[_li]);
+            if (_v && _v.__error__) return _v;
+            _arr.push(_v);
+          }
+          return _arr;
+        }
         case 'BinaryExpr':   return execBinary(node);
         case 'UnaryExpr':    return execUnary(node);
         case 'Ternary':      return execTernary(node);
