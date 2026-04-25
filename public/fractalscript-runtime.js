@@ -189,6 +189,24 @@
         continue;
       }
 
+      /* Hex color literal: #RRGGBB or #RRGGBBAA — tokenize as STRING so it
+         flows through expressions as a color value. */
+      if (ch === '#') {
+        advance(); // consume #
+        var hex = '#';
+        while (i < len && ((source[i] >= '0' && source[i] <= '9') ||
+               (source[i] >= 'a' && source[i] <= 'f') ||
+               (source[i] >= 'A' && source[i] <= 'F'))) {
+          hex += advance();
+        }
+        if (hex.length === 7 || hex.length === 9) {
+          tokens.push(tok(TT.STRING, hex, startLine, startCol));
+          continue;
+        }
+        return { tokens: null, error: { line: startLine, col: startCol,
+          message: "Invalid hex color literal '" + hex + "' (expected #RRGGBB or #RRGGBBAA)" } };
+      }
+
       /* Identifiers and keywords */
       if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_') {
         var id = '';
