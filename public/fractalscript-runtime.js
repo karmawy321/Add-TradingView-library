@@ -1464,12 +1464,15 @@
     var lines = [];       // {id, x1, y1, x2, y2, color, width, style, extend}
     var labels = [];      // {id, x, y, text, color, textcolor, style, size, textalign, tooltip}
     var tables = [];      // {id, position, cols, rows, bgcolor, frame_color, frame_width, border_color, border_width, cells:{col,row -> {text, bgcolor, text_color, text_halign, text_valign, text_size, width, height, tooltip}}}
+    var boxes = [];       // P2: {id, left, top, right, bottom, border_color, border_width, border_style, bgcolor, extend, text, text_color, text_size, text_halign, text_valign}
 
     var nextLineId = 1;
     var nextLabelId = 1;
     var nextTableId = 1;
+    var nextBoxId = 1;
     var max_lines_count = 50;
     var max_labels_count = 50;
+    var max_boxes_count = 50;
 
     var COLORS = {
       'red': '#FF5252', 'green': '#4CAF50', 'blue': '#2196F3', 'orange': '#FF9800',
@@ -1483,6 +1486,7 @@
       'circle': 'circle', 'cross': 'cross', 'xcross': 'xcross', 'triangleup': 'triangleup', 'triangledown': 'triangledown'
     };
     var LINE_STYLES = { 'style_solid': 'solid', 'style_dashed': 'dashed', 'style_dotted': 'dotted' };
+    var BOX_STYLES = { 'style_solid': 'solid', 'style_dashed': 'dashed', 'style_dotted': 'dotted' };
     var EXTEND_MODES = { 'none': 'none', 'right': 'right', 'left': 'left', 'both': 'both' };
     var LABEL_STYLES = {
       'style_none': 'none',
@@ -1523,6 +1527,11 @@
              if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'max_labels_count') {
                if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
                  max_labels_count = indArgs[j].value.value;
+               }
+             }
+             if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'max_boxes_count') {
+               if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
+                 max_boxes_count = indArgs[j].value.value;
                }
              }
              if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'overlay') {
@@ -1654,6 +1663,7 @@
       lines: lines,
       labels: labels,
       tables: tables,
+      boxes: boxes,
       overlay: overlay,
       errors: []
     };
@@ -1879,7 +1889,8 @@
           name === 'location' || name === 'size' || name === 'input' || name === 'str' ||
           name === 'hline' || name === 'barstate' || name === 'timeframe' ||
           name === 'line' || name === 'extend' || name === 'label' ||
-          name === 'position' || name === 'table' || name === 'text') return name;
+          name === 'position' || name === 'table' || name === 'text' ||
+          name === 'box') return name;
 
       return NA;
     }
@@ -1972,6 +1983,7 @@
       if (obj === 'input') return 'input.' + node.member;
       if (obj === 'line') return LINE_STYLES[node.member] || 'line.' + node.member;
       if (obj === 'label') return LABEL_STYLES[node.member] || 'label.' + node.member;
+      if (obj === 'box') return BOX_STYLES[node.member] || 'box.' + node.member;
       if (obj === 'str') return 'str.' + node.member;
       if (obj === 'extend') return EXTEND_MODES[node.member] || 'extend.' + node.member;
       if (obj === 'hline') return 'hline.' + node.member;
@@ -2065,6 +2077,11 @@
       /* table.* functions */
       if (callName.indexOf('table.') === 0) {
         return execTableCall(callName, node.args, node);
+      }
+
+      /* P2: box.* functions */
+      if (callName.indexOf('box.') === 0) {
+        return execBoxCall(callName, node.args, node);
       }
 
       /* str.* functions */
@@ -2998,6 +3015,96 @@
       }
     }
 
+    /* P2: box.* — rectangles drawn on the chart at world coords (left/top/right/bottom) */
+    function execBoxCall(name, args, node) {
+      var evalArg = function(idx) {
+        if (idx >= args.length) return NA;
+        var a = args[idx];
+        return execNode(a.type === 'NamedArg' ? a.value : a);
+      };
+      var getNamedArg = function(argName, defaultIdx) {
+        for (var i = 0; i < args.length; i++) {
+          if (args[i].type === 'NamedArg' && args[i].name === argName) {
+            return execNode(args[i].value);
+          }
+        }
+        if (defaultIdx !== undefined && defaultIdx < args.length && args[defaultIdx].type !== 'NamedArg') {
+          return execNode(args[defaultIdx]);
+        }
+        return NA;
+      };
+
+      switch (name) {
+        case 'box.new': {
+          var left = Number(getNamedArg('left', 0));
+          var top = Number(getNamedArg('top', 1));
+          var right = Number(getNamedArg('right', 2));
+          var bottom = Number(getNamedArg('bottom', 3));
+          if (isNaN(left) || isNaN(top) || isNaN(right) || isNaN(bottom)) return NA;
+          var border_color = getNamedArg('border_color', 4);
+          var border_width = getNamedArg('border_width', 5);
+          var border_style = getNamedArg('border_style', 6);
+          var extend = getNamedArg('extend', 7);
+          var bgcolor = getNamedArg('bgcolor', 8);
+          var text = getNamedArg('text', 9);
+          var text_size = getNamedArg('text_size', 10);
+          var text_color = getNamedArg('text_color', 11);
+          var text_halign = getNamedArg('text_halign', 12);
+          var text_valign = getNamedArg('text_valign', 13);
+          var b = {
+            id: nextBoxId++,
+            left: left, top: top, right: right, bottom: bottom,
+            border_color: isNa(border_color) ? '#787B86' : border_color,
+            border_width: isNa(border_width) ? 1 : border_width,
+            border_style: isNa(border_style) ? 'solid' : border_style,
+            extend: isNa(extend) ? 'none' : extend,
+            bgcolor: isNa(bgcolor) ? 'rgba(120,123,134,0.2)' : bgcolor,
+            text: isNa(text) ? '' : String(text),
+            text_size: isNa(text_size) ? 'normal' : text_size,
+            text_color: isNa(text_color) ? '#FFFFFF' : text_color,
+            text_halign: isNa(text_halign) ? 'center' : text_halign,
+            text_valign: isNa(text_valign) ? 'center' : text_valign
+          };
+          boxes.push(b);
+          if (boxes.length > max_boxes_count) boxes.shift();
+          return b;
+        }
+        case 'box.delete': {
+          var bx = evalArg(0);
+          if (bx && bx.id) {
+            for (var i = 0; i < boxes.length; i++) {
+              if (boxes[i].id === bx.id) { boxes.splice(i, 1); break; }
+            }
+          }
+          return NA;
+        }
+        case 'box.set_left':   { var b1 = evalArg(0); var v = evalArg(1); if (b1 && b1.id && !isNa(v)) b1.left = Number(v); return NA; }
+        case 'box.set_top':    { var b1 = evalArg(0); var v = evalArg(1); if (b1 && b1.id && !isNa(v)) b1.top = Number(v); return NA; }
+        case 'box.set_right':  { var b1 = evalArg(0); var v = evalArg(1); if (b1 && b1.id && !isNa(v)) b1.right = Number(v); return NA; }
+        case 'box.set_bottom': { var b1 = evalArg(0); var v = evalArg(1); if (b1 && b1.id && !isNa(v)) b1.bottom = Number(v); return NA; }
+        case 'box.set_lefttop':     { var b1 = evalArg(0); var x = evalArg(1); var y = evalArg(2); if (b1 && b1.id) { if (!isNa(x)) b1.left = Number(x); if (!isNa(y)) b1.top = Number(y); } return NA; }
+        case 'box.set_righttop':    { var b1 = evalArg(0); var x = evalArg(1); var y = evalArg(2); if (b1 && b1.id) { if (!isNa(x)) b1.right = Number(x); if (!isNa(y)) b1.top = Number(y); } return NA; }
+        case 'box.set_leftbottom':  { var b1 = evalArg(0); var x = evalArg(1); var y = evalArg(2); if (b1 && b1.id) { if (!isNa(x)) b1.left = Number(x); if (!isNa(y)) b1.bottom = Number(y); } return NA; }
+        case 'box.set_rightbottom': { var b1 = evalArg(0); var x = evalArg(1); var y = evalArg(2); if (b1 && b1.id) { if (!isNa(x)) b1.right = Number(x); if (!isNa(y)) b1.bottom = Number(y); } return NA; }
+        case 'box.set_border_color': { var b1 = evalArg(0); var c = evalArg(1); if (b1 && b1.id && !isNa(c)) b1.border_color = c; return NA; }
+        case 'box.set_border_width': { var b1 = evalArg(0); var w = evalArg(1); if (b1 && b1.id && !isNa(w)) b1.border_width = w; return NA; }
+        case 'box.set_border_style': { var b1 = evalArg(0); var s = evalArg(1); if (b1 && b1.id && !isNa(s)) b1.border_style = s; return NA; }
+        case 'box.set_bgcolor':      { var b1 = evalArg(0); var c = evalArg(1); if (b1 && b1.id && !isNa(c)) b1.bgcolor = c; return NA; }
+        case 'box.set_extend':       { var b1 = evalArg(0); var e = evalArg(1); if (b1 && b1.id && !isNa(e)) b1.extend = e; return NA; }
+        case 'box.set_text':         { var b1 = evalArg(0); var t = evalArg(1); if (b1 && b1.id) b1.text = isNa(t) ? '' : String(t); return NA; }
+        case 'box.set_text_color':   { var b1 = evalArg(0); var c = evalArg(1); if (b1 && b1.id && !isNa(c)) b1.text_color = c; return NA; }
+        case 'box.set_text_size':    { var b1 = evalArg(0); var s = evalArg(1); if (b1 && b1.id && !isNa(s)) b1.text_size = s; return NA; }
+        case 'box.set_text_halign':  { var b1 = evalArg(0); var h = evalArg(1); if (b1 && b1.id && !isNa(h)) b1.text_halign = h; return NA; }
+        case 'box.set_text_valign':  { var b1 = evalArg(0); var v = evalArg(1); if (b1 && b1.id && !isNa(v)) b1.text_valign = v; return NA; }
+        case 'box.get_left':   { var b1 = evalArg(0); return (b1 && b1.id) ? b1.left   : NA; }
+        case 'box.get_top':    { var b1 = evalArg(0); return (b1 && b1.id) ? b1.top    : NA; }
+        case 'box.get_right':  { var b1 = evalArg(0); return (b1 && b1.id) ? b1.right  : NA; }
+        case 'box.get_bottom': { var b1 = evalArg(0); return (b1 && b1.id) ? b1.bottom : NA; }
+        default:
+          return { __error__: { line: node.line, col: node.col, message: "Unknown box function '" + name + "'" } };
+      }
+    }
+
     function execStrCall(name, args, node) {
       var evalArg = function(idx) {
         if (idx >= args.length) return NA;
@@ -3395,7 +3502,7 @@
   }
 
   function emptyResult() {
-    return { plots: [], shapes: [], hlines: [], bgcolors: [], inputs: [], errors: [] };
+    return { plots: [], shapes: [], hlines: [], bgcolors: [], inputs: [], lines: [], labels: [], tables: [], boxes: [], errors: [] };
   }
 
 

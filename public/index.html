@@ -5229,6 +5229,73 @@ function renderChart() {
         _fsBadges.push({ y: _hy, text: _hlTxt, color: _hlColor });
       }
     }
+    /* P2: boxes — drawn BELOW lines/labels so annotations sit on top */
+    if (fractalResult.boxes && fractalResult.boxes.length) {
+      chartCtx.save();
+      chartCtx.beginPath();
+      chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, H - PAD.t - PAD.b);
+      chartCtx.clip();
+      var _bxSizePx = { tiny: 9, small: 10, normal: 12, large: 14, huge: 18, auto: 12 };
+      for (var _bi = 0; _bi < fractalResult.boxes.length; _bi++) {
+        var _BX = fractalResult.boxes[_bi];
+        var _bx1 = worldToScreenX(_BX.left);
+        var _by1 = worldToScreenY(_BX.top);
+        var _bx2 = worldToScreenX(_BX.right);
+        var _by2 = worldToScreenY(_BX.bottom);
+        /* extend modes */
+        if (_BX.extend === 'right' || _BX.extend === 'extend.right') {
+          _bx2 = W - PAD.r;
+        } else if (_BX.extend === 'left' || _BX.extend === 'extend.left') {
+          _bx1 = PAD.l;
+        } else if (_BX.extend === 'both' || _BX.extend === 'extend.both') {
+          _bx1 = PAD.l; _bx2 = W - PAD.r;
+        }
+        /* normalize so x1<x2, y1<y2 */
+        if (_bx2 < _bx1) { var _tx = _bx1; _bx1 = _bx2; _bx2 = _tx; }
+        if (_by2 < _by1) { var _ty = _by1; _by1 = _by2; _by2 = _ty; }
+        var _bw = _bx2 - _bx1;
+        var _bh = _by2 - _by1;
+        /* fill bg */
+        if (_BX.bgcolor) {
+          chartCtx.fillStyle = _BX.bgcolor;
+          chartCtx.fillRect(_bx1, _by1, _bw, _bh);
+        }
+        /* stroke border */
+        if (_BX.border_width > 0 && _BX.border_color) {
+          chartCtx.strokeStyle = _BX.border_color;
+          chartCtx.lineWidth = _BX.border_width;
+          if (_BX.border_style === 'dashed') chartCtx.setLineDash([4,4]);
+          else if (_BX.border_style === 'dotted') chartCtx.setLineDash([2,3]);
+          else chartCtx.setLineDash([]);
+          chartCtx.strokeRect(_bx1, _by1, _bw, _bh);
+          chartCtx.setLineDash([]);
+        }
+        /* text inside box */
+        if (_BX.text) {
+          var _bts = _bxSizePx[_BX.text_size] || 12;
+          chartCtx.font = _bts + 'px "DM Sans", sans-serif';
+          chartCtx.fillStyle = _BX.text_color || '#FFFFFF';
+          chartCtx.textBaseline = (_BX.text_valign === 'top') ? 'top' :
+                                  (_BX.text_valign === 'bottom') ? 'bottom' : 'middle';
+          var _btxX, _btxY;
+          if (_BX.text_halign === 'left')       { chartCtx.textAlign = 'left';   _btxX = _bx1 + 4; }
+          else if (_BX.text_halign === 'right') { chartCtx.textAlign = 'right';  _btxX = _bx2 - 4; }
+          else                                  { chartCtx.textAlign = 'center'; _btxX = _bx1 + _bw / 2; }
+          if (_BX.text_valign === 'top')        _btxY = _by1 + 2;
+          else if (_BX.text_valign === 'bottom') _btxY = _by2 - 2;
+          else                                  _btxY = _by1 + _bh / 2;
+          /* support multi-line text */
+          var _btLines = String(_BX.text).split('\n');
+          var _btLh = _bts + 2;
+          var _btStartY = _btxY - ((_btLines.length - 1) * _btLh) / 2;
+          for (var _bli = 0; _bli < _btLines.length; _bli++) {
+            chartCtx.fillText(_btLines[_bli], _btxX, _btStartY + _bli * _btLh);
+          }
+        }
+      }
+      chartCtx.restore();
+    }
+
     /* lines */
     if (fractalResult.lines) {
       chartCtx.save();
