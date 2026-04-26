@@ -739,6 +739,37 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 .cx-swatch:hover,.cx-swatch.on{border-color:rgba(255,255,255,.9);transform:scale(1.25)}
 .cx-hint{font-size:7.5px;color:rgba(201,168,76,.28);padding:3px 10px 5px;font-family:'DM Mono',monospace;letter-spacing:.04em}
 
+/* ── Strategy Report Panel ── */
+#strategyReportPanel{height:0;overflow:hidden;transition:height .25s ease,opacity .2s ease;opacity:0;background:#06080d;border-top:1px solid rgba(201,168,76,.15);border-bottom:1px solid rgba(255,255,255,.05);flex-shrink:0}
+#strategyReportPanel.srp-open{height:242px;opacity:1}
+#srpHeader{display:flex;align-items:center;gap:10px;padding:5px 14px;border-bottom:1px solid rgba(255,255,255,.05);background:#03040a;min-height:32px}
+#srp-stratName{font:bold 11px 'Cinzel',serif;color:rgba(201,168,76,.85);letter-spacing:.08em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp-tabs{display:flex;gap:4px}
+.srp-tab{background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(180,190,210,.65);border-radius:4px;padding:3px 10px;font:11px 'DM Mono',monospace;cursor:pointer;transition:background .12s,color .12s}
+.srp-tab:hover{background:rgba(255,255,255,.05);color:#e0e4f0}
+.srp-tab.srp-active{background:rgba(201,168,76,.12);color:#c9a84c;border-color:rgba(201,168,76,.35)}
+.srp-tab.srp-premium{border-color:rgba(156,39,176,.45);color:rgba(206,147,216,.85)}
+.srp-tab.srp-premium.srp-active{background:rgba(156,39,176,.12);border-color:rgba(156,39,176,.6)}
+#srp-close{background:none;border:none;color:rgba(180,190,210,.5);font-size:14px;cursor:pointer;padding:2px 6px;border-radius:3px;transition:color .12s}
+#srp-close:hover{color:#ef5350}
+.srp-pane{display:none;height:200px;overflow-y:auto;padding:8px 14px;box-sizing:border-box}
+.srp-pane.srp-active{display:flex;align-items:flex-start}
+#srp-metrics.srp-active{flex-wrap:wrap;gap:8px;align-content:flex-start}
+.srp-card{background:#0d1018;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:8px 14px;min-width:108px}
+.srp-card-label{font:10px 'DM Mono',monospace;color:rgba(180,190,210,.45);margin-bottom:3px}
+.srp-card-value{font:bold 15px 'DM Mono',monospace}
+.srp-card-sub{font:9px 'DM Mono',monospace;color:rgba(180,190,210,.45);margin-top:1px}
+#srp-equity.srp-active{flex-direction:column;padding:6px 10px}
+#srp-equity-canvas{width:100%;height:168px;display:block}
+#srp-trades.srp-active{flex-direction:column;padding:0}
+.srp-trades-table{width:100%;border-collapse:collapse;font:10px 'DM Mono',monospace}
+.srp-trades-table th{background:#0d1018;color:rgba(180,190,210,.5);padding:5px 8px;text-align:left;position:sticky;top:0;border-bottom:1px solid rgba(255,255,255,.08);font-weight:normal}
+.srp-trades-table td{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.04)}
+.srp-tr-win td{color:#26a69a}
+.srp-tr-loss td{color:#ef5350}
+.srp-lock{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;width:100%;gap:8px;color:rgba(180,190,210,.5);font:12px 'DM Mono',monospace}
+.srp-lock-icon{font-size:28px;opacity:.4}
+
 </style>
 <script>
 var isEmbedded = window.location.search.includes('embed=true');
@@ -1185,6 +1216,22 @@ if (isEmbedded) {
             </div>
           </div>
 
+        </div>
+
+        <!-- Strategy Report Panel — hidden until a strategy script runs -->
+        <div id="strategyReportPanel">
+          <div id="srpHeader">
+            <span id="srp-stratName">Strategy Report</span>
+            <div id="srp-tabs">
+              <button class="srp-tab srp-active" data-tab="metrics" onclick="_srpTab(this)">Metrics</button>
+              <button class="srp-tab" data-tab="equity" onclick="_srpTab(this)">Equity</button>
+              <button class="srp-tab srp-premium" data-tab="trades" onclick="_srpTab(this)">Trades ★</button>
+            </div>
+            <button id="srp-close" onclick="_hideStrategyReport()" title="Close">✕</button>
+          </div>
+          <div id="srp-metrics" class="srp-pane srp-active"></div>
+          <div id="srp-equity"  class="srp-pane"><canvas id="srp-equity-canvas"></canvas></div>
+          <div id="srp-trades"  class="srp-pane"></div>
         </div>
 
         <!-- BOTTOM STRIP: AI tools — horizontal row below canvas -->
@@ -10646,6 +10693,194 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
   </div>
 </div>
 
+<!-- ── Strategy Report Panel JS ── -->
+<script>
+(function() {
+  /* Tab switching */
+  window._srpTab = function(btn) {
+    var tab = btn.dataset.tab;
+    document.querySelectorAll('.srp-tab').forEach(function(b){ b.classList.remove('srp-active'); });
+    document.querySelectorAll('.srp-pane').forEach(function(p){ p.classList.remove('srp-active'); });
+    btn.classList.add('srp-active');
+    var pane = document.getElementById('srp-' + tab);
+    if (pane) pane.classList.add('srp-active');
+    /* Redraw equity chart when switching to equity tab */
+    if (tab === 'equity' && window._srpLastResult) {
+      _drawEquityChart(document.getElementById('srp-equity-canvas'), window._srpLastResult);
+    }
+  };
+
+  window._hideStrategyReport = function() {
+    var p = document.getElementById('strategyReportPanel');
+    if (p) p.classList.remove('srp-open');
+  };
+
+  window._buildStrategyReport = function(result) {
+    if (!result || !result.strategyResult) { _hideStrategyReport(); return; }
+    window._srpLastResult = result;
+    var sr   = result.strategyResult;
+    var sum  = sr.summary;
+    var pnl  = sum.netProfit;
+    var pnlPct = sum.initialCapital ? (pnl / sum.initialCapital * 100) : 0;
+    var green = '#26a69a', red = '#ef5350', muted = 'rgba(180,190,210,.55)';
+
+    /* ── Strategy name ── */
+    var nameEl = document.getElementById('srp-stratName');
+    if (nameEl) nameEl.textContent = (result.strategyName || 'Strategy Report');
+
+    /* ── Metrics tab ── */
+    var mDiv = document.getElementById('srp-metrics');
+    if (mDiv) {
+      function card(label, value, color, sub) {
+        return '<div class="srp-card">' +
+          '<div class="srp-card-label">' + label + '</div>' +
+          '<div class="srp-card-value" style="color:' + color + '">' + value + '</div>' +
+          (sub ? '<div class="srp-card-sub">' + sub + '</div>' : '') +
+          '</div>';
+      }
+      var pf = isFinite(sum.profitFactor) ? sum.profitFactor.toFixed(2) : '∞';
+      var winCount = Math.round(sum.winRate * sum.totalTrades);
+      mDiv.innerHTML =
+        card('Net P&L', (pnl >= 0 ? '+' : '') + pnl.toFixed(2), pnl >= 0 ? green : red,
+             (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') +
+        card('Max Drawdown', (sum.maxDrawdown * 100).toFixed(2) + '%', red) +
+        card('Total Trades', sum.totalTrades, '#e0e4f0') +
+        card('Win Rate', (sum.winRate * 100).toFixed(1) + '%',
+             sum.winRate >= 0.5 ? green : red,
+             winCount + ' / ' + sum.totalTrades) +
+        card('Profit Factor', pf, parseFloat(pf) >= 1 ? green : red) +
+        card('Gross Profit', '+' + sum.grossProfit.toFixed(2), green) +
+        card('Gross Loss', sum.grossLoss.toFixed(2), red) +
+        card('Final Equity', sum.finalEquity.toFixed(2), pnl >= 0 ? green : muted);
+    }
+
+    /* ── Equity tab ── (drawn on demand when tab is active) */
+    var activeTab = document.querySelector('.srp-tab.srp-active');
+    if (activeTab && activeTab.dataset.tab === 'equity') {
+      _drawEquityChart(document.getElementById('srp-equity-canvas'), result);
+    }
+
+    /* ── Trades tab ── */
+    var tDiv = document.getElementById('srp-trades');
+    if (tDiv) {
+      if (typeof userTier !== 'undefined' && (userTier === 'pro' || userTier === 'mentor')) {
+        var trades = sr.trades;
+        var shown  = trades.slice(0, 200);
+        var cumPnl = 0;
+        var rows = shown.map(function(t, i) {
+          cumPnl += t.profit;
+          var win = t.profit >= 0;
+          var cls = win ? 'srp-tr-win' : 'srp-tr-loss';
+          var dir = t.direction === 'long' ? '▲ Long' : '▼ Short';
+          return '<tr class="' + cls + '">' +
+            '<td>' + (i + 1) + '</td>' +
+            '<td>' + dir + '</td>' +
+            '<td>' + t.entryPrice.toFixed(4) + '</td>' +
+            '<td>' + t.exitPrice.toFixed(4)  + '</td>' +
+            '<td>' + (t.exitBar - t.entryBar) + '</td>' +
+            '<td>' + (win ? '+' : '') + t.profit.toFixed(4) + '</td>' +
+            '<td>' + (cumPnl >= 0 ? '+' : '') + cumPnl.toFixed(4) + '</td>' +
+            '</tr>';
+        }).join('');
+        var extra = trades.length > 200 ? '<tr><td colspan="7" style="text-align:center;color:rgba(180,190,210,.4);padding:6px">' + (trades.length - 200) + ' more trades not shown</td></tr>' : '';
+        tDiv.innerHTML = '<table class="srp-trades-table">' +
+          '<thead><tr><th>#</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Bars</th><th>P&L</th><th>Cum. P&L</th></tr></thead>' +
+          '<tbody>' + rows + extra + '</tbody></table>';
+      } else {
+        tDiv.innerHTML = '<div class="srp-lock"><div class="srp-lock-icon">🔒</div>' +
+          '<div>Full trade list — Pro feature</div>' +
+          '<div style="font-size:10px;opacity:.6">Upgrade to see all ' + sr.trades.length + ' trades</div></div>';
+      }
+    }
+
+    /* Show panel */
+    var panel = document.getElementById('strategyReportPanel');
+    if (panel) panel.classList.add('srp-open');
+  };
+
+  window._drawEquityChart = function(canvas, result) {
+    if (!canvas || !result || !result.strategyResult) return;
+    var sr  = result.strategyResult;
+    var ec  = sr.equityCurve;
+    var cap = sr.summary.initialCapital || 10000;
+    if (!ec || ec.length < 2) return;
+
+    var dpr = window.devicePixelRatio || 1;
+    var W   = canvas.offsetWidth  || 400;
+    var H   = canvas.offsetHeight || 168;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    var ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+
+    /* convert to P&L relative to initial capital */
+    var vals = Array.from(ec).map(function(v) { return v - cap; });
+    var minV = Math.min.apply(null, vals);
+    var maxV = Math.max.apply(null, vals);
+    var range = (maxV - minV) || 1;
+    var pad = { t: 10, b: 20, l: 8, r: 8 };
+    var cW = W - pad.l - pad.r;
+    var cH = H - pad.t - pad.b;
+    var n  = vals.length;
+
+    function px(i) { return pad.l + (i / (n - 1)) * cW; }
+    function py(v) { return pad.t + (1 - (v - minV) / range) * cH; }
+    var zeroY = py(0);
+
+    /* Fill above zero (green) */
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(px(0), Math.min(zeroY, py(vals[0])));
+    for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
+    ctx.lineTo(px(n - 1), zeroY);
+    ctx.lineTo(px(0), zeroY);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(38,166,154,0.18)';
+    ctx.fill();
+
+    /* Fill below zero (red) */
+    ctx.beginPath();
+    ctx.moveTo(px(0), Math.max(zeroY, py(vals[0])));
+    for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
+    ctx.lineTo(px(n - 1), zeroY);
+    ctx.lineTo(px(0), zeroY);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(239,83,80,0.18)';
+    ctx.fill();
+    ctx.restore();
+
+    /* Zero line */
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
+    ctx.setLineDash([]);
+
+    /* Equity line */
+    var lineColor = vals[n-1] >= 0 ? '#26a69a' : '#ef5350';
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(px(0), py(vals[0]));
+    for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
+    ctx.stroke();
+
+    /* Axis labels */
+    ctx.fillStyle = 'rgba(180,190,210,0.45)';
+    ctx.font = '9px DM Mono, monospace';
+    ctx.textAlign = 'left';  ctx.textBaseline = 'top';
+    ctx.fillText(maxV >= 0 ? '+' + maxV.toFixed(0) : maxV.toFixed(0), pad.l + 2, pad.t);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(minV >= 0 ? '+' + minV.toFixed(0) : minV.toFixed(0), pad.l + 2, H - pad.b);
+    ctx.textAlign = 'left';  ctx.textBaseline = 'bottom';
+    ctx.fillText('Bar 0', pad.l, H);
+    ctx.textAlign = 'right';
+    ctx.fillText('Bar ' + (n - 1), W - pad.r, H);
+  };
+})();
+</script>
+
 <!-- FractalScript PASTE MODAL -->
 <style>
 #fractalModal { display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:2147483647;backdrop-filter:blur(4px);align-items:center;justify-content:center; }
@@ -10711,8 +10946,10 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     if (window.fractalOverlayOn) {
       _showfractalModal();
       if (!window.fractalResult && window.fractalSource) _runFractalScript();
+    } else {
+      if (typeof _hideStrategyReport === 'function') _hideStrategyReport();
     }
-    
+
     if (typeof buildToolbar === 'function') buildToolbar();
     if (typeof renderChart === 'function') renderChart();
   };
@@ -10785,6 +11022,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     if (result.inputs && result.inputs.length > 0) _buildFractalInputs(result.inputs);
     if (typeof buildToolbar === 'function') buildToolbar();
     if (typeof renderChart === 'function') renderChart();
+    if (typeof _buildStrategyReport === 'function') _buildStrategyReport(result);
   };
   window._runFractalFromModal = function() {
     if (ta) window.fractalSource = ta.value;
@@ -10798,6 +11036,7 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     _hidefractalError();
     var ia = document.getElementById('fractalInputs');
     if (ia) ia.innerHTML = '';
+    if (typeof _hideStrategyReport === 'function') _hideStrategyReport();
     if (typeof renderChart === 'function') renderChart();
   };
   function _showfractalError(msg) {
