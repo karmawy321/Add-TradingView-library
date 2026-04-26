@@ -5570,6 +5570,12 @@ function renderChart() {
       chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, CH);
       chartCtx.clip();
       var _strades = fractalResult.strategyResult.trades;
+      var _entColor  = '#2196F3'; /* blue  — long entry  */
+      var _entSColor = '#e91e63'; /* pink  — short entry */
+      var _tpColor   = '#9c27b0'; /* purple — TP/SL exit */
+      var _winColor  = '#26a69a';
+      var _lossColor = '#ef5350';
+
       for (var _sti = 0; _sti < _strades.length; _sti++) {
         var _st = _strades[_sti];
         var _isLong = _st.direction === 'long';
@@ -5577,11 +5583,14 @@ function renderChart() {
         var _extX = worldToScreenX(_st.exitBar);
         var _entY = worldToScreenY(_st.entryPrice);
         var _extY = worldToScreenY(_st.exitPrice);
-        var _winColor  = '#26a69a';
-        var _lossColor = '#ef5350';
-        var _tradeColor = _st.profit >= 0 ? _winColor : _lossColor;
-        /* connector line between entry and exit */
-        chartCtx.strokeStyle = 'rgba(150,150,150,0.35)';
+        var _tradeWin = _st.profit >= 0;
+
+        /* skip if entirely off-screen */
+        if (_entX < PAD.l - 20 && _extX < PAD.l - 20) continue;
+        if (_entX > W - PAD.r + 20 && _extX > W - PAD.r + 20) continue;
+
+        /* connector line */
+        chartCtx.strokeStyle = _tradeWin ? 'rgba(38,166,154,0.25)' : 'rgba(239,83,80,0.25)';
         chartCtx.lineWidth = 1;
         chartCtx.setLineDash([3, 3]);
         chartCtx.beginPath();
@@ -5589,40 +5598,78 @@ function renderChart() {
         chartCtx.lineTo(_extX, _extY);
         chartCtx.stroke();
         chartCtx.setLineDash([]);
-        /* entry marker: green triangle for long, red for short */
-        var _entCol = _isLong ? _winColor : _lossColor;
-        chartCtx.fillStyle = _entCol;
+
+        /* ── entry arrow ── */
+        var _eCol = _isLong ? _entColor : _entSColor;
+        chartCtx.fillStyle = _eCol;
         chartCtx.beginPath();
         if (_isLong) {
-          /* triangle up below the bar */
-          chartCtx.moveTo(_entX, _entY + 2);
-          chartCtx.lineTo(_entX - 6, _entY + 12);
-          chartCtx.lineTo(_entX + 6, _entY + 12);
+          /* ▲ below the price */
+          chartCtx.moveTo(_entX,     _entY + 4);
+          chartCtx.lineTo(_entX - 7, _entY + 16);
+          chartCtx.lineTo(_entX + 7, _entY + 16);
         } else {
-          /* triangle down above the bar */
-          chartCtx.moveTo(_entX, _entY - 2);
-          chartCtx.lineTo(_entX - 6, _entY - 12);
-          chartCtx.lineTo(_entX + 6, _entY - 12);
+          /* ▼ above the price */
+          chartCtx.moveTo(_entX,     _entY - 4);
+          chartCtx.lineTo(_entX - 7, _entY - 16);
+          chartCtx.lineTo(_entX + 7, _entY - 16);
         }
         chartCtx.closePath();
         chartCtx.fill();
-        /* exit marker: X shape in trade result color */
-        chartCtx.strokeStyle = _tradeColor;
-        chartCtx.lineWidth = 2;
+
+        /* entry label: "Long" / "Short" */
+        chartCtx.fillStyle = _eCol;
+        chartCtx.font = 'bold 9px DM Mono';
+        chartCtx.textAlign = 'center';
+        chartCtx.textBaseline = _isLong ? 'top' : 'bottom';
+        var _entLabel = _isLong ? 'Long' : 'Short';
+        var _entLY = _isLong ? (_entY + 19) : (_entY - 19);
+        chartCtx.fillText(_entLabel, _entX, _entLY);
+
+        /* ── exit marker: ▼ for long exit, ▲ for short exit ── */
+        chartCtx.fillStyle = _tpColor;
         chartCtx.beginPath();
-        chartCtx.moveTo(_extX - 5, _extY - 5); chartCtx.lineTo(_extX + 5, _extY + 5);
-        chartCtx.moveTo(_extX + 5, _extY - 5); chartCtx.lineTo(_extX - 5, _extY + 5);
-        chartCtx.stroke();
+        if (_isLong) {
+          /* ▼ above exit price — long closes going down */
+          chartCtx.moveTo(_extX,     _extY - 4);
+          chartCtx.lineTo(_extX - 7, _extY - 16);
+          chartCtx.lineTo(_extX + 7, _extY - 16);
+        } else {
+          /* ▲ below exit price — short closes going up */
+          chartCtx.moveTo(_extX,     _extY + 4);
+          chartCtx.lineTo(_extX - 7, _extY + 16);
+          chartCtx.lineTo(_extX + 7, _extY + 16);
+        }
+        chartCtx.closePath();
+        chartCtx.fill();
+
+        /* exit label: trade id + P&L sign */
+        chartCtx.fillStyle = _tpColor;
+        chartCtx.font = 'bold 9px DM Mono';
+        chartCtx.textAlign = 'center';
+        chartCtx.textBaseline = _isLong ? 'bottom' : 'top';
+        var _exitLabel = (_st.id || (_isLong ? 'Long' : 'Short')) + ' TP/SL';
+        var _pnlSign = (_tradeWin ? '+' : '') + _st.profit.toFixed(2);
+        var _extLY = _isLong ? (_extY - 19) : (_extY + 19);
+        chartCtx.fillText(_exitLabel, _extX, _extLY);
+        chartCtx.fillStyle = _tradeWin ? _winColor : _lossColor;
+        chartCtx.font = '8px DM Mono';
+        var _pnlLY = _isLong ? (_extY - 30) : (_extY + 30);
+        chartCtx.fillText(_pnlSign, _extX, _pnlLY);
       }
       chartCtx.restore();
 
-      /* ── Strategy summary badge (top-left of chart) ── */
+      /* ── Strategy summary badge (top-left) ── */
       var _sr = fractalResult.strategyResult.summary;
       var _pnl = _sr.netProfit;
       var _pnlStr = (_pnl >= 0 ? '+' : '') + _pnl.toFixed(2);
       var _wr = (_sr.winRate * 100).toFixed(1) + '%';
       var _trStr = _sr.totalTrades + ' trades';
-      var _badgeLines = ['Net P&L: ' + _pnlStr, 'Win rate: ' + _wr, _trStr];
+      var _badgeLines = [
+        'Net P&L: ' + _pnlStr,
+        'Win rate: ' + _wr,
+        _trStr
+      ];
       chartCtx.save();
       chartCtx.font = 'bold 11px DM Mono';
       var _bLineH = 16, _bPad = 8;
@@ -5634,11 +5681,11 @@ function renderChart() {
       _bW += _bPad * 2;
       var _bH = _badgeLines.length * _bLineH + _bPad * 2;
       var _bX = PAD.l + 8, _bY = PAD.t + 8;
-      chartCtx.fillStyle = 'rgba(6,8,13,0.82)';
+      chartCtx.fillStyle = 'rgba(6,8,13,0.85)';
       if (chartCtx.roundRect) chartCtx.roundRect(_bX, _bY, _bW, _bH, 4);
       else chartCtx.rect(_bX, _bY, _bW, _bH);
       chartCtx.fill();
-      chartCtx.strokeStyle = _pnl >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
+      chartCtx.strokeStyle = _pnl >= 0 ? 'rgba(38,166,154,0.6)' : 'rgba(239,83,80,0.6)';
       chartCtx.lineWidth = 1;
       if (chartCtx.roundRect) chartCtx.roundRect(_bX, _bY, _bW, _bH, 4);
       else chartCtx.rect(_bX, _bY, _bW, _bH);
