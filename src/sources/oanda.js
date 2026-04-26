@@ -34,7 +34,6 @@ const SYMBOL_MAP = {
   /* Metals / Commodities */
   'XAUUSD':   'GOLD.pro',
   'XAGUSD':   'SILVER.pro',
-  'OILWTI':   'OILWTI.pro',
   /* Forex majors */
   'EURUSD':   'EURUSD.pro',
   'GBPUSD':   'GBPUSD.pro',
@@ -288,7 +287,7 @@ async function fetchRecent(internalSym) {
 // Pulls older bars in background chunks. Yields to fast-refresh (Layer 2
 // priority). A user opening a chart for a sym promotes that sym to the front
 // of the queue via promoteBackfill().
-const _backfillQueue = []; // items: { sym, tf }
+const _backfillQueue = []; // items: { sym, tf, emptyCount }
 let _backfillWorking = false;
 let _backfillTimer   = null;
 const BACKFILL_GAP   = 2000; // ms between chunks
@@ -308,11 +307,15 @@ function promoteBackfill(sym) {
 }
 
 async function _backfillStep() {
-  if (_backfillWorking || !_ready || _fastRefreshing) return;
+  // _fastRefreshing check intentionally omitted — both run concurrently.
+  // Combined rate is ~2.5 req/s well within MetaAPI limits (~10-20 req/s).
+  // Blocking backfill behind fast refresh (56s/60s) starved the queue.
+  if (_backfillWorking || !_ready) return;
   if (!_backfillQueue.length) return;
   _backfillWorking = true;
   try {
-    const { sym, tf } = _backfillQueue[0];
+    const item = _backfillQueue[0];
+    const { sym, tf } = item;
     const maSym = SYMBOL_MAP[sym];
     if (!maSym) { _backfillQueue.shift(); return; }
 
@@ -326,11 +329,25 @@ async function _backfillStep() {
     const limit    = Math.min(BACKFILL_CHUNK, target - existing.length);
     const batch    = await _fetchRawCandles(maSym, tf, fromTime, limit);
 
-    if (batch.length) store.writeCandles(SOURCE, sym, tf, batch);
-    // Source exhausted or target reached → drop from queue
-    if (!batch.length || batch.length < limit) {
-      _backfillQueue.shift();
-      store.saveToDisk(SOURCE, sym);
+    if (!batch.length) {
+      // Empty response: transient throttle or error. Rotate to end of queue
+      // and retry up to 3 times before treating as exhausted and dropping.
+      item.emptyCount = (item.emptyCount || 0) + 1;
+      if (item.emptyCount >= 3) {
+        _backfillQueue.shift();
+        store.saveToDisk(SOURCE, sym);
+      } else {
+        _backfillQueue.push(_backfillQueue.shift());
+      }
+    } else {
+      item.emptyCount = 0;
+      store.writeCandles(SOURCE, sym, tf, batch);
+      // Partial batch = source exhausted at this depth → drop from queue
+      if (batch.length < limit) {
+        _backfillQueue.shift();
+        store.saveToDisk(SOURCE, sym);
+      }
+      // Full batch: more history may exist, stays at front for next chunk
     }
   } catch(e) {
     _backfillQueue.shift(); // drop on error to unblock queue

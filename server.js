@@ -382,7 +382,9 @@ const PLANS = {
   institutional: { name: 'Institutional', credits: 15000, priceId: process.env.STRIPE_PRICE_INSTITUTIONAL || '' },
 };
 
-const FIB_SPIRAL_PRICE_CENTS = 100;
+const STRIPE_PRICE_FIB_SPIRAL       = process.env.STRIPE_PRICE_FIB_SPIRAL       || '';
+const STRIPE_PRICE_FRACTAL_SPIRAL   = process.env.STRIPE_PRICE_FRACTAL_SPIRAL   || '';
+const STRIPE_PRICE_FRACTAL_GEOMETRY = process.env.STRIPE_PRICE_FRACTAL_GEOMETRY || '';
 
 /* ═══════════════════════════════════════════════════
    AUTH HELPERS
@@ -3248,46 +3250,46 @@ app.post('/manage-billing', rateLimit(5, 60000), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/fib-spiral-checkout', rateLimit(5, 60000), async (req, res) => {
-  if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+/* ── Feature subscription checkout helper ── */
+async function _featureCheckout(req, res, feature, priceId) {
+  if (!stripe || !priceId) return res.status(500).json({ error: 'Stripe not configured for this feature' });
   const { token } = req.body;
-  const profile = await getUserProfile(token);
+  if (!token) return res.status(401).json({ error: 'Please sign in first' });
   try {
+    const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: 'Invalid token' });
     const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
+      mode: 'subscription',
       payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: 'usd',
-          unit_amount: FIB_SPIRAL_PRICE_CENTS,
-          product_data: { name: 'Fibonacci Spiral — Session Unlock', description: 'Unlimited Fibonacci Spiral draws for this browser session' },
-        },
-        quantity: 1,
-      }],
-      metadata: { userId: profile ? profile.userId : 'guest', type: 'fib_spiral' },
-      customer_email: profile ? profile.email : undefined,
-      success_url: `${SITE_URL}/?fib_paid={CHECKOUT_SESSION_ID}`,
+      line_items: [{ price: priceId, quantity: 1 }],
+      metadata: { userId: user.id, feature },
+      customer_email: user.email,
+      success_url: `${SITE_URL}/?feature_paid=${feature}&session={CHECKOUT_SESSION_ID}`,
       cancel_url:  `${SITE_URL}/`,
     });
     res.json({ url: session.url });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
+}
 
-app.post('/fib-spiral-verify', rateLimit(5, 60000), async (req, res) => {
-  if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
-  const { sessionId } = req.body;
-  if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
+app.post('/fib-spiral-checkout',       rateLimit(5, 60000), (q, s) => _featureCheckout(q, s, 'fib_spiral',       STRIPE_PRICE_FIB_SPIRAL));
+app.post('/fractal-spiral-checkout',   rateLimit(5, 60000), (q, s) => _featureCheckout(q, s, 'fractal_spiral',   STRIPE_PRICE_FRACTAL_SPIRAL));
+app.post('/fractal-geometry-checkout', rateLimit(5, 60000), (q, s) => _featureCheckout(q, s, 'fractal_geometry', STRIPE_PRICE_FRACTAL_GEOMETRY));
+
+app.get('/feature-status', rateLimit(30, 60000), async (req, res) => {
+  const def = { fib_spiral: false, fractal_spiral: false, fractal_geometry: false };
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token || !sbAdmin) return res.json(def);
   try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    if (session.payment_status !== 'paid') return res.status(402).json({ error: 'Payment not completed' });
-    if (session.metadata.type !== 'fib_spiral') return res.status(400).json({ error: 'Wrong payment type' });
-    const grantToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt  = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    if (sbAdmin) {
-      await sbAdmin.from('fib_spiral_grants').upsert({ session_id: sessionId, grant_token: grantToken, expires_at: expiresAt, used: false });
-    }
-    res.json({ ok: true, grantToken, expiresAt });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+    if (error || !user) return res.json(def);
+    const { data } = await sbAdmin.from('feature_subscriptions').select('feature').eq('user_id', user.id).eq('status', 'active');
+    const active = new Set((data || []).map(r => r.feature));
+    res.json({
+      fib_spiral:       active.has('fib_spiral'),
+      fractal_spiral:   active.has('fractal_spiral'),
+      fractal_geometry: active.has('fractal_geometry'),
+    });
+  } catch (e) { res.json(def); }
 });
 
 app.post('/stripe-webhook', async (req, res) => {
@@ -3303,14 +3305,24 @@ app.post('/stripe-webhook', async (req, res) => {
   const data = event.data.object;
 
   if (event.type === 'checkout.session.completed' && data.mode === 'subscription') {
-    const userId  = data.metadata.userId;
-    const plan    = data.metadata.plan;
-    const credits = PLANS[plan] ? PLANS[plan].credits : 0;
-    const custId  = data.customer;
-    if (sbAdmin && userId && credits) {
-      await sbAdmin.from('profiles').update({ credits, plan }).eq('id', userId);
-      await sbAdmin.from('subscriptions').upsert({ user_id: userId, plan, stripe_customer_id: custId, stripe_sub_id: data.subscription, status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-      console.log(`[Stripe] Plan activated: ${plan} → user ${userId} → ${credits} cr`);
+    const { userId, plan, feature } = data.metadata;
+    const custId = data.customer;
+
+    if (feature && sbAdmin && userId) {
+      /* Feature subscription (fib_spiral / fractal_spiral / fractal_geometry) */
+      await sbAdmin.from('feature_subscriptions').upsert({
+        user_id: userId, feature, stripe_sub_id: data.subscription,
+        stripe_customer_id: custId, status: 'active', updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id,feature' });
+      console.log(`[Stripe] Feature activated: ${feature} → user ${userId}`);
+    } else if (plan) {
+      /* Plan subscription */
+      const credits = PLANS[plan] ? PLANS[plan].credits : 0;
+      if (sbAdmin && userId && credits) {
+        await sbAdmin.from('profiles').update({ credits, plan }).eq('id', userId);
+        await sbAdmin.from('subscriptions').upsert({ user_id: userId, plan, stripe_customer_id: custId, stripe_sub_id: data.subscription, status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        console.log(`[Stripe] Plan activated: ${plan} → user ${userId} → ${credits} cr`);
+      }
     }
   }
 
@@ -3327,11 +3339,18 @@ app.post('/stripe-webhook', async (req, res) => {
 
   if (event.type === 'customer.subscription.deleted') {
     if (!sbAdmin) return res.json({ received: true });
+    /* Check plan subscriptions */
     const { data: sub } = await sbAdmin.from('subscriptions').select('user_id').eq('stripe_sub_id', data.id).single();
     if (sub) {
       await sbAdmin.from('profiles').update({ plan: 'free', credits: 0 }).eq('id', sub.user_id);
       await sbAdmin.from('subscriptions').update({ status: 'cancelled' }).eq('stripe_sub_id', data.id);
-      console.log(`[Stripe] Cancelled: sub ${data.id}`);
+      console.log(`[Stripe] Plan cancelled: sub ${data.id}`);
+    }
+    /* Check feature subscriptions */
+    const { data: fsub } = await sbAdmin.from('feature_subscriptions').select('user_id, feature').eq('stripe_sub_id', data.id).single();
+    if (fsub) {
+      await sbAdmin.from('feature_subscriptions').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('stripe_sub_id', data.id);
+      console.log(`[Stripe] Feature cancelled: ${fsub.feature} → user ${fsub.user_id}`);
     }
   }
 
