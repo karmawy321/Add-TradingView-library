@@ -740,27 +740,32 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 .cx-hint{font-size:7.5px;color:rgba(201,168,76,.28);padding:3px 10px 5px;font-family:'DM Mono',monospace;letter-spacing:.04em}
 
 /* ── Strategy Report Panel ── */
-#strategyReportPanel{height:0;overflow:hidden;transition:height .25s ease,opacity .2s ease;opacity:0;background:#06080d;border-top:1px solid rgba(201,168,76,.15);border-bottom:1px solid rgba(255,255,255,.05);flex-shrink:0}
-#strategyReportPanel.srp-open{height:242px;opacity:1}
-#srpHeader{display:flex;align-items:center;gap:10px;padding:5px 14px;border-bottom:1px solid rgba(255,255,255,.05);background:#03040a;min-height:32px}
-#srp-stratName{font:bold 11px 'Cinzel',serif;color:rgba(201,168,76,.85);letter-spacing:.08em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#srp-tabs{display:flex;gap:4px}
-.srp-tab{background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(180,190,210,.65);border-radius:4px;padding:3px 10px;font:11px 'DM Mono',monospace;cursor:pointer;transition:background .12s,color .12s}
+#strategyReportPanel{height:0;overflow:hidden;transition:height .28s ease,opacity .2s ease;opacity:0;background:#06080d;border-top:1px solid rgba(201,168,76,.15);border-bottom:1px solid rgba(255,255,255,.05);flex-shrink:0}
+#strategyReportPanel.srp-open{height:310px;opacity:1}
+#srpHeader{display:flex;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid rgba(255,255,255,.05);background:#03040a;min-height:32px;flex-wrap:wrap}
+#srp-stratName{font:bold 11px 'Cinzel',serif;color:rgba(201,168,76,.85);letter-spacing:.08em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px}
+#srp-tabs{display:flex;gap:3px;flex-wrap:wrap}
+.srp-tab{background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(180,190,210,.65);border-radius:4px;padding:3px 9px;font:10px 'DM Mono',monospace;cursor:pointer;transition:background .12s,color .12s}
 .srp-tab:hover{background:rgba(255,255,255,.05);color:#e0e4f0}
 .srp-tab.srp-active{background:rgba(201,168,76,.12);color:#c9a84c;border-color:rgba(201,168,76,.35)}
 .srp-tab.srp-premium{border-color:rgba(156,39,176,.45);color:rgba(206,147,216,.85)}
 .srp-tab.srp-premium.srp-active{background:rgba(156,39,176,.12);border-color:rgba(156,39,176,.6)}
-#srp-close{background:none;border:none;color:rgba(180,190,210,.5);font-size:14px;cursor:pointer;padding:2px 6px;border-radius:3px;transition:color .12s}
+#srp-hdr-btns{display:flex;gap:4px;align-items:center}
+.srp-hdr-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(180,190,210,.7);border-radius:4px;padding:2px 8px;font:10px 'DM Mono',monospace;cursor:pointer;transition:background .12s}
+.srp-hdr-btn:hover{background:rgba(255,255,255,.12);color:#e0e4f0}
+.srp-hdr-btn.srp-dl{border-color:rgba(201,168,76,.35);color:rgba(201,168,76,.8)}
+.srp-hdr-btn.srp-dl:hover{background:rgba(201,168,76,.12)}
+#srp-close{background:none;border:none;color:rgba(180,190,210,.45);font-size:14px;cursor:pointer;padding:2px 5px;border-radius:3px;transition:color .12s}
 #srp-close:hover{color:#ef5350}
-.srp-pane{display:none;height:200px;overflow-y:auto;padding:8px 14px;box-sizing:border-box}
+.srp-pane{display:none;height:268px;overflow-y:auto;padding:8px 14px;box-sizing:border-box}
 .srp-pane.srp-active{display:flex;align-items:flex-start}
-#srp-metrics.srp-active{flex-wrap:wrap;gap:8px;align-content:flex-start}
-.srp-card{background:#0d1018;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:8px 14px;min-width:108px}
-.srp-card-label{font:10px 'DM Mono',monospace;color:rgba(180,190,210,.45);margin-bottom:3px}
-.srp-card-value{font:bold 15px 'DM Mono',monospace}
-.srp-card-sub{font:9px 'DM Mono',monospace;color:rgba(180,190,210,.45);margin-top:1px}
-#srp-equity.srp-active{flex-direction:column;padding:6px 10px}
-#srp-equity-canvas{width:100%;height:168px;display:block}
+#srp-metrics.srp-active{flex-wrap:wrap;gap:7px;align-content:flex-start}
+.srp-card{background:#0d1018;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:7px 13px;min-width:100px}
+.srp-card-label{font:9px 'DM Mono',monospace;color:rgba(180,190,210,.45);margin-bottom:3px}
+.srp-card-value{font:bold 14px 'DM Mono',monospace}
+.srp-card-sub{font:9px 'DM Mono',monospace;color:rgba(180,190,210,.4);margin-top:1px}
+#srp-equity.srp-active{flex-direction:column;padding:4px 10px}
+#srp-equity-canvas{width:100%;height:248px;display:block}
 #srp-trades.srp-active{flex-direction:column;padding:0}
 .srp-trades-table{width:100%;border-collapse:collapse;font:10px 'DM Mono',monospace}
 .srp-trades-table th{background:#0d1018;color:rgba(180,190,210,.5);padding:5px 8px;text-align:left;position:sticky;top:0;border-bottom:1px solid rgba(255,255,255,.08);font-weight:normal}
@@ -769,6 +774,11 @@ footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify
 .srp-tr-loss td{color:#ef5350}
 .srp-lock{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;width:100%;gap:8px;color:rgba(180,190,210,.5);font:12px 'DM Mono',monospace}
 .srp-lock-icon{font-size:28px;opacity:.4}
+#srp-perf.srp-active,#srp-analysis.srp-active{gap:6px;padding:6px 10px}
+.srp-chart-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.srp-chart-title{font:10px 'DM Mono',monospace;color:rgba(180,190,210,.5);padding:0 2px}
+.srp-chart-legend{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0;font:9px 'DM Mono',monospace;color:rgba(180,190,210,.5)}
+.srp-legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px;vertical-align:middle}
 
 </style>
 <script>
@@ -1223,15 +1233,45 @@ if (isEmbedded) {
           <div id="srpHeader">
             <span id="srp-stratName">Strategy Report</span>
             <div id="srp-tabs">
-              <button class="srp-tab srp-active" data-tab="metrics" onclick="_srpTab(this)">Metrics</button>
-              <button class="srp-tab" data-tab="equity" onclick="_srpTab(this)">Equity</button>
-              <button class="srp-tab srp-premium" data-tab="trades" onclick="_srpTab(this)">Trades ★</button>
+              <button class="srp-tab srp-active" data-tab="metrics"  onclick="_srpTab(this)">Metrics</button>
+              <button class="srp-tab"             data-tab="equity"   onclick="_srpTab(this)">Equity</button>
+              <button class="srp-tab"             data-tab="perf"     onclick="_srpTab(this)">Performance</button>
+              <button class="srp-tab"             data-tab="analysis" onclick="_srpTab(this)">Analysis</button>
+              <button class="srp-tab srp-premium" data-tab="trades"   onclick="_srpTab(this)">Trades ★</button>
+            </div>
+            <div id="srp-hdr-btns">
+              <button class="srp-hdr-btn srp-dl" onclick="_srpDownloadReport()" title="Download HTML report">↓ Report</button>
+              <button class="srp-hdr-btn"         onclick="_srpExportXlsx()"    title="Export data as XLSX">↓ XLSX</button>
             </div>
             <button id="srp-close" onclick="_hideStrategyReport()" title="Close">✕</button>
           </div>
-          <div id="srp-metrics" class="srp-pane srp-active"></div>
-          <div id="srp-equity"  class="srp-pane"><canvas id="srp-equity-canvas"></canvas></div>
-          <div id="srp-trades"  class="srp-pane"></div>
+          <div id="srp-metrics"  class="srp-pane srp-active"></div>
+          <div id="srp-equity"   class="srp-pane"><canvas id="srp-equity-canvas"></canvas></div>
+          <div id="srp-perf"     class="srp-pane">
+            <div class="srp-chart-col">
+              <div class="srp-chart-title">Profit structure</div>
+              <canvas id="srp-perf-bars" style="width:100%;height:210px;display:block"></canvas>
+              <div class="srp-chart-legend" id="srp-perf-legend"></div>
+            </div>
+            <div class="srp-chart-col">
+              <div class="srp-chart-title">Benchmarking</div>
+              <canvas id="srp-bench-canvas" style="width:100%;height:210px;display:block"></canvas>
+              <div class="srp-chart-legend" id="srp-bench-legend"></div>
+            </div>
+          </div>
+          <div id="srp-analysis" class="srp-pane">
+            <div class="srp-chart-col">
+              <div class="srp-chart-title">P&amp;L Distribution</div>
+              <canvas id="srp-hist-canvas" style="width:100%;height:210px;display:block"></canvas>
+              <div class="srp-chart-legend" id="srp-hist-legend"></div>
+            </div>
+            <div class="srp-chart-col">
+              <div class="srp-chart-title">Win / Loss ratio</div>
+              <canvas id="srp-donut-canvas" style="width:100%;height:210px;display:block"></canvas>
+              <div class="srp-chart-legend" id="srp-donut-legend"></div>
+            </div>
+          </div>
+          <div id="srp-trades"   class="srp-pane"></div>
         </div>
 
         <!-- BOTTOM STRIP: AI tools — horizontal row below canvas -->
@@ -10693,9 +10733,23 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
   </div>
 </div>
 
+<!-- SheetJS for XLSX export -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
 <!-- ── Strategy Report Panel JS ── -->
 <script>
 (function() {
+
+  /* ── helpers ── */
+  function srpCtx(id, w, h) {
+    var c = document.getElementById(id); if (!c) return null;
+    var dpr = window.devicePixelRatio || 1;
+    c.width  = (c.offsetWidth  || w) * dpr;
+    c.height = (c.offsetHeight || h) * dpr;
+    var ctx = c.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, c.width, c.height);
+    return { ctx: ctx, W: c.offsetWidth || w, H: c.offsetHeight || h };
+  }
+
   /* Tab switching */
   window._srpTab = function(btn) {
     var tab = btn.dataset.tab;
@@ -10704,10 +10758,13 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     btn.classList.add('srp-active');
     var pane = document.getElementById('srp-' + tab);
     if (pane) pane.classList.add('srp-active');
-    /* Redraw equity chart when switching to equity tab */
-    if (tab === 'equity' && window._srpLastResult) {
-      _drawEquityChart(document.getElementById('srp-equity-canvas'), window._srpLastResult);
-    }
+    var r = window._srpLastResult;
+    if (!r) return;
+    setTimeout(function() {
+      if (tab === 'equity')   _drawEquityChart(document.getElementById('srp-equity-canvas'), r);
+      if (tab === 'perf')     { _drawProfitBars(r); _drawBenchmark(r); }
+      if (tab === 'analysis') { _drawHistogram(r); _drawDonut(r); }
+    }, 10);
   };
 
   window._hideStrategyReport = function() {
@@ -10793,9 +10850,16 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
       }
     }
 
-    /* Show panel */
+    /* Show panel, then draw canvas-based charts for whichever tab is active */
     var panel = document.getElementById('strategyReportPanel');
     if (panel) panel.classList.add('srp-open');
+    setTimeout(function() {
+      var activeTab = document.querySelector('.srp-tab.srp-active');
+      var t = activeTab ? activeTab.dataset.tab : 'metrics';
+      if (t === 'equity')   _drawEquityChart(document.getElementById('srp-equity-canvas'), result);
+      if (t === 'perf')     { _drawProfitBars(result); _drawBenchmark(result); }
+      if (t === 'analysis') { _drawHistogram(result); _drawDonut(result); }
+    }, 30);
   };
 
   window._drawEquityChart = function(canvas, result) {
@@ -10878,8 +10942,310 @@ window.addEventListener('load',function(){ setTimeout(init,500); });
     ctx.textAlign = 'right';
     ctx.fillText('Bar ' + (n - 1), W - pad.r, H);
   };
-})();
-</script>
+
+  /* ── Profit Structure Bar Chart ── */
+  window._drawProfitBars = function(result) {
+    var s = srpCtx('srp-perf-bars', 300, 210); if (!s) return;
+    var ctx = s.ctx, W = s.W, H = s.H;
+    var sum = result.strategyResult.summary;
+    var gp  = sum.grossProfit;
+    var gl  = Math.abs(sum.grossLoss);
+    var np  = sum.netProfit;
+    var com = Math.max(0, gp - gl - np); /* implied commission */
+    var bars = [
+      { label:'Gross Profit', val: gp,  color:'#26a69a' },
+      { label:'Gross Loss',   val:-gl,  color:'#ef5350' },
+      { label:'Commission',   val:-com, color:'#ff9800' },
+      { label:'Net P&L',      val: np,  color:'#2196F3' }
+    ];
+    var maxAbs = Math.max.apply(null, bars.map(function(b){ return Math.abs(b.val)||1; }));
+    var pad = {t:16, b:28, l:8, r:8};
+    var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+    var bw = Math.floor(cW / bars.length * 0.55), gap = Math.floor(cW / bars.length);
+    var zeroY = pad.t + cH * (maxAbs / (maxAbs * 2)); /* center */
+    /* Zero line */
+    ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W-pad.r, zeroY); ctx.stroke();
+    ctx.setLineDash([]);
+    bars.forEach(function(b, i) {
+      var cx = pad.l + i * gap + gap/2;
+      var bh = (Math.abs(b.val) / maxAbs) * (cH/2 - 4);
+      var by = b.val >= 0 ? zeroY - bh : zeroY;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(cx - bw/2, by, bw, bh);
+      /* dashed end marker */
+      ctx.strokeStyle = b.color; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(cx-bw/2-4, b.val>=0?by:by+bh); ctx.lineTo(cx+bw/2+4, b.val>=0?by:by+bh); ctx.stroke();
+      ctx.setLineDash([]);
+      /* label */
+      ctx.fillStyle = 'rgba(180,190,210,.55)'; ctx.font = '8px DM Mono'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText(b.label, cx, H - 2);
+    });
+    /* Legend */
+    var lg = document.getElementById('srp-perf-legend');
+    if (lg) lg.innerHTML = bars.map(function(b){
+      return '<span><span class="srp-legend-dot" style="background:'+b.color+'"></span>'+b.label+'</span>';
+    }).join('');
+  };
+
+  /* ── Benchmarking: strategy vs buy-and-hold ── */
+  window._drawBenchmark = function(result) {
+    var s = srpCtx('srp-bench-canvas', 300, 210); if (!s) return;
+    var ctx = s.ctx, W = s.W, H = s.H;
+    var sum = result.strategyResult.summary;
+    var stratPct = sum.initialCapital ? (sum.netProfit / sum.initialCapital * 100) : 0;
+    var bhPct = 0;
+    if (window.chartCandles && window.chartCandles.length >= 2) {
+      var fc = window.chartCandles[0].c, lc = window.chartCandles[window.chartCandles.length-1].c;
+      bhPct = fc > 0 ? (lc - fc) / fc * 100 : 0;
+    }
+    var bars = [
+      { label:'Buy & Hold', val:bhPct,   color:'#ff9800' },
+      { label:'Strategy',   val:stratPct, color:'#2196F3' }
+    ];
+    var maxAbs = Math.max(Math.abs(bhPct), Math.abs(stratPct), 0.01);
+    var pad = {t:20, b:28, l:8, r:8};
+    var cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
+    var bw = Math.floor(cW/bars.length*0.45), gap = Math.floor(cW/bars.length);
+    var zeroY = pad.t + cH*(maxAbs/(maxAbs*2));
+    ctx.strokeStyle='rgba(255,255,255,.15)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(pad.l,zeroY); ctx.lineTo(W-pad.r,zeroY); ctx.stroke();
+    ctx.setLineDash([]);
+    bars.forEach(function(b,i){
+      var cx = pad.l + i*gap + gap/2;
+      var bh = (Math.abs(b.val)/maxAbs)*(cH/2-4);
+      var by = b.val>=0 ? zeroY-bh : zeroY;
+      ctx.fillStyle = b.color+'55';
+      ctx.fillRect(cx-bw/2, by, bw, bh);
+      ctx.strokeStyle = b.color; ctx.lineWidth=1.5; ctx.setLineDash([]);
+      ctx.strokeRect(cx-bw/2, by, bw, bh);
+      /* pct label */
+      ctx.fillStyle = b.color; ctx.font='bold 11px DM Mono'; ctx.textAlign='center';
+      ctx.textBaseline = b.val>=0?'bottom':'top';
+      ctx.fillText((b.val>=0?'+':'')+b.val.toFixed(2)+'%', cx, b.val>=0?by-2:by+bh+2);
+      ctx.fillStyle='rgba(180,190,210,.55)'; ctx.font='8px DM Mono'; ctx.textBaseline='bottom';
+      ctx.fillText(b.label, cx, H-2);
+    });
+    var lg = document.getElementById('srp-bench-legend');
+    if (lg) lg.innerHTML = bars.map(function(b){
+      return '<span><span class="srp-legend-dot" style="background:'+b.color+'"></span>'+b.label+'</span>';
+    }).join('');
+  };
+
+  /* ── P&L Distribution Histogram ── */
+  window._drawHistogram = function(result) {
+    var s = srpCtx('srp-hist-canvas', 300, 210); if (!s) return;
+    var ctx = s.ctx, W = s.W, H = s.H;
+    var trades = result.strategyResult.trades;
+    var cap    = result.strategyResult.summary.initialCapital || 10000;
+    if (!trades.length) return;
+    var pcts = trades.map(function(t){ return t.profit / cap * 100; });
+    var step = 0.5, lo = -2.5, hi = 2.5;
+    var buckets = [];
+    for (var v = lo; v < hi; v += step) buckets.push({ lo:v, hi:v+step, wins:0, losses:0 });
+    pcts.forEach(function(p){
+      var idx = Math.floor((p - lo) / step);
+      if (idx < 0) idx = 0;
+      if (idx >= buckets.length) idx = buckets.length - 1;
+      if (p >= 0) buckets[idx].wins++; else buckets[idx].losses++;
+    });
+    var maxCount = Math.max.apply(null, buckets.map(function(b){ return b.wins+b.losses; })) || 1;
+    var pad = {t:10,b:24,l:26,r:8};
+    var cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
+    var bw = cW/buckets.length;
+    buckets.forEach(function(b,i){
+      var total = b.wins+b.losses;
+      if (!total) return;
+      var bh = (total/maxCount)*cH;
+      var bx = pad.l + i*bw;
+      var by = pad.t + cH - bh;
+      ctx.fillStyle = b.lo < 0 ? 'rgba(239,83,80,.75)' : 'rgba(38,166,154,.75)';
+      ctx.fillRect(bx+1, by, bw-2, bh);
+    });
+    /* avg lines */
+    var wins  = trades.filter(function(t){ return t.profit>0; });
+    var losses= trades.filter(function(t){ return t.profit<0; });
+    function avgLine(arr, color) {
+      if (!arr.length) return;
+      var avg = arr.reduce(function(a,t){ return a+t.profit/cap*100; },0)/arr.length;
+      var idx = (avg-lo)/step;
+      var lx  = pad.l + idx*bw;
+      if (lx < pad.l || lx > W-pad.r) return;
+      ctx.strokeStyle = color; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(lx,pad.t); ctx.lineTo(lx,H-pad.b); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    avgLine(losses,'rgba(239,83,80,.9)'); avgLine(wins,'rgba(38,166,154,.9)');
+    /* x-axis */
+    ctx.fillStyle='rgba(180,190,210,.4)'; ctx.font='8px DM Mono'; ctx.textAlign='center'; ctx.textBaseline='top';
+    [-2,-1,0,1,2].forEach(function(v){
+      var lx = pad.l + (v-lo)/step*bw;
+      ctx.fillText(v+'%', lx, H-pad.b+3);
+    });
+    /* y-axis */
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    [0, Math.round(maxCount/2), maxCount].forEach(function(v){
+      var ly = pad.t + cH - (v/maxCount)*cH;
+      ctx.fillText(v, pad.l-3, ly);
+    });
+    var lg=document.getElementById('srp-hist-legend');
+    if(lg) lg.innerHTML='<span><span class="srp-legend-dot" style="background:#ef5350"></span>Loss</span>'+
+      '<span><span class="srp-legend-dot" style="background:#26a69a"></span>Profit</span>'+
+      '<span style="color:rgba(239,83,80,.8)">— Avg loss</span>'+
+      '<span style="color:rgba(38,166,154,.8)">— Avg profit</span>';
+  };
+
+  /* ── Win/Loss Donut ── */
+  window._drawDonut = function(result) {
+    var s = srpCtx('srp-donut-canvas', 220, 210); if (!s) return;
+    var ctx = s.ctx, W = s.W, H = s.H;
+    var sum    = result.strategyResult.summary;
+    var total  = sum.totalTrades;
+    var wins   = Math.round(sum.winRate * total);
+    var losses = total - wins;
+    var cx = W/2 - 20, cy = H/2, r = Math.min(cx, cy) - 10, ri = r*0.55;
+    var slices = [
+      { val:wins,   color:'#26a69a', label:'Wins' },
+      { val:losses, color:'#ef5350', label:'Losses' }
+    ];
+    var startAngle = -Math.PI/2;
+    slices.forEach(function(sl){
+      if (!sl.val) return;
+      var sweep = (sl.val/total)*Math.PI*2;
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,startAngle,startAngle+sweep);
+      ctx.closePath(); ctx.fillStyle=sl.color; ctx.fill();
+      startAngle += sweep;
+    });
+    /* Donut hole */
+    ctx.beginPath(); ctx.arc(cx,cy,ri,0,Math.PI*2); ctx.fillStyle='#06080d'; ctx.fill();
+    /* Center text */
+    ctx.fillStyle='#e0e4f0'; ctx.font='bold 16px DM Mono'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(total, cx, cy-6);
+    ctx.fillStyle='rgba(180,190,210,.5)'; ctx.font='8px DM Mono';
+    ctx.fillText('Total trades', cx, cy+10);
+    /* Legend on right */
+    var lx = W-60, ly = H/2-30;
+    slices.forEach(function(sl){
+      ctx.fillStyle=sl.color; ctx.fillRect(lx, ly, 10, 10);
+      ctx.fillStyle='rgba(180,190,210,.8)'; ctx.font='10px DM Mono'; ctx.textAlign='left'; ctx.textBaseline='middle';
+      ctx.fillText(sl.label+': '+sl.val+' ('+((sl.val/total)*100).toFixed(1)+'%)', lx+14, ly+5);
+      ly += 22;
+    });
+  };
+
+  /* ── HTML Report Download ── */
+  window._srpDownloadReport = function() {
+    var r = window._srpLastResult; if (!r || !r.strategyResult) return;
+    var sum = r.strategyResult.summary;
+    var pnl = sum.netProfit, green='#26a69a', red='#ef5350';
+    var pnlColor = pnl >= 0 ? green : red;
+    /* Render all charts to images */
+    function canvasImg(id) {
+      var c = document.getElementById(id);
+      return c ? c.toDataURL('image/png') : '';
+    }
+    /* Make sure performance/analysis charts are rendered */
+    _drawProfitBars(r); _drawBenchmark(r); _drawHistogram(r); _drawDonut(r);
+    setTimeout(function() {
+      var equityImg = canvasImg('srp-equity-canvas');
+      var perfImg   = canvasImg('srp-perf-bars');
+      var benchImg  = canvasImg('srp-bench-canvas');
+      var histImg   = canvasImg('srp-hist-canvas');
+      var donutImg  = canvasImg('srp-donut-canvas');
+      var winCount  = Math.round(sum.winRate * sum.totalTrades);
+      var html = '<!DOCTYPE html><html><head><meta charset="utf-8">'+
+        '<title>Strategy Report</title>'+
+        '<style>body{font-family:DM Mono,monospace;background:#06080d;color:#e0e4f0;margin:0;padding:24px;box-sizing:border-box}'+
+        'h1{font-family:Cinzel,serif;color:#c9a84c;font-size:18px;margin:0 0 18px;letter-spacing:.1em}'+
+        '.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}'+
+        '.card{background:#0d1018;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px 16px}'+
+        '.card .lbl{font-size:10px;color:rgba(180,190,210,.45);margin-bottom:4px}'+
+        '.card .val{font-size:18px;font-weight:bold}'+
+        '.card .sub{font-size:9px;color:rgba(180,190,210,.4);margin-top:2px}'+
+        '.charts{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}'+
+        '.chart-box{background:#0d1018;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px}'+
+        '.chart-box h3{font-size:11px;color:rgba(180,190,210,.5);margin:0 0 8px;font-weight:normal}'+
+        '.chart-box img{width:100%;border-radius:4px}'+
+        '.chart-full{background:#0d1018;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px;margin-bottom:16px}'+
+        '.chart-full h3{font-size:11px;color:rgba(180,190,210,.5);margin:0 0 8px;font-weight:normal}'+
+        '.chart-full img{width:100%;border-radius:4px}'+
+        'footer{font-size:9px;color:rgba(180,190,210,.3);text-align:center;margin-top:24px;padding-top:12px;border-top:1px solid rgba(255,255,255,.05)}'+
+        '</style></head><body>'+
+        '<h1>Strategy Report</h1>'+
+        '<div class="grid">'+
+        '<div class="card"><div class="lbl">Net P&L</div><div class="val" style="color:'+pnlColor+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+'</div>'+
+          '<div class="sub">'+(sum.initialCapital?(pnl/sum.initialCapital*100).toFixed(2)+'% return':'')+'</div></div>'+
+        '<div class="card"><div class="lbl">Max Drawdown</div><div class="val" style="color:'+red+'">'+(sum.maxDrawdown*100).toFixed(2)+'%</div></div>'+
+        '<div class="card"><div class="lbl">Total Trades</div><div class="val">'+sum.totalTrades+'</div></div>'+
+        '<div class="card"><div class="lbl">Win Rate</div><div class="val" style="color:'+(sum.winRate>=0.5?green:red)+'">'+(sum.winRate*100).toFixed(1)+'%</div>'+
+          '<div class="sub">'+winCount+' / '+sum.totalTrades+'</div></div>'+
+        '<div class="card"><div class="lbl">Profit Factor</div><div class="val" style="color:'+(sum.profitFactor>=1?green:red)+'">'+(isFinite(sum.profitFactor)?sum.profitFactor.toFixed(2):'∞')+'</div></div>'+
+        '<div class="card"><div class="lbl">Gross Profit</div><div class="val" style="color:'+green+'">+'+sum.grossProfit.toFixed(2)+'</div></div>'+
+        '<div class="card"><div class="lbl">Gross Loss</div><div class="val" style="color:'+red+'">'+sum.grossLoss.toFixed(2)+'</div></div>'+
+        '<div class="card"><div class="lbl">Final Equity</div><div class="val">'+sum.finalEquity.toFixed(2)+'</div></div>'+
+        '</div>'+
+        (equityImg ? '<div class="chart-full"><h3>Equity Curve</h3><img src="'+equityImg+'"></div>' : '')+
+        '<div class="charts">'+
+        (perfImg  ? '<div class="chart-box"><h3>Profit Structure</h3><img src="'+perfImg+'"></div>' : '')+
+        (benchImg ? '<div class="chart-box"><h3>Benchmarking</h3><img src="'+benchImg+'"></div>' : '')+
+        (histImg  ? '<div class="chart-box"><h3>P&L Distribution</h3><img src="'+histImg+'"></div>' : '')+
+        (donutImg ? '<div class="chart-box"><h3>Win / Loss Ratio</h3><img src="'+donutImg+'"></div>' : '')+
+        '</div>'+
+        '<footer>Generated by Fractal AI Agent · FractalScript Engine</footer>'+
+        '</body></html>';
+      var blob = new Blob([html], { type: 'text/html' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'strategy-report.html';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }, 80);
+  };
+
+  /* ── XLSX Data Export ── */
+  window._srpExportXlsx = function() {
+    var r = window._srpLastResult; if (!r || !r.strategyResult) return;
+    if (typeof XLSX === 'undefined') { alert('XLSX library not loaded yet, try again.'); return; }
+    var sum    = r.strategyResult.summary;
+    var trades = r.strategyResult.trades;
+    var ec     = Array.from(r.strategyResult.equityCurve);
+    /* Sheet 1: Summary */
+    var sumRows = [
+      ['Metric','Value'],
+      ['Net P&L', sum.netProfit],
+      ['Gross Profit', sum.grossProfit],
+      ['Gross Loss', sum.grossLoss],
+      ['Max Drawdown %', +(sum.maxDrawdown*100).toFixed(4)],
+      ['Total Trades', sum.totalTrades],
+      ['Win Rate %', +(sum.winRate*100).toFixed(4)],
+      ['Profit Factor', isFinite(sum.profitFactor)?+sum.profitFactor.toFixed(4):null],
+      ['Initial Capital', sum.initialCapital],
+      ['Final Equity', sum.finalEquity]
+    ];
+    /* Sheet 2: Trades */
+    var tradeRows = [['#','Direction','Entry Bar','Entry Price','Exit Bar','Exit Price','Bars Held','P&L','Cum P&L']];
+    var cum = 0;
+    trades.forEach(function(t,i){
+      cum += t.profit;
+      tradeRows.push([i+1, t.direction, t.entryBar, +t.entryPrice.toFixed(6), t.exitBar, +t.exitPrice.toFixed(6), t.exitBar-t.entryBar, +t.profit.toFixed(6), +cum.toFixed(6)]);
+    });
+    /* Sheet 3: Equity Curve */
+    var eqRows = [['Bar','Equity','P&L vs Initial']];
+    var cap = sum.initialCapital;
+    ec.forEach(function(v,i){ eqRows.push([i, +v.toFixed(4), +(v-cap).toFixed(4)]); });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumRows),   'Summary');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tradeRows), 'Trades');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(eqRows),    'Equity Curve');
+    XLSX.writeFile(wb, 'strategy-data.xlsx');
+  };
+
+  window._hideStrategyReport = function() {
+    var p = document.getElementById('strategyReportPanel');
+    if (p) p.classList.remove('srp-open');
+  };
+
 
 <!-- FractalScript PASTE MODAL -->
 <style>
