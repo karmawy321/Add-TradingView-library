@@ -3749,7 +3749,7 @@
     }
 
     #strategyReportPanel.srp-open {
-      height: 360px;
+      height: 316px;
       opacity: 1
     }
 
@@ -4099,6 +4099,68 @@
     .srp-lock a:hover {
       color: #c9a84c
     }
+
+    /* Efficiency pane */
+    #srp-efficiency.srp-active {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-content: flex-start;
+      padding: 12px 16px
+    }
+
+    .srp-eff-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      width: 100%
+    }
+
+    /* Drawdowns pane */
+    #srp-drawdowns.srp-active {
+      flex-direction: column;
+      padding: 6px 12px
+    }
+
+    .srp-dd-table-wrap {
+      width: 100%;
+      overflow-y: auto;
+      max-height: 248px
+    }
+
+    .srp-dd-table {
+      width: 100%;
+      border-collapse: collapse;
+      font: 10px 'DM Mono', monospace
+    }
+
+    .srp-dd-table th {
+      background: rgba(8, 10, 20, .95);
+      color: rgba(160, 175, 200, .55);
+      padding: 6px 8px;
+      text-align: left;
+      position: sticky;
+      top: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, .08);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-size: 8px;
+      backdrop-filter: blur(4px);
+    }
+
+    .srp-dd-table td {
+      padding: 4px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, .03);
+    }
+
+    .srp-dd-row-active td {
+      color: #e74c3c
+    }
+
+    .srp-dd-row-recovered td {
+      color: #27ae60
+    }
   </style>
   <script>
     var isEmbedded = window.location.search.includes('embed=true');
@@ -4424,19 +4486,22 @@
           <div style="border:1px solid var(--border2)">
             <div
               style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
-              <span style="color:var(--gold)">Macro wave</span><span style="color:var(--muted)">Scale 1</span></div>
+              <span style="color:var(--gold)">Macro wave</span><span style="color:var(--muted)">Scale 1</span>
+            </div>
             <canvas id="mfZ1" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
           </div>
           <div style="border:1px solid var(--border2)">
             <div
               style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
-              <span style="color:#3498db">Mid wave</span><span style="color:var(--muted)">Scale 2</span></div>
+              <span style="color:#3498db">Mid wave</span><span style="color:var(--muted)">Scale 2</span>
+            </div>
             <canvas id="mfZ2" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
           </div>
           <div style="border:1px solid var(--border2)">
             <div
               style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
-              <span style="color:#9b8fe8">Micro wave</span><span style="color:var(--muted)">Scale 3</span></div>
+              <span style="color:#9b8fe8">Micro wave</span><span style="color:var(--muted)">Scale 3</span>
+            </div>
             <canvas id="mfZ3" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
           </div>
         </div>
@@ -4686,7 +4751,8 @@
                           style="width:24px;height:24px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:10px;color:#c9a84c;font-weight:600">
                           2</div>
                         <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:#8a95a8">Capture chart → run
-                          <span style="color:#c9a84c">AI tools</span></div>
+                          <span style="color:#c9a84c">AI tools</span>
+                        </div>
                       </div>
                     </div>
                     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
@@ -4717,6 +4783,8 @@
                 <button class="srp-tab" data-tab="equity" onclick="_srpTab(this)">Equity</button>
                 <button class="srp-tab" data-tab="perf" onclick="_srpTab(this)">Performance</button>
                 <button class="srp-tab" data-tab="analysis" onclick="_srpTab(this)">Analysis</button>
+                <button class="srp-tab srp-premium" data-tab="efficiency" onclick="_srpTab(this)">Efficiency ★</button>
+                <button class="srp-tab" data-tab="drawdowns" onclick="_srpTab(this)">Drawdowns</button>
                 <button class="srp-tab srp-premium" data-tab="trades" onclick="_srpTab(this)">Trades ★</button>
               </div>
               <div id="srp-hdr-btns">
@@ -4751,6 +4819,12 @@
                 <canvas id="srp-donut-canvas" style="width:100%;height:210px;display:block"></canvas>
                 <div class="srp-chart-legend" id="srp-donut-legend"></div>
               </div>
+            </div>
+            <div id="srp-efficiency" class="srp-pane">
+              <div class="srp-eff-grid" id="srp-eff-cards"></div>
+            </div>
+            <div id="srp-drawdowns" class="srp-pane">
+              <div class="srp-dd-table-wrap" id="srp-dd-body"></div>
             </div>
             <div id="srp-trades" class="srp-pane"></div>
           </div>
@@ -14638,6 +14712,8 @@
           if (tab === 'equity') _drawEquityChart(document.getElementById('srp-equity-canvas'), r);
           if (tab === 'perf') { _drawProfitBars(r); _drawBenchmark(r); }
           if (tab === 'analysis') { _drawHistogram(r); _drawDonut(r); }
+          if (tab === 'efficiency') _buildEfficiencyCards(r);
+          if (tab === 'drawdowns') _buildDrawdownTable(r);
         }, 10);
       };
 
