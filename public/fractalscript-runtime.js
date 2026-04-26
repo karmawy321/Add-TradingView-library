@@ -25,6 +25,7 @@
   }
   function naCmp(a, b, op) {
     if (isNa(a) || isNa(b)) return false;
+    if (typeof a === 'string' || typeof b === 'string') return op(String(a), String(b));
     return op(+a, +b);
   }
 
@@ -818,6 +819,19 @@
           var l2 = loc(); pos++;
           var member = eat(TT.IDENT); if (member.error) return member;
           expr = { type: 'MemberAccess', object: expr, member: member.value, line: l2.line, col: l2.col };
+          continue;
+        }
+        /* Generic type parameter: array.new<TypeName>(...) — discard <T>, leave call to be parsed below */
+        if (at(TT.OP) && cur().value === '<' &&
+            expr.type === 'MemberAccess' && expr.member === 'new' &&
+            expr.object && expr.object.type === 'Identifier' && expr.object.name === 'array') {
+          pos++; // consume <
+          var tArg = eat(TT.IDENT); if (tArg.error) return tArg;
+          if (!(at(TT.OP) && cur().value === '>')) {
+            return { error: { line: cur().line, col: cur().col, message: "Expected '>' after type parameter" } };
+          }
+          pos++; // consume >
+          expr.typeArg = tArg.value;
           continue;
         }
         /* Function call: expr(...) */
@@ -2412,9 +2426,10 @@
 
       /* syminfo.* — stub values (real values would require chart context) */
       if (obj === 'syminfo') {
+        var _sym = (inputOverrides && inputOverrides.symbol) ? String(inputOverrides.symbol) : null;
         switch (node.member) {
-          case 'tickerid': return 'UNKNOWN:UNKNOWN';
-          case 'ticker':   return 'UNKNOWN';
+          case 'tickerid': return _sym ? _sym : 'UNKNOWN:UNKNOWN';
+          case 'ticker':   return _sym ? _sym.split(':').pop() : 'UNKNOWN';
           case 'prefix':   return '';
           case 'mintick':  return 0.01;
           case 'pointvalue': return 1;
@@ -2511,7 +2526,7 @@
       /* P6: timeframe.* property lookups */
       if (obj === 'timeframe') {
         switch (node.member) {
-          case 'period': return _tfPeriod;
+          case 'period': return (inputOverrides && inputOverrides.timeframe) ? String(inputOverrides.timeframe) : _tfPeriod;
           case 'multiplier': return _tfMultiplier;
           case 'isintraday': return _tfIsIntraday;
           case 'isdaily': return _tfIsDaily;
@@ -3754,6 +3769,7 @@
       };
 
       switch (name) {
+        case 'array.new':
         case 'array.new_int':
         case 'array.new_float':
         case 'array.new_bool':
