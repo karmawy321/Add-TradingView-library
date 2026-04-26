@@ -7,7 +7,7 @@ const sse   = require('../sse');
 const SOURCE = 'oanda';
 
 const METAAPI_TOKEN      = process.env.METAAPI_TOKEN      || '';
-const METAAPI_ACCOUNT_ID = '620f74cf-9c2e-46d0-8073-36ab51e621c0';
+const METAAPI_ACCOUNT_ID = '9c6b0dae-94bc-4616-8789-64ef3580227e';
 
 const TF_MS = {
   '1m':60000, '5m':300000, '15m':900000, '30m':1800000,
