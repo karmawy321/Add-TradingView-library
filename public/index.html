@@ -5562,6 +5562,96 @@ function renderChart() {
       }
       chartCtx.restore();
     }
+
+    /* ── Strategy: trade entry/exit markers ── */
+    if (fractalResult.strategyResult && fractalResult.strategyResult.trades.length) {
+      chartCtx.save();
+      chartCtx.beginPath();
+      chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, CH);
+      chartCtx.clip();
+      var _strades = fractalResult.strategyResult.trades;
+      for (var _sti = 0; _sti < _strades.length; _sti++) {
+        var _st = _strades[_sti];
+        var _isLong = _st.direction === 'long';
+        var _entX = worldToScreenX(_st.entryBar);
+        var _extX = worldToScreenX(_st.exitBar);
+        var _entY = worldToScreenY(_st.entryPrice);
+        var _extY = worldToScreenY(_st.exitPrice);
+        var _winColor  = '#26a69a';
+        var _lossColor = '#ef5350';
+        var _tradeColor = _st.profit >= 0 ? _winColor : _lossColor;
+        /* connector line between entry and exit */
+        chartCtx.strokeStyle = 'rgba(150,150,150,0.35)';
+        chartCtx.lineWidth = 1;
+        chartCtx.setLineDash([3, 3]);
+        chartCtx.beginPath();
+        chartCtx.moveTo(_entX, _entY);
+        chartCtx.lineTo(_extX, _extY);
+        chartCtx.stroke();
+        chartCtx.setLineDash([]);
+        /* entry marker: green triangle for long, red for short */
+        var _entCol = _isLong ? _winColor : _lossColor;
+        chartCtx.fillStyle = _entCol;
+        chartCtx.beginPath();
+        if (_isLong) {
+          /* triangle up below the bar */
+          chartCtx.moveTo(_entX, _entY + 2);
+          chartCtx.lineTo(_entX - 6, _entY + 12);
+          chartCtx.lineTo(_entX + 6, _entY + 12);
+        } else {
+          /* triangle down above the bar */
+          chartCtx.moveTo(_entX, _entY - 2);
+          chartCtx.lineTo(_entX - 6, _entY - 12);
+          chartCtx.lineTo(_entX + 6, _entY - 12);
+        }
+        chartCtx.closePath();
+        chartCtx.fill();
+        /* exit marker: X shape in trade result color */
+        chartCtx.strokeStyle = _tradeColor;
+        chartCtx.lineWidth = 2;
+        chartCtx.beginPath();
+        chartCtx.moveTo(_extX - 5, _extY - 5); chartCtx.lineTo(_extX + 5, _extY + 5);
+        chartCtx.moveTo(_extX + 5, _extY - 5); chartCtx.lineTo(_extX - 5, _extY + 5);
+        chartCtx.stroke();
+      }
+      chartCtx.restore();
+
+      /* ── Strategy summary badge (top-left of chart) ── */
+      var _sr = fractalResult.strategyResult.summary;
+      var _pnl = _sr.netProfit;
+      var _pnlStr = (_pnl >= 0 ? '+' : '') + _pnl.toFixed(2);
+      var _wr = (_sr.winRate * 100).toFixed(1) + '%';
+      var _trStr = _sr.totalTrades + ' trades';
+      var _badgeLines = ['Net P&L: ' + _pnlStr, 'Win rate: ' + _wr, _trStr];
+      chartCtx.save();
+      chartCtx.font = 'bold 11px DM Mono';
+      var _bLineH = 16, _bPad = 8;
+      var _bW = 0;
+      for (var _bli = 0; _bli < _badgeLines.length; _bli++) {
+        var _bLW = chartCtx.measureText(_badgeLines[_bli]).width;
+        if (_bLW > _bW) _bW = _bLW;
+      }
+      _bW += _bPad * 2;
+      var _bH = _badgeLines.length * _bLineH + _bPad * 2;
+      var _bX = PAD.l + 8, _bY = PAD.t + 8;
+      chartCtx.fillStyle = 'rgba(6,8,13,0.82)';
+      if (chartCtx.roundRect) chartCtx.roundRect(_bX, _bY, _bW, _bH, 4);
+      else chartCtx.rect(_bX, _bY, _bW, _bH);
+      chartCtx.fill();
+      chartCtx.strokeStyle = _pnl >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
+      chartCtx.lineWidth = 1;
+      if (chartCtx.roundRect) chartCtx.roundRect(_bX, _bY, _bW, _bH, 4);
+      else chartCtx.rect(_bX, _bY, _bW, _bH);
+      chartCtx.stroke();
+      chartCtx.textAlign = 'left';
+      chartCtx.textBaseline = 'middle';
+      for (var _bli2 = 0; _bli2 < _badgeLines.length; _bli2++) {
+        if (_bli2 === 0) chartCtx.fillStyle = _pnl >= 0 ? '#26a69a' : '#ef5350';
+        else chartCtx.fillStyle = 'rgba(180,190,210,0.85)';
+        chartCtx.fillText(_badgeLines[_bli2], _bX + _bPad, _bY + _bPad + _bli2 * _bLineH + _bLineH / 2);
+      }
+      chartCtx.restore();
+    }
   }
 
   /* smaCrossZoneOn SMAs hidden — bar pattern drawing shows the result */
