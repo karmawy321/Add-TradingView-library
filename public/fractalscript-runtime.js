@@ -2560,25 +2560,27 @@
     }
 
     function execCall(node) {
-      /* UDT constructor: TypeName.new(...) */
+      /* UDT constructor: TypeName.new(...) — only when type is registered */
       if (node.callee.type === 'MemberAccess' && node.callee.member === 'new') {
         var typeName = node.callee.object.name;
         var tdef = typeRegistry[typeName];
-        if (!tdef) { return { __error__: { line: node.line, col: node.col, message: 'Unknown type: ' + typeName } }; }
-        var rec = { __type__: typeName };
-        for (var fi = 0; fi < tdef.fields.length; fi++) {
-          var fld = tdef.fields[fi];
-          rec[fld.name] = fld.def ? execNode(fld.def) : NA;
-        }
-        for (var ai = 0; ai < node.args.length; ai++) {
-          var a = node.args[ai];
-          if (a.type === 'NamedArg') {
-            rec[a.name] = execNode(a.value);
-          } else if (ai < tdef.fields.length) {
-            rec[tdef.fields[ai].name] = execNode(a);
+        if (tdef) {
+          var rec = { __type__: typeName };
+          for (var fi = 0; fi < tdef.fields.length; fi++) {
+            var fld = tdef.fields[fi];
+            rec[fld.name] = fld.def ? execNode(fld.def) : NA;
           }
+          for (var ai = 0; ai < node.args.length; ai++) {
+            var a = node.args[ai];
+            if (a.type === 'NamedArg') {
+              rec[a.name] = execNode(a.value);
+            } else if (ai < tdef.fields.length) {
+              rec[tdef.fields[ai].name] = execNode(a);
+            }
+          }
+          return rec;
         }
-        return rec;
+        /* Not a registered UDT — fall through to color.new / other handlers */
       }
 
       var callName = getCallName(node.callee);
