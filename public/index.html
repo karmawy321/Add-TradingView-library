@@ -5563,142 +5563,7 @@ function renderChart() {
       chartCtx.restore();
     }
 
-    /* ── Strategy: trade entry/exit markers ── */
-    if (fractalResult.strategyResult && fractalResult.strategyResult.trades.length) {
-      chartCtx.save();
-      chartCtx.beginPath();
-      chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, CH);
-      chartCtx.clip();
-      var _strades = fractalResult.strategyResult.trades;
-      var _entColor  = '#2196F3'; /* blue  — long entry  */
-      var _entSColor = '#e91e63'; /* pink  — short entry */
-      var _tpColor   = '#9c27b0'; /* purple — TP/SL exit */
-      var _winColor  = '#26a69a';
-      var _lossColor = '#ef5350';
-
-      for (var _sti = 0; _sti < _strades.length; _sti++) {
-        var _st = _strades[_sti];
-        var _isLong = _st.direction === 'long';
-        var _entX = worldToScreenX(_st.entryBar);
-        var _extX = worldToScreenX(_st.exitBar);
-        var _entY = worldToScreenY(_st.entryPrice);
-        var _extY = worldToScreenY(_st.exitPrice);
-        var _tradeWin = _st.profit >= 0;
-
-        /* skip if entirely off-screen */
-        if (_entX < PAD.l - 20 && _extX < PAD.l - 20) continue;
-        if (_entX > W - PAD.r + 20 && _extX > W - PAD.r + 20) continue;
-
-        /* connector line */
-        chartCtx.strokeStyle = _tradeWin ? 'rgba(38,166,154,0.25)' : 'rgba(239,83,80,0.25)';
-        chartCtx.lineWidth = 1;
-        chartCtx.setLineDash([3, 3]);
-        chartCtx.beginPath();
-        chartCtx.moveTo(_entX, _entY);
-        chartCtx.lineTo(_extX, _extY);
-        chartCtx.stroke();
-        chartCtx.setLineDash([]);
-
-        /* ── entry arrow ── */
-        var _eCol = _isLong ? _entColor : _entSColor;
-        chartCtx.fillStyle = _eCol;
-        chartCtx.beginPath();
-        if (_isLong) {
-          /* ▲ below the price */
-          chartCtx.moveTo(_entX,     _entY + 4);
-          chartCtx.lineTo(_entX - 7, _entY + 16);
-          chartCtx.lineTo(_entX + 7, _entY + 16);
-        } else {
-          /* ▼ above the price */
-          chartCtx.moveTo(_entX,     _entY - 4);
-          chartCtx.lineTo(_entX - 7, _entY - 16);
-          chartCtx.lineTo(_entX + 7, _entY - 16);
-        }
-        chartCtx.closePath();
-        chartCtx.fill();
-
-        /* entry label: "Long" / "Short" */
-        chartCtx.fillStyle = _eCol;
-        chartCtx.font = 'bold 9px DM Mono';
-        chartCtx.textAlign = 'center';
-        chartCtx.textBaseline = _isLong ? 'top' : 'bottom';
-        var _entLabel = _isLong ? 'Long' : 'Short';
-        var _entLY = _isLong ? (_entY + 19) : (_entY - 19);
-        chartCtx.fillText(_entLabel, _entX, _entLY);
-
-        /* ── exit marker: ▼ for long exit, ▲ for short exit ── */
-        chartCtx.fillStyle = _tpColor;
-        chartCtx.beginPath();
-        if (_isLong) {
-          /* ▼ above exit price — long closes going down */
-          chartCtx.moveTo(_extX,     _extY - 4);
-          chartCtx.lineTo(_extX - 7, _extY - 16);
-          chartCtx.lineTo(_extX + 7, _extY - 16);
-        } else {
-          /* ▲ below exit price — short closes going up */
-          chartCtx.moveTo(_extX,     _extY + 4);
-          chartCtx.lineTo(_extX - 7, _extY + 16);
-          chartCtx.lineTo(_extX + 7, _extY + 16);
-        }
-        chartCtx.closePath();
-        chartCtx.fill();
-
-        /* exit label: trade id + P&L sign */
-        chartCtx.fillStyle = _tpColor;
-        chartCtx.font = 'bold 9px DM Mono';
-        chartCtx.textAlign = 'center';
-        chartCtx.textBaseline = _isLong ? 'bottom' : 'top';
-        var _exitLabel = (_st.id || (_isLong ? 'Long' : 'Short')) + ' TP/SL';
-        var _pnlSign = (_tradeWin ? '+' : '') + _st.profit.toFixed(2);
-        var _extLY = _isLong ? (_extY - 19) : (_extY + 19);
-        chartCtx.fillText(_exitLabel, _extX, _extLY);
-        chartCtx.fillStyle = _tradeWin ? _winColor : _lossColor;
-        chartCtx.font = '8px DM Mono';
-        var _pnlLY = _isLong ? (_extY - 30) : (_extY + 30);
-        chartCtx.fillText(_pnlSign, _extX, _pnlLY);
-      }
-      chartCtx.restore();
-
-      /* ── Strategy summary badge (top-left) ── */
-      var _sr = fractalResult.strategyResult.summary;
-      var _pnl = _sr.netProfit;
-      var _pnlStr = (_pnl >= 0 ? '+' : '') + _pnl.toFixed(2);
-      var _wr = (_sr.winRate * 100).toFixed(1) + '%';
-      var _trStr = _sr.totalTrades + ' trades';
-      var _badgeLines = [
-        'Net P&L: ' + _pnlStr,
-        'Win rate: ' + _wr,
-        _trStr
-      ];
-      chartCtx.save();
-      chartCtx.font = 'bold 11px DM Mono';
-      var _bLineH = 16, _bPad = 8;
-      var _bW = 0;
-      for (var _bli = 0; _bli < _badgeLines.length; _bli++) {
-        var _bLW = chartCtx.measureText(_badgeLines[_bli]).width;
-        if (_bLW > _bW) _bW = _bLW;
-      }
-      _bW += _bPad * 2;
-      var _bH = _badgeLines.length * _bLineH + _bPad * 2;
-      var _bX = PAD.l + 8, _bY = PAD.t + 8;
-      chartCtx.fillStyle = 'rgba(6,8,13,0.85)';
-      if (chartCtx.roundRect) chartCtx.roundRect(_bX, _bY, _bW, _bH, 4);
-      else chartCtx.rect(_bX, _bY, _bW, _bH);
-      chartCtx.fill();
-      chartCtx.strokeStyle = _pnl >= 0 ? 'rgba(38,166,154,0.6)' : 'rgba(239,83,80,0.6)';
-      chartCtx.lineWidth = 1;
-      if (chartCtx.roundRect) chartCtx.roundRect(_bX, _bY, _bW, _bH, 4);
-      else chartCtx.rect(_bX, _bY, _bW, _bH);
-      chartCtx.stroke();
-      chartCtx.textAlign = 'left';
-      chartCtx.textBaseline = 'middle';
-      for (var _bli2 = 0; _bli2 < _badgeLines.length; _bli2++) {
-        if (_bli2 === 0) chartCtx.fillStyle = _pnl >= 0 ? '#26a69a' : '#ef5350';
-        else chartCtx.fillStyle = 'rgba(180,190,210,0.85)';
-        chartCtx.fillText(_badgeLines[_bli2], _bX + _bPad, _bY + _bPad + _bli2 * _bLineH + _bLineH / 2);
-      }
-      chartCtx.restore();
-    }
+    /* strategy markers moved — drawn after candles so they appear on top */
   }
 
   /* smaCrossZoneOn SMAs hidden — bar pattern drawing shows the result */
@@ -5865,6 +5730,136 @@ function renderChart() {
       var top=py(Math.max(c.o,c.c)), bh=Math.max(1.5,py(Math.min(c.o,c.c))-top);
       chartCtx.fillStyle=col; chartCtx.fillRect(x-candleW/2,top,candleW,bh);
     });
+  }
+
+  /* ── Strategy markers — drawn after candles so labels are always on top ── */
+  window._fsTradeHits = [];
+  if (fractalOverlayOn && fractalResult && fractalResult.strategyResult &&
+      fractalResult.strategyResult.trades.length) {
+    var _sm_trades  = fractalResult.strategyResult.trades;
+    var _sm_entCol  = '#2196F3';
+    var _sm_entSCol = '#e91e63';
+    var _sm_tpCol   = '#9c27b0';
+    var _sm_winCol  = '#26a69a';
+    var _sm_lossCol = '#ef5350';
+
+    function _smLabelBox(text, cx, cy, bgColor, textColor) {
+      chartCtx.font = 'bold 11px DM Mono';
+      var tw = chartCtx.measureText(text).width;
+      var bw = tw + 10, bh = 16, bx = cx - bw/2, by = cy - bh/2;
+      chartCtx.fillStyle = bgColor;
+      if (chartCtx.roundRect) chartCtx.roundRect(bx, by, bw, bh, 3);
+      else chartCtx.rect(bx, by, bw, bh);
+      chartCtx.fill();
+      chartCtx.fillStyle = textColor;
+      chartCtx.textAlign = 'center';
+      chartCtx.textBaseline = 'middle';
+      chartCtx.fillText(text, cx, cy);
+      return { x: bx, y: by, w: bw, h: bh };
+    }
+
+    chartCtx.save();
+    for (var _smi = 0; _smi < _sm_trades.length; _smi++) {
+      var _smt   = _sm_trades[_smi];
+      var _smLng = _smt.direction === 'long';
+      var _smEx  = worldToScreenX(_smt.entryBar);
+      var _smXx  = worldToScreenX(_smt.exitBar);
+      var _smEy  = worldToScreenY(_smt.entryPrice);
+      var _smXy  = worldToScreenY(_smt.exitPrice);
+      var _smWin = _smt.profit >= 0;
+
+      if (_smEx < PAD.l - 20 && _smXx < PAD.l - 20) continue;
+      if (_smEx > W - PAD.r + 20 && _smXx > W - PAD.r + 20) continue;
+
+      /* connector */
+      chartCtx.strokeStyle = _smWin ? 'rgba(38,166,154,0.3)' : 'rgba(239,83,80,0.3)';
+      chartCtx.lineWidth = 1;
+      chartCtx.setLineDash([3, 3]);
+      chartCtx.beginPath();
+      chartCtx.moveTo(_smEx, _smEy);
+      chartCtx.lineTo(_smXx, _smXy);
+      chartCtx.stroke();
+      chartCtx.setLineDash([]);
+
+      /* entry arrow */
+      var _smEC = _smLng ? _sm_entCol : _sm_entSCol;
+      chartCtx.fillStyle = _smEC;
+      chartCtx.beginPath();
+      if (_smLng) {
+        chartCtx.moveTo(_smEx, _smEy + 4); chartCtx.lineTo(_smEx - 7, _smEy + 16); chartCtx.lineTo(_smEx + 7, _smEy + 16);
+      } else {
+        chartCtx.moveTo(_smEx, _smEy - 4); chartCtx.lineTo(_smEx - 7, _smEy - 16); chartCtx.lineTo(_smEx + 7, _smEy - 16);
+      }
+      chartCtx.closePath(); chartCtx.fill();
+
+      /* entry label box */
+      var _smEntLbl = _smLng ? 'Long' : 'Short';
+      var _smEntLY  = _smLng ? _smEy + 26 : _smEy - 26;
+      var _smEBox = _smLabelBox(_smEntLbl, _smEx, _smEntLY, _smEC, '#fff');
+      window._fsTradeHits.push({ x: _smEBox.x, y: _smEBox.y, w: _smEBox.w, h: _smEBox.h, trade: _smt, kind: 'entry' });
+
+      /* exit arrow */
+      chartCtx.fillStyle = _sm_tpCol;
+      chartCtx.beginPath();
+      if (_smLng) {
+        chartCtx.moveTo(_smXx, _smXy - 4); chartCtx.lineTo(_smXx - 7, _smXy - 16); chartCtx.lineTo(_smXx + 7, _smXy - 16);
+      } else {
+        chartCtx.moveTo(_smXx, _smXy + 4); chartCtx.lineTo(_smXx - 7, _smXy + 16); chartCtx.lineTo(_smXx + 7, _smXy + 16);
+      }
+      chartCtx.closePath(); chartCtx.fill();
+
+      /* exit label box */
+      var _smExitLbl = (_smt.id || (_smLng ? 'Long' : 'Short')) + ' TP/SL';
+      var _smExtLY   = _smLng ? _smXy - 26 : _smXy + 26;
+      var _smXBox = _smLabelBox(_smExitLbl, _smXx, _smExtLY, _sm_tpCol, '#fff');
+
+      /* P&L amount below exit label */
+      var _smPnl = (_smWin ? '+' : '') + _smt.profit.toFixed(2);
+      var _smPnlY = _smLng ? _smExtLY - 14 : _smExtLY + 14;
+      chartCtx.font = 'bold 10px DM Mono';
+      chartCtx.fillStyle = _smWin ? _sm_winCol : _sm_lossCol;
+      chartCtx.textAlign = 'center';
+      chartCtx.textBaseline = 'middle';
+      chartCtx.fillText(_smPnl, _smXx, _smPnlY);
+
+      window._fsTradeHits.push({ x: _smXBox.x, y: _smXBox.y, w: _smXBox.w, h: _smXBox.h, trade: _smt, kind: 'exit' });
+    }
+    chartCtx.restore();
+
+    /* summary badge */
+    var _smSr  = fractalResult.strategyResult.summary;
+    var _smPnl = _smSr.netProfit;
+    var _smLines = [
+      'Net P&L: ' + (_smPnl >= 0 ? '+' : '') + _smPnl.toFixed(2),
+      'Win rate: ' + (_smSr.winRate * 100).toFixed(1) + '%',
+      _smSr.totalTrades + ' trades'
+    ];
+    chartCtx.save();
+    chartCtx.font = 'bold 11px DM Mono';
+    var _smBLH = 17, _smBPad = 9, _smBW = 0;
+    for (var _smBi = 0; _smBi < _smLines.length; _smBi++) {
+      var _smLW = chartCtx.measureText(_smLines[_smBi]).width;
+      if (_smLW > _smBW) _smBW = _smLW;
+    }
+    _smBW += _smBPad * 2;
+    var _smBH = _smLines.length * _smBLH + _smBPad * 2;
+    var _smBX = PAD.l + 8, _smBY = PAD.t + 8;
+    chartCtx.fillStyle = 'rgba(6,8,13,0.88)';
+    if (chartCtx.roundRect) chartCtx.roundRect(_smBX, _smBY, _smBW, _smBH, 4);
+    else chartCtx.rect(_smBX, _smBY, _smBW, _smBH);
+    chartCtx.fill();
+    chartCtx.strokeStyle = _smPnl >= 0 ? 'rgba(38,166,154,0.7)' : 'rgba(239,83,80,0.7)';
+    chartCtx.lineWidth = 1;
+    if (chartCtx.roundRect) chartCtx.roundRect(_smBX, _smBY, _smBW, _smBH, 4);
+    else chartCtx.rect(_smBX, _smBY, _smBW, _smBH);
+    chartCtx.stroke();
+    chartCtx.textAlign = 'left';
+    chartCtx.textBaseline = 'middle';
+    for (var _smLi = 0; _smLi < _smLines.length; _smLi++) {
+      chartCtx.fillStyle = _smLi === 0 ? (_smPnl >= 0 ? '#26a69a' : '#ef5350') : 'rgba(180,190,210,0.9)';
+      chartCtx.fillText(_smLines[_smLi], _smBX + _smBPad, _smBY + _smBPad + _smLi * _smBLH + _smBLH / 2);
+    }
+    chartCtx.restore();
   }
 
   /* Time axis drawn after clip restore — labels sit in the PAD.b strip below chart */
@@ -7010,6 +7005,50 @@ if(chartCanvas){
       e.stopPropagation(); return;
     }
   });
+
+  /* ── Strategy trade marker click → tooltip ── */
+  (function() {
+    var _tip = document.createElement('div');
+    _tip.id = 'fsTradeTip';
+    _tip.style.cssText = 'position:fixed;display:none;background:rgba(6,8,13,0.95);border:1px solid rgba(150,150,180,0.4);border-radius:6px;padding:8px 12px;font:12px DM Mono,monospace;color:#e0e4f0;pointer-events:none;z-index:9999;line-height:1.6;min-width:160px';
+    document.body.appendChild(_tip);
+
+    chartCanvas.addEventListener('click', function(e) {
+      var hits = window._fsTradeHits;
+      if (!hits || !hits.length) { _tip.style.display = 'none'; return; }
+      var dpr = window.devicePixelRatio || 1;
+      var r   = chartCanvas.getBoundingClientRect();
+      var cx  = (e.clientX - r.left);
+      var cy  = (e.clientY - r.top);
+      for (var i = 0; i < hits.length; i++) {
+        var h = hits[i];
+        if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
+          var t = h.trade;
+          var win = t.profit >= 0;
+          var pnlColor = win ? '#26a69a' : '#ef5350';
+          _tip.innerHTML =
+            '<div style="font-weight:bold;color:' + (t.direction==='long'?'#2196F3':'#e91e63') + ';margin-bottom:4px">' +
+            (t.direction === 'long' ? '▲ Long' : '▼ Short') + '</div>' +
+            'Entry:  <b>' + t.entryPrice.toFixed(4) + '</b> (bar ' + t.entryBar + ')<br>' +
+            'Exit:   <b>' + t.exitPrice.toFixed(4)  + '</b> (bar ' + t.exitBar  + ')<br>' +
+            'P&L: <b style="color:' + pnlColor + '">' + (win?'+':'') + t.profit.toFixed(4) + '</b>';
+          var tipX = e.clientX + 14;
+          var tipY = e.clientY - 10;
+          if (tipX + 200 > window.innerWidth) tipX = e.clientX - 214;
+          _tip.style.left = tipX + 'px';
+          _tip.style.top  = tipY + 'px';
+          _tip.style.display = 'block';
+          e.stopPropagation();
+          return;
+        }
+      }
+      _tip.style.display = 'none';
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') _tip.style.display = 'none';
+    });
+  })();
 
   document.addEventListener('mousemove', function(e) {
     if (_dateAxisDrag) {
