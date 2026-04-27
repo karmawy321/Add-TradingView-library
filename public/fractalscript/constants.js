@@ -64,11 +64,42 @@
         pi: Math.PI, e: Math.E
     };
 
+    var LINE_STYLES = { style_solid: 'solid', style_dashed: 'dashed', style_dotted: 'dotted' };
+    var BOX_STYLES  = { style_solid: 'solid', style_dashed: 'dashed', style_dotted: 'dotted' };
+    var EXTEND_MODES = { none: 'none', right: 'right', left: 'left', both: 'both' };
+    var LABEL_STYLES = {
+        style_none: 'none',
+        style_label_up: 'label_up', style_label_down: 'label_down',
+        style_label_left: 'label_left', style_label_right: 'label_right',
+        style_label_center: 'label_center',
+        style_label_upper_left: 'label_upper_left', style_label_upper_right: 'label_upper_right',
+        style_label_lower_left: 'label_lower_left', style_label_lower_right: 'label_lower_right',
+        style_arrowup: 'arrowup', style_arrowdown: 'arrowdown',
+        style_triangleup: 'triangleup', style_triangledown: 'triangledown',
+        style_circle: 'circle', style_square: 'square', style_diamond: 'diamond',
+        style_cross: 'cross', style_xcross: 'xcross', style_flag: 'flag'
+    };
+    var POSITIONS = {
+        top_left: 'top_left', top_center: 'top_center', top_right: 'top_right',
+        middle_left: 'middle_left', middle_center: 'middle_center', middle_right: 'middle_right',
+        bottom_left: 'bottom_left', bottom_center: 'bottom_center', bottom_right: 'bottom_right'
+    };
+    var TEXT_ALIGN = {
+        align_left: 'left', align_center: 'center', align_right: 'right',
+        align_top: 'top', align_bottom: 'bottom'
+    };
+
     /* ── Export ── */
     FS.COLORS = COLORS;
     FS.SHAPES = SHAPES;
     FS.LOCATIONS = LOCATIONS;
     FS.SIZES = SIZES;
     FS.MATH = MATH;
+    FS.LINE_STYLES = LINE_STYLES;
+    FS.BOX_STYLES = BOX_STYLES;
+    FS.EXTEND_MODES = EXTEND_MODES;
+    FS.LABEL_STYLES = LABEL_STYLES;
+    FS.POSITIONS = POSITIONS;
+    FS.TEXT_ALIGN = TEXT_ALIGN;
 
 })(typeof window !== 'undefined' ? window : this);
