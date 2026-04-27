@@ -4625,6 +4625,9 @@
                 style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA
                 900</button>
 
+              <button id="fmBtn" onclick="toggleFM()"
+                style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">F·M</button>
+
               <!-- Upload fallback -->
               <label id="uploadLabel"
                 style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
@@ -8417,6 +8420,7 @@
     var liqHeatmapOn = false;
     var volBubblesOn = false;
     var hurstOn = false;
+    var fmOn = false;
     var garchBandsOn = false;
     var fractalSignalOn = false;
     var gbmOn = false;
@@ -9821,6 +9825,8 @@
       if (garchBandsOn) drawGARCH(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
       if (fractalSignalOn) drawFractalSignal(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH);
       if (kalmanOn) drawKalman(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
+      if (fmOn) drawFractalMomentum(chartCtx, candles, startIdx, endIdx, PAD, W, H, CH, px, py);
+      if (!fmOn) { var _fmb = document.getElementById('fmBadge'); if (_fmb) _fmb.style.display = 'none'; }
       if (gbmOn) drawGBM(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
       if (ouOn) drawOU(chartCtx, visible, mn, mx, range, W, H, PAD, CW, CH, barW);
 
@@ -10521,10 +10527,127 @@
       ctx.restore();
     }
 
-    /* ── Auto Bar Pattern — fires when chart loads, selects first 50 candles ── */
-    function autoBarPattern() {
-      /* Delegate to IIFE-scoped version which has direct access to drawings array */
-      if (typeof window._autoBarPattern === 'function') window._autoBarPattern();
+    /* ── Fractal Momentum: compute + draw ── */
+    function _fmEMA(src, len) {
+      var k = 2 / (len + 1), out = new Array(src.length).fill(NaN);
+      for (var i = 0; i < src.length; i++) {
+        if (isNaN(src[i])) continue;
+        out[i] = (i === 0 || isNaN(out[i - 1])) ? src[i] : src[i] * k + out[i - 1] * (1 - k);
+      }
+      return out;
+    }
+    function _fmRMA(src, len) {
+      var k = 1 / len, out = new Array(src.length).fill(NaN);
+      for (var i = 0; i < src.length; i++) {
+        if (isNaN(src[i])) continue;
+        out[i] = (i === 0 || isNaN(out[i - 1])) ? src[i] : src[i] * k + out[i - 1] * (1 - k);
+      }
+      return out;
+    }
+    function _fmATR(candles, len) {
+      var tr = candles.map(function (c, i) {
+        if (i === 0) return c.h - c.l;
+        var pc = candles[i - 1].c;
+        return Math.max(c.h - c.l, Math.abs(c.h - pc), Math.abs(c.l - pc));
+      });
+      return _fmRMA(tr, len);
+    }
+    function _computeFM(candles) {
+      var n = candles.length;
+      if (n < 30) return null;
+      var close = candles.map(function (c) { return c.c; });
+      var high  = candles.map(function (c) { return c.h; });
+      var low   = candles.map(function (c) { return c.l; });
+
+      /* MACD: EMA(100) - EMA(26), signal EMA(50) */
+      var ema100 = _fmEMA(close, 100);
+      var ema26  = _fmEMA(close, 26);
+      var macd   = ema100.map(function (v, i) { return isNaN(v) || isNaN(ema26[i]) ? NaN : v - ema26[i]; });
+      var sigLine = _fmEMA(macd, 50);
+
+      /* omed: Keltner channel position (scl=5, mcl=15) */
+      var ma5  = _fmRMA(close, 5),  atr5  = _fmATR(candles, 5);
+      var ma15 = _fmRMA(close, 15), atr15 = _fmATR(candles, 15);
+      var omed = new Array(n).fill(NaN);
+      for (var i = 9; i < n; i++) {
+        if (isNaN(ma5[i - 2]) || isNaN(ma15[i - 7])) continue;
+        var sct = ma5[i - 2] + atr5[i], scb = ma5[i - 2] - atr5[i];
+        var mct = ma15[i - 7] + 3 * atr15[i], mcb = ma15[i - 7] - 3 * atr15[i];
+        var d = mct - mcb;
+        if (d > 0) omed[i] = ((sct + scb) / 2 - mcb) / d;
+      }
+
+      /* SMI: 10-bar, 3-period double-smooth, then EMA(10) */
+      var rdiff = new Array(n).fill(NaN), diff = new Array(n).fill(NaN);
+      for (var i = 9; i < n; i++) {
+        var ll = Infinity, hh = -Infinity;
+        for (var j = i - 9; j <= i; j++) { if (low[j] < ll) ll = low[j]; if (high[j] > hh) hh = high[j]; }
+        diff[i]  = hh - ll;
+        rdiff[i] = close[i] - (hh + ll) / 2;
+      }
+      var avgrel  = _fmEMA(_fmEMA(rdiff, 3), 3);
+      var avgdiff = _fmEMA(_fmEMA(diff, 3), 3);
+      var smi = avgrel.map(function (v, i) {
+        var ad = avgdiff[i];
+        return (isNaN(v) || isNaN(ad) || ad === 0) ? NaN : (v / (ad / 2)) * 100;
+      });
+      var emasig = _fmEMA(smi, 10);
+
+      /* MACD crossovers */
+      var crosses = [];
+      for (var i = 1; i < n; i++) {
+        if (isNaN(macd[i]) || isNaN(sigLine[i]) || isNaN(macd[i - 1]) || isNaN(sigLine[i - 1])) continue;
+        var prev = macd[i - 1] > sigLine[i - 1], curr = macd[i] > sigLine[i];
+        if (!prev && curr) crosses.push({ i: i, dir: 'up' });
+        else if (prev && !curr) crosses.push({ i: i, dir: 'dn' });
+      }
+      return { omed: omed, emasig: emasig, crosses: crosses };
+    }
+    function drawFractalMomentum(ctx, candles, startIdx, endIdx, PAD, W, H, CH, pxFn, pyFn) {
+      var fm = _computeFM(candles);
+      if (!fm) return;
+      var n = candles.length;
+
+      /* Crossover triangle markers on the price chart */
+      ctx.save();
+      for (var k = 0; k < fm.crosses.length; k++) {
+        var co = fm.crosses[k];
+        var gi = co.i;
+        if (gi < startIdx || gi >= endIdx) continue;
+        var xp = pxFn(gi - startIdx), c = candles[gi];
+        if (co.dir === 'up') {
+          var yp = pyFn(c.l) + 14;
+          ctx.beginPath(); ctx.moveTo(xp, yp - 9); ctx.lineTo(xp + 5, yp); ctx.lineTo(xp - 5, yp); ctx.closePath();
+          ctx.fillStyle = 'rgba(38,166,154,0.88)'; ctx.fill();
+        } else {
+          var yp = pyFn(c.h) - 14;
+          ctx.beginPath(); ctx.moveTo(xp, yp + 9); ctx.lineTo(xp + 5, yp); ctx.lineTo(xp - 5, yp); ctx.closePath();
+          ctx.fillStyle = 'rgba(239,83,80,0.88)'; ctx.fill();
+        }
+      }
+      ctx.restore();
+
+      /* Signal badge — get latest non-NaN values */
+      var badge = document.getElementById('fmBadge');
+      if (!badge) return;
+      var omedVal = NaN, smiVal = NaN;
+      for (var i = n - 1; i >= 0; i--) { if (!isNaN(fm.omed[i]))  { omedVal = fm.omed[i];  break; } }
+      for (var i = n - 1; i >= 0; i--) { if (!isNaN(fm.emasig[i])) { smiVal  = fm.emasig[i]; break; } }
+      var oCol  = omedVal >= 0.8 ? '#e74c3c' : omedVal <= 0.2 ? '#27ae60' : '#4e9af1';
+      var oTxt  = omedVal >= 0.8 ? ' SELL' : omedVal <= 0.2 ? ' BUY' : '';
+      var sCol  = smiVal  >= 60  ? '#e74c3c' : smiVal  <= -60  ? '#27ae60' : '#4e9af1';
+      var sTxt  = smiVal  >= 60  ? ' SELL' : smiVal  <= -60  ? ' BUY' : '';
+      badge.innerHTML =
+        '<div style="font-size:8px;letter-spacing:.08em;color:#4e5d78;margin-bottom:5px">FRACTAL MOMENTUM</div>' +
+        '<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:2px">' +
+          '<span style="color:#4e5d78">CHANNEL</span>' +
+          '<span style="color:' + oCol + ';font-weight:700">' + (isNaN(omedVal) ? '—' : omedVal.toFixed(3)) + oTxt + '</span>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;gap:12px">' +
+          '<span style="color:#4e5d78">SMI</span>' +
+          '<span style="color:' + sCol + ';font-weight:700">' + (isNaN(smiVal) ? '—' : smiVal.toFixed(1)) + sTxt + '</span>' +
+        '</div>';
+      badge.style.display = 'block';
     }
 
     if (chartCanvas) {
@@ -10537,6 +10660,16 @@
         'padding:0;font-family:"DM Mono",monospace;font-size:10px;' +
         'line-height:1.9;z-index:50;white-space:nowrap';
       chartCanvas.parentElement.appendChild(_ohlcTip);
+
+      /* Fractal Momentum signal badge — bottom-right corner of chart */
+      var _fmBadge = document.createElement('div');
+      _fmBadge.id = 'fmBadge';
+      _fmBadge.style.cssText =
+        'position:absolute;bottom:64px;right:82px;pointer-events:none;display:none;' +
+        'background:rgba(6,8,13,.88);border:1px solid rgba(201,168,76,.2);border-radius:3px;' +
+        'padding:7px 11px;font-family:"DM Mono",monospace;font-size:10px;' +
+        'line-height:1.8;z-index:50;white-space:nowrap;min-width:148px';
+      chartCanvas.parentElement.appendChild(_fmBadge);
 
       chartCanvas.addEventListener('mousemove', function (e) {
         if (typeof isBrushing !== 'undefined' && isBrushing) return;
@@ -11088,7 +11221,6 @@
             renderChart();
             lwChartInstance = true;
             var btn = document.getElementById('azBtn'); if (btn) btn.disabled = false;
-            autoBarPattern();
             if (typeof buildToolGrid === 'function') buildToolGrid();
           } else {
             if (currentDataSource === 'oanda') {
@@ -11130,7 +11262,28 @@
           /* ── Tick delta: only the latest candle per timeframe ── */
           if (data.tick) {
             var tc = data.tick[currentInterval];
-            if (!tc) return;
+
+            /* 4h/1d/1w receive no streaming ticks (broker-offset issue — see oanda.js TICK_TFS).
+               Extract the live price from the most granular tick available and apply it directly
+               to the current higher-TF candle so the chart and price bar stay live. */
+            if (!tc) {
+              var _stfs = ['1m', '5m', '15m', '30m', '1h'];
+              var _lp = null;
+              for (var _si = 0; _si < _stfs.length; _si++) {
+                if (data.tick[_stfs[_si]]) { _lp = data.tick[_stfs[_si]].c; break; }
+              }
+              if (!_lp || !chartCandles.length) return;
+              var _cb = chartCandles[chartCandles.length - 1];
+              _cb.c = _lp;
+              if (_lp > _cb.h) _cb.h = _lp;
+              if (_lp < _cb.l) _cb.l = _lp;
+              updateLivePriceAnim(_lp);
+              renderChart();
+              var _prv = chartCandles.length > 1 ? chartCandles[chartCandles.length - 2].c : _cb.o;
+              showLivePrice({ symbol: sym, price: _lp, change_24h: ((_lp - _prv) / _prv * 100).toFixed(3), trend_24h: _lp >= _prv ? 'up' : 'dn' });
+              return;
+            }
+
             /* Backtest guard — update _btAllCandles directly, never touch chartCandles (replay slice) */
             if (typeof _btActive !== 'undefined' && _btActive) {
               if (_btAllCandles && _btAllCandles.length) {
@@ -11189,7 +11342,6 @@
               chartCandles = d.candles;
               _initViewState(d.candles);
               renderChart();
-              autoBarPattern();
               lwChartInstance = true;
               var btn = document.getElementById('azBtn'); if (btn) btn.disabled = false;
               if (typeof buildToolGrid === 'function') buildToolGrid();
@@ -11247,7 +11399,6 @@
             chartCandles = d.candles;
             _initViewState(d.candles);
             renderChart();
-            autoBarPattern();
           } else {
             if (currentDataSource === 'oanda') {
               showChartMsg('Market closed or no data for ' + currentSymbol);
@@ -11382,6 +11533,18 @@
           }
         }
       }
+      renderChart();
+    }
+
+    function toggleFM() {
+      fmOn = !fmOn;
+      var b = document.getElementById('fmBtn');
+      if (b) {
+        b.style.opacity     = fmOn ? '1' : '0.35';
+        b.style.color       = fmOn ? '#c9a84c' : '#8a95a8';
+        b.style.borderColor = fmOn ? 'rgba(201,168,76,.4)' : 'rgba(255,255,255,.08)';
+      }
+      if (!fmOn) { var badge = document.getElementById('fmBadge'); if (badge) badge.style.display = 'none'; }
       renderChart();
     }
 
@@ -14069,25 +14232,6 @@
           buildToolbar: function () { buildToolbar(); },
           renderChart: function () { if (typeof renderChart === 'function') renderChart(); },
           nearestDrawing: _nearestDrawing
-        };
-
-        /* Expose autoBarPattern */
-        window._autoBarPattern = function () {
-          if (!chartCandles || chartCandles.length < 10) return;
-          drawings = drawings.filter(function (d) { return !d._auto; });
-          var n = Math.min(100, chartCandles.length);
-          var startBi = chartCandles.length - n;
-          var caps = chartCandles.slice(startBi);
-          var pmx = Math.max.apply(null, caps.map(function (c) { return c.h; }));
-          var pmn = Math.min.apply(null, caps.map(function (c) { return c.l; }));
-          var prng = pmx - pmn || 1;
-          drawings.unshift({
-            type: 'barpattern', barpattern: true, _auto: true, pixelOnly: false,
-            candles: caps,
-            p1: { bi: startBi, price: pmx + prng * 1.1 },
-            p2: { bi: startBi + n - 1, price: pmx + prng * 0.1 }
-          });
-          if (typeof renderChart === 'function') renderChart();
         };
 
         /* ── Auto-load XAUUSD from OANDA on startup ── */

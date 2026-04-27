@@ -1712,7 +1712,7 @@
     var equityCurve = [];
 
     /* Parse indicator / strategy params */
-    var overlay = true; // default: overlay on main price chart
+    var overlay = false; // Pine v5: indicator() without overlay=true defaults to separate pane
     if (ast.type === 'Program') {
       for (var i = 0; i < ast.body.length; i++) {
         if (ast.body[i].type === 'Strategy') {
