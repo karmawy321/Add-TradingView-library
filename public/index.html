@@ -8901,9 +8901,21 @@
       }
 
       /* ── FractalScript overlay ── */
+      /* Auto-rerun if candles grew past what the result covers (debounced 1s) */
+      if (fractalOverlayOn && fractalResult && fractalResult.plots && fractalResult.plots.length) {
+        var _fsValLen = fractalResult.plots[0].values.length;
+        if (_fsValLen < chartCandles.length && typeof _runFractalScript === 'function') {
+          if (!window._fsRerunTimer) {
+            window._fsRerunTimer = setTimeout(function() {
+              window._fsRerunTimer = null;
+              if (window.fractalOverlayOn && window.fractalSource) _runFractalScript();
+            }, 1000);
+          }
+        }
+      }
       if (fractalOverlayOn && fractalResult && fractalResult.plots) {
         var _FRACTALLEdge = PAD.l, _FRACTALREdge = W - PAD.r;
-        var _fsOverlay = fractalResult.overlay !== false; // default true
+        var _fsOverlay = fractalResult.overlay !== false;
 
         /* Sub-pane geometry for overlay=false — bottom 28% of chart area, or full chart if maximized */
         var _fsPaneTop = 0, _fsPaneBottom = 0, _fsPaneMin = 0, _fsPaneRange = 1;
@@ -8923,13 +8935,15 @@
             _fsPaneBottom = PAD.t + CH;
             _fsPaneTop = _fsPaneBottom - _fsPaneH;
           }
-          /* Compute min/max over plot values + hlines for pane-local Y scale */
+          /* Compute min/max over VISIBLE plot values only — avoids scanning 10k+ bars on every frame */
           var _fsMin = Infinity, _fsMax = -Infinity;
+          var _fsVisStart = Math.max(0, startIdx), _fsVisEnd = Math.min(endIdx, fractalResult.plots.length ? fractalResult.plots[0].values.length : 0);
           for (var _fpi = 0; _fpi < fractalResult.plots.length; _fpi++) {
             var _fpv = fractalResult.plots[_fpi].values;
-            for (var _fvi = 0; _fvi < _fpv.length; _fvi++) {
+            var _fsVE = Math.min(endIdx, _fpv.length);
+            for (var _fvi = _fsVisStart; _fvi < _fsVE; _fvi++) {
               var _fv = _fpv[_fvi];
-              if (!isNaN(_fv)) { if (_fv < _fsMin) _fsMin = _fv; if (_fv > _fsMax) _fsMax = _fv; }
+              if (!isNaN(_fv) && isFinite(_fv)) { if (_fv < _fsMin) _fsMin = _fv; if (_fv > _fsMax) _fsMax = _fv; }
             }
           }
           if (fractalResult.hlines) {
@@ -9002,6 +9016,15 @@
             chartCtx.fillRect(_bgX - barW / 2, PAD.t, barW, CH);
           }
         }
+        /* Clip plots/shapes/hlines to their pane so sub-pane lines don't bleed into price chart */
+        chartCtx.save();
+        chartCtx.beginPath();
+        if (_fsOverlay) {
+          chartCtx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, CH);
+        } else {
+          chartCtx.rect(PAD.l, _fsPaneTop, W - PAD.l - PAD.r, _fsPaneBottom - _fsPaneTop);
+        }
+        chartCtx.clip();
         /* plots — draw as lines with per-bar color continuity */
         for (var _pi = 0; _pi < fractalResult.plots.length; _pi++) {
           var _pp = fractalResult.plots[_pi];
@@ -9102,6 +9125,7 @@
             }
           }
         }
+        chartCtx.restore(); /* end pane clip */
         /* hlines */
         if (fractalResult.hlines) {
           for (var _hi = 0; _hi < fractalResult.hlines.length; _hi++) {
