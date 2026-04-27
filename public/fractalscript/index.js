@@ -46,6 +46,28 @@ if (typeof FractalScript === 'undefined' || !FractalScript.NA) {
     _loadMod('evaluator');
 }
 
+/* ── Wire up compile/run using the sub-module functions ── */
+(function (global) {
+    var FS = global.FractalScript;
+    if (!FS || !FS.lexer || !FS.parser || !FS.evaluate) return;
+
+    FS.compile = function (source) {
+        var lexResult = FS.lexer(source);
+        if (lexResult.error) return { ast: null, inputs: [], error: lexResult.error };
+        var ast = FS.parser(lexResult.tokens);
+        if (ast && ast.error) return { ast: null, inputs: [], error: ast.error };
+        return { ast: ast, inputs: [], error: null };
+    };
+
+    FS.run = function (source, candles, inputOverrides) {
+        var compiled = FS.compile(source);
+        if (compiled.error) return { plots: [], shapes: [], hlines: [], bgcolors: [], inputs: [], errors: [compiled.error] };
+        var result = FS.evaluate(compiled.ast, candles, inputOverrides || {});
+        if (result.error) return { plots: [], shapes: [], hlines: [], bgcolors: [], inputs: result.inputs || [], errors: [result.error] };
+        return result;
+    };
+})(typeof window !== 'undefined' ? window : this);
+
 /* ────────────────────────────────────────────────────────────────
    PUBLIC API
    ──────────────────────────────────────────────────────────────── */
