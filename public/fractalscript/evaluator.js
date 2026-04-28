@@ -216,6 +216,7 @@
             shapes: shapes,
             hlines: hlines,
             bgcolors: bgcolors,
+            fills: fills,
             inputs: inputs,
             lines: lines,
             labels: labels,
@@ -905,7 +906,7 @@
     }
 
     function emptyResult() {
-        return { plots: [], shapes: [], hlines: [], bgcolors: [], inputs: [], lines: [], labels: [], tables: [], boxes: [], errors: [] };
+        return { plots: [], shapes: [], hlines: [], bgcolors: [], fills: [], inputs: [], lines: [], labels: [], tables: [], boxes: [], errors: [] };
     }
 
     /* ── Export ── */

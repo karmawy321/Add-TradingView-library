@@ -80,6 +80,8 @@
             };
         }
 
+        /* color.* */
+        if (callName.indexOf('color.') === 0) return execColorCall(callName, args, node, ctx);
         /* line.* */
         if (callName.indexOf('line.') === 0) return execLineCall(callName, args, node, ctx);
         /* label.* */
@@ -216,19 +218,6 @@
             var _h = tsArgs[tsIdx + 3], _mi = tsArgs[tsIdx + 4], _s = tsArgs[tsIdx + 5];
             if (FS.isNa(_y) || FS.isNa(_mo) || FS.isNa(_d)) return FS.NA;
             return Date.UTC(_y, _mo - 1, _d, FS.isNa(_h) ? 0 : _h, FS.isNa(_mi) ? 0 : _mi, FS.isNa(_s) ? 0 : _s);
-        }
-
-        /* color.new() */
-        if (callName === 'color.new') {
-            var cArgs = [];
-            for (var ci = 0; ci < args.length; ci++) {
-                var ca = args[ci];
-                cArgs.push(execFn(ca.type === 'NamedArg' ? ca.value : ca));
-            }
-            if (cArgs.length >= 2 && typeof cArgs[0] === 'string') {
-                return applyTransparency(cArgs[0], cArgs[1]);
-            }
-            return FS.NA;
         }
 
         /* fill() - fills area between two plot lines */
@@ -729,6 +718,7 @@
             case 'str.lower': { var s = e(0); return FS.isNa(s) ? FS.NA : String(s).toLowerCase(); }
             case 'str.upper': { var s = e(0); return FS.isNa(s) ? FS.NA : String(s).toUpperCase(); }
             case 'str.replace': { var s = e(0), pat = e(1), rep = e(2); if (FS.isNa(s) || FS.isNa(pat) || FS.isNa(rep)) return FS.NA; return String(s).split(String(pat)).join(String(rep)); }
+            case 'str.replace_all': { var s = e(0), pat = e(1), rep = e(2); if (FS.isNa(s) || FS.isNa(pat) || FS.isNa(rep)) return FS.NA; return String(s).split(String(pat)).join(String(rep)); }
             case 'str.split': { var s = e(0), sep = e(1); if (FS.isNa(s) || FS.isNa(sep)) return [String(s)]; return String(s).split(String(sep)); }
             case 'str.tonumber': { var s = e(0); if (FS.isNa(s) || typeof s !== 'string') return FS.NA; var n = Number(s); return isNaN(n) ? FS.NA : n; }
             case 'str.trim': { var s = e(0); return FS.isNa(s) ? FS.NA : String(s).trim(); }
@@ -963,6 +953,87 @@
                 return FS.NA;
             }
             default: return FS.NA;
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       color.* DISPATCH
+       ══════════════════════════════════════════════════════════════ */
+
+    function execColorCall(name, args, node, ctx) {
+        var execFn = ctx.execNode;
+        function e(idx) { return evalArg(args, idx, execFn); }
+
+        switch (name) {
+            case 'color.new': {
+                var r = e(0), g = e(1), b = e(2), t = e(3);
+                if (FS.isNa(r) || FS.isNa(g) || FS.isNa(b)) return FS.NA;
+                var tr = Math.max(0, Math.min(1, FS.isNa(t) ? 1 : 1 - t / 100));
+                return 'rgba(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ',' + tr.toFixed(3) + ')';
+            }
+            case 'color.from_gradient': {
+                var value = e(0);
+                var bottom_value = e(1), top_value = e(2);
+                var bottom_color = e(3), top_color = e(4);
+                if (FS.isNa(value) || FS.isNa(bottom_value) || FS.isNa(top_value)) return FS.NA;
+
+                var t = top_value === bottom_value ? 0 : Math.max(0, Math.min(1, (value - bottom_value) / (top_value - bottom_value)));
+
+                function parseRGBA(c) {
+                    if (!c || typeof c !== 'string') return [128, 128, 128, 1];
+                    if (c.indexOf('rgba') === 0) {
+                        var m = c.match(/[\d.]+/g);
+                        if (m && m.length >= 4) return [+m[0], +m[1], +m[2], +m[3]];
+                    }
+                    if (c.indexOf('rgb') === 0) {
+                        var m2 = c.match(/[\d]+/g);
+                        if (m2 && m2.length >= 3) return [+m2[0], +m2[1], +m2[2], 1];
+                    }
+                    var h = c;
+                    if (h[0] === '#') h = h.slice(1);
+                    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+                    if (h.length < 6) return [128, 128, 128, 1];
+                    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 1];
+                }
+
+                var bc = parseRGBA(bottom_color);
+                var tc = parseRGBA(top_color);
+                var r = Math.round(bc[0] + (tc[0] - bc[0]) * t);
+                var g = Math.round(bc[1] + (tc[1] - bc[1]) * t);
+                var b = Math.round(bc[2] + (tc[2] - bc[2]) * t);
+                var a = bc[3] + (tc[3] - bc[3]) * t;
+                return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
+            }
+            case 'color.r': {
+                var c = e(0);
+                if (FS.isNa(c) || typeof c !== 'string') return FS.NA;
+                if (c[0] === '#') { var h = c.slice(1); if (h.length >= 2) return parseInt(h.slice(0, 2), 16); return FS.NA; }
+                if (c.indexOf('rgba') === 0 || c.indexOf('rgb') === 0) { var m = c.match(/[\d.]+/g); return (m && m.length >= 1) ? +m[0] : FS.NA; }
+                return FS.NA;
+            }
+            case 'color.g': {
+                var c = e(0);
+                if (FS.isNa(c) || typeof c !== 'string') return FS.NA;
+                if (c[0] === '#') { var h = c.slice(1); if (h.length >= 4) return parseInt(h.slice(2, 4), 16); return FS.NA; }
+                if (c.indexOf('rgba') === 0 || c.indexOf('rgb') === 0) { var m = c.match(/[\d.]+/g); return (m && m.length >= 2) ? +m[1] : FS.NA; }
+                return FS.NA;
+            }
+            case 'color.b': {
+                var c = e(0);
+                if (FS.isNa(c) || typeof c !== 'string') return FS.NA;
+                if (c[0] === '#') { var h = c.slice(1); if (h.length >= 6) return parseInt(h.slice(4, 6), 16); return FS.NA; }
+                if (c.indexOf('rgba') === 0 || c.indexOf('rgb') === 0) { var m = c.match(/[\d.]+/g); return (m && m.length >= 3) ? +m[2] : FS.NA; }
+                return FS.NA;
+            }
+            case 'color.t': {
+                var c = e(0);
+                if (FS.isNa(c) || typeof c !== 'string') return FS.NA;
+                if (c.indexOf('rgba') === 0) { var m = c.match(/[\d.]+/g); var tVal = (m && m.length >= 4) ? (1 - +m[3]) * 100 : 0; return Math.round(tVal); }
+                if (c.indexOf('rgb') === 0) return 0;
+                return 0;
+            }
+            default:
+                return { __error__: { line: node.line, col: node.col, message: "Unknown color function '" + name + "'" } };
         }
     }
 
