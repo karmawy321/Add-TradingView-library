@@ -54,9 +54,30 @@
         var overlay = false;
         if (ast.type === 'Program') {
             for (var i = 0; i < ast.body.length; i++) {
-                if (ast.body[i].type === 'Strategy') {
+                var node = ast.body[i];
+                var isStratNode = (node.type === 'Strategy');
+                var isIndNode = (node.type === 'Indicator');
+                var stratArgs = [];
+                var indArgs = [];
+
+                if (!isStratNode && !isIndNode) {
+                    var expr = node.type === 'ExpressionStatement' ? node.expression : node;
+                    if (expr && expr.type === 'CallExpression' && expr.callee && expr.callee.type === 'Identifier') {
+                        if (expr.callee.name === 'strategy') {
+                            isStratNode = true;
+                            stratArgs = expr.args || [];
+                        } else if (expr.callee.name === 'indicator') {
+                            isIndNode = true;
+                            indArgs = expr.args || [];
+                        }
+                    }
+                } else {
+                    stratArgs = node.args || [];
+                    indArgs = node.args || [];
+                }
+
+                if (isStratNode) {
                     isStrategy = true;
-                    var stratArgs = ast.body[i].args;
                     for (var sj = 0; sj < stratArgs.length; sj++) {
                         var sa = stratArgs[sj];
                         if (sa.type === 'NamedArg') {
@@ -66,27 +87,14 @@
                         }
                     }
                 }
-                if (ast.body[i].type === 'Indicator') {
-                    var indArgs = ast.body[i].args;
+                if (isIndNode) {
                     for (var j = 0; j < indArgs.length; j++) {
-                        if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'max_lines_count') {
-                            if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
-                                max_lines_count = indArgs[j].value.value;
-                            }
-                        }
-                        if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'max_labels_count') {
-                            if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
-                                max_labels_count = indArgs[j].value.value;
-                            }
-                        }
-                        if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'max_boxes_count') {
-                            if (indArgs[j].value && indArgs[j].value.type === 'NumLiteral') {
-                                max_boxes_count = indArgs[j].value.value;
-                            }
-                        }
-                        if (indArgs[j].type === 'NamedArg' && indArgs[j].name === 'overlay') {
-                            var ov = indArgs[j].value;
-                            if (ov && ov.type === 'BoolLiteral') overlay = !!ov.value;
+                        var ia = indArgs[j];
+                        if (ia.type === 'NamedArg') {
+                            if (ia.name === 'max_lines_count' && ia.value && ia.value.type === 'NumLiteral') max_lines_count = ia.value.value;
+                            if (ia.name === 'max_labels_count' && ia.value && ia.value.type === 'NumLiteral') max_labels_count = ia.value.value;
+                            if (ia.name === 'max_boxes_count' && ia.value && ia.value.type === 'NumLiteral') max_boxes_count = ia.value.value;
+                            if (ia.name === 'overlay' && ia.value && ia.value.type === 'BoolLiteral') overlay = !!ia.value.value;
                         }
                     }
                 }
