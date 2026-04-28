@@ -15131,94 +15131,96 @@
 
         /* ── Performance & Ratios Accordions ── */
         var accDiv = document.getElementById('tv-accordions-container');
-        if (accDiv) {
-          var longT = sr.trades.filter(function(t){ return t.direction === 'long'; });
-          var shortT = sr.trades.filter(function(t){ return t.direction === 'short'; });
-          
-          function calcPnl(list) { return list.reduce(function(a,t){ return a+t.profit; }, 0); }
-          function calcWinRate(list) { if (!list.length) return 0; return list.filter(function(t){ return t.profit > 0; }).length / list.length; }
-          
-          var allPnl = sum.netProfit;
-          var lPnl = calcPnl(longT);
-          var sPnl = calcPnl(shortT);
-
-          var grossProfit = sum.grossProfit || 0;
-          var grossLoss = sum.grossLoss || 0;
-
-          var largestWin = Math.max.apply(null, sr.trades.map(function(t){ return t.profit; }).concat([0]));
-          var largestLoss = Math.min.apply(null, sr.trades.map(function(t){ return t.profit; }).concat([0]));
-
-          accDiv.innerHTML = 
-            /* Accordion: Performance */
-            '<div class="tv-accordion">' +
-              '<div class="tv-accordion-header" onclick="_toggleAccordion(\'tv-acc-perf\')"><span>Performance</span><span id="tv-acc-perf-arrow">▼</span></div>' +
-              '<div id="tv-acc-perf" class="tv-accordion-content" style="display:block;">' +
-                '<div style="display:flex; gap:20px; padding:16px; border-bottom:1px solid #2a2e39;">' +
-                  '<div style="flex:1; display:flex; flex-direction:column;">' +
-                    '<div style="font:bold 12px \'Trebuchet MS\',sans-serif; color:#787b86; margin-bottom:8px;">Profit structure</div>' +
-                    '<div style="background:#131722; border:1px solid #2a2e39; border-radius:4px; position:relative; height:180px;">' +
-                      '<canvas id="tv-profit-structure-canvas" style="width:100%; height:100%;"></canvas>' +
-                    '</div>' +
-                  '</div>' +
-                  '<div style="flex:1; display:flex; flex-direction:column;">' +
-                    '<div style="font:bold 12px \'Trebuchet MS\',sans-serif; color:#787b86; margin-bottom:8px;">Benchmarking</div>' +
-                    '<div style="background:#131722; border:1px solid #2a2e39; border-radius:4px; position:relative; height:180px;">' +
-                      '<canvas id="tv-benchmarking-canvas" style="width:100%; height:100%;"></canvas>' +
-                    '</div>' +
-                  '</div>' +
-                '</div>' +
-                '<table class="tv-perf-table">' +
-                  '<thead><tr><th>Metric</th><th>All</th><th>Long</th><th>Short</th></tr></thead>' +
-                  '<tbody>' +
-                    '<tr><td>Net Profit</td><td class="' + (allPnl>=0?'up':'down') + '">' + allPnl.toFixed(2) + '</td><td class="' + (lPnl>=0?'up':'down') + '">' + lPnl.toFixed(2) + '</td><td class="' + (sPnl>=0?'up':'down') + '">' + sPnl.toFixed(2) + '</td></tr>' +
-                    '<tr><td>Gross Profit</td><td class="up">' + grossProfit.toFixed(2) + '</td><td class="up">' + calcPnl(longT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td><td class="up">' + calcPnl(shortT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td></tr>' +
-                    '<tr><td>Gross Loss</td><td class="down">' + grossLoss.toFixed(2) + '</td><td class="down">' + calcPnl(longT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td><td class="down">' + calcPnl(shortT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td></tr>' +
-                    '<tr><td>Win Rate</td><td>' + (sum.winRate * 100).toFixed(2) + '%</td><td>' + (calcWinRate(longT) * 100).toFixed(2) + '%</td><td>' + (calcWinRate(shortT) * 100).toFixed(2) + '%</td></tr>' +
-                  '</tbody>' +
-                '</table>' +
-              '</div>' +
-            '</div>' +
-
-            /* Accordion: Returns & Details */
-            '<div class="tv-accordion">' +
-              '<div class="tv-accordion-header" onclick="_toggleAccordion(\'tv-acc-ret\')"><span>Returns & Details</span><span id="tv-acc-ret-arrow">▼</span></div>' +
-              '<div id="tv-acc-ret" class="tv-accordion-content" style="display:none;">' +
-                '<table class="tv-perf-table">' +
-                  '<thead><tr><th>Metric</th><th>Value</th></tr></thead>' +
-                  '<tbody>' +
-                    '<tr><td>Initial Capital</td><td>' + (sum.initialCapital || 10000) + ' USD</td></tr>' +
-                    '<tr><td>Avg Trade</td><td>' + (sum.totalTrades ? (sum.netProfit / sum.totalTrades).toFixed(2) : '0.00') + '</td></tr>' +
-                    '<tr><td>Largest Winning Trade</td><td class="up">' + largestWin.toFixed(2) + '</td></tr>' +
-                    '<tr><td>Largest Losing Trade</td><td class="down">' + largestLoss.toFixed(2) + '</td></tr>' +
-                  '</tbody>' +
-                '</table>' +
-              '</div>' +
-            '</div>';
-        }
-
-        /* ── Trades List ── */
         var tDiv = document.getElementById('tv-trades-container');
-        if (tDiv) {
-          var cumPnl = 0;
-          var rows = sr.trades.map(function (t, i) {
-            cumPnl += t.profit;
-            var win = t.profit >= 0;
-            var cls = win ? 'tv-tr-win' : 'tv-tr-loss';
-            var dir = t.direction === 'long' ? '▲ Long' : '▼ Short';
-            return '<tr>' +
-              '<td>' + (i + 1) + '</td>' +
-              '<td class="' + cls + '">' + dir + '</td>' +
-              '<td>' + t.entryPrice.toFixed(4) + '</td>' +
-              '<td>' + t.exitPrice.toFixed(4) + '</td>' +
-              '<td>' + (t.exitBar - t.entryBar) + '</td>' +
-              '<td class="' + cls + '">' + (win ? '+' : '') + t.profit.toFixed(4) + '</td>' +
-              '<td>' + (cumPnl >= 0 ? '+' : '') + cumPnl.toFixed(4) + '</td>' +
-              '</tr>';
-          }).join('');
+        if (accDiv && tDiv) {
+          var shouldBuildHTML = !accDiv.innerHTML.trim() || !window._srpLastTradeCount || window._srpLastTradeCount !== sr.trades.length;
+          window._srpLastTradeCount = sr.trades.length;
 
-          tDiv.innerHTML = '<table class="tv-trades-table">' +
-            '<thead><tr><th>#</th><th>Type</th><th>Entry Price</th><th>Exit Price</th><th>Bars Held</th><th>Profit</th><th>Cum. Profit</th></tr></thead>' +
-            '<tbody>' + (rows || '<tr><td colspan="7" style="text-align:center;color:#787b86;">No trades recorded</td></tr>') + '</tbody></table>';
+          if (shouldBuildHTML) {
+            var longT = sr.trades.filter(function(t){ return t.direction === 'long'; });
+            var shortT = sr.trades.filter(function(t){ return t.direction === 'short'; });
+            
+            function calcPnl(list) { return list.reduce(function(a,t){ return a+t.profit; }, 0); }
+            function calcWinRate(list) { if (!list.length) return 0; return list.filter(function(t){ return t.profit > 0; }).length / list.length; }
+            
+            var allPnl = sum.netProfit;
+            var lPnl = calcPnl(longT);
+            var sPnl = calcPnl(shortT);
+
+            var grossProfit = sum.grossProfit || 0;
+            var grossLoss = sum.grossLoss || 0;
+
+            var largestWin = Math.max.apply(null, sr.trades.map(function(t){ return t.profit; }).concat([0]));
+            var largestLoss = Math.min.apply(null, sr.trades.map(function(t){ return t.profit; }).concat([0]));
+
+            accDiv.innerHTML = 
+              /* Accordion: Performance */
+              '<div class="tv-accordion">' +
+                '<div class="tv-accordion-header" onclick="_toggleAccordion(\'tv-acc-perf\')"><span>Performance</span><span id="tv-acc-perf-arrow">▼</span></div>' +
+                '<div id="tv-acc-perf" class="tv-accordion-content" style="display:block;">' +
+                  '<div style="display:flex; gap:20px; padding:16px; border-bottom:1px solid #2a2e39;">' +
+                    '<div style="flex:1; display:flex; flex-direction:column;">' +
+                      '<div style="font:bold 12px \'Trebuchet MS\',sans-serif; color:#787b86; margin-bottom:8px;">Profit structure</div>' +
+                      '<div style="background:#131722; border:1px solid #2a2e39; border-radius:4px; position:relative; height:180px;">' +
+                        '<canvas id="tv-profit-structure-canvas" style="width:100%; height:100%;"></canvas>' +
+                      '</div>' +
+                    '</div>' +
+                    '<div style="flex:1; display:flex; flex-direction:column;">' +
+                      '<div style="font:bold 12px \'Trebuchet MS\',sans-serif; color:#787b86; margin-bottom:8px;">Benchmarking</div>' +
+                      '<div style="background:#131722; border:1px solid #2a2e39; border-radius:4px; position:relative; height:180px;">' +
+                        '<canvas id="tv-benchmarking-canvas" style="width:100%; height:100%;"></canvas>' +
+                      '</div>' +
+                    '</div>' +
+                  '</div>' +
+                  '<table class="tv-perf-table">' +
+                    '<thead><tr><th>Metric</th><th>All</th><th>Long</th><th>Short</th></tr></thead>' +
+                    '<tbody>' +
+                      '<tr><td>Net Profit</td><td class="' + (allPnl>=0?'up':'down') + '">' + allPnl.toFixed(2) + '</td><td class="' + (lPnl>=0?'up':'down') + '">' + lPnl.toFixed(2) + '</td><td class="' + (sPnl>=0?'up':'down') + '">' + sPnl.toFixed(2) + '</td></tr>' +
+                      '<tr><td>Gross Profit</td><td class="up">' + grossProfit.toFixed(2) + '</td><td class="up">' + calcPnl(longT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td><td class="up">' + calcPnl(shortT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td></tr>' +
+                      '<tr><td>Gross Loss</td><td class="down">' + grossLoss.toFixed(2) + '</td><td class="down">' + calcPnl(longT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td><td class="down">' + calcPnl(shortT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td></tr>' +
+                      '<tr><td>Win Rate</td><td>' + (sum.winRate * 100).toFixed(2) + '%</td><td>' + (calcWinRate(longT) * 100).toFixed(2) + '%</td><td>' + (calcWinRate(shortT) * 100).toFixed(2) + '%</td></tr>' +
+                    '</tbody>' +
+                  '</table>' +
+                '</div>' +
+              '</div>' +
+
+              /* Accordion: Returns & Details */
+              '<div class="tv-accordion">' +
+                '<div class="tv-accordion-header" onclick="_toggleAccordion(\'tv-acc-ret\')"><span>Returns & Details</span><span id="tv-acc-ret-arrow">▼</span></div>' +
+                '<div id="tv-acc-ret" class="tv-accordion-content" style="display:none;">' +
+                  '<table class="tv-perf-table">' +
+                    '<thead><tr><th>Metric</th><th>Value</th></tr></thead>' +
+                    '<tbody>' +
+                      '<tr><td>Initial Capital</td><td>' + (sum.initialCapital || 10000) + ' USD</td></tr>' +
+                      '<tr><td>Avg Trade</td><td>' + (sum.totalTrades ? (sum.netProfit / sum.totalTrades).toFixed(2) : '0.00') + '</td></tr>' +
+                      '<tr><td>Largest Winning Trade</td><td class="up">' + largestWin.toFixed(2) + '</td></tr>' +
+                      '<tr><td>Largest Losing Trade</td><td class="down">' + largestLoss.toFixed(2) + '</td></tr>' +
+                    '</tbody>' +
+                  '</table>' +
+                '</div>' +
+              '</div>';
+
+            var cumPnl = 0;
+            var rows = sr.trades.map(function (t, i) {
+              cumPnl += t.profit;
+              var win = t.profit >= 0;
+              var cls = win ? 'tv-tr-win' : 'tv-tr-loss';
+              var dir = t.direction === 'long' ? '▲ Long' : '▼ Short';
+              return '<tr>' +
+                '<td>' + (i + 1) + '</td>' +
+                '<td class="' + cls + '">' + dir + '</td>' +
+                '<td>' + t.entryPrice.toFixed(4) + '</td>' +
+                '<td>' + t.exitPrice.toFixed(4) + '</td>' +
+                '<td>' + (t.exitBar - t.entryBar) + '</td>' +
+                '<td class="' + cls + '">' + (win ? '+' : '') + t.profit.toFixed(4) + '</td>' +
+                '<td>' + (cumPnl >= 0 ? '+' : '') + cumPnl.toFixed(4) + '</td>' +
+                '</tr>';
+            }).join('');
+
+            tDiv.innerHTML = '<table class="tv-trades-table">' +
+              '<thead><tr><th>#</th><th>Type</th><th>Entry Price</th><th>Exit Price</th><th>Bars Held</th><th>Profit</th><th>Cum. Profit</th></tr></thead>' +
+              '<tbody>' + (rows || '<tr><td colspan="7" style="text-align:center;color:#787b86;">No trades recorded</td></tr>') + '</tbody></table>';
+          }
         }
 
         var panel = document.getElementById('strategyReportPanel');
@@ -15234,63 +15236,46 @@
       window._drawPerformanceCharts = function (result) {
         if (!result || !result.strategyResult) return;
         var sum = result.strategyResult.summary;
+        var sr = result.strategyResult;
         
-        /* 1. Profit Waterfall Canvas */
+        /* 1. Profit Waterfall Chart */
         var pc = document.getElementById('tv-profit-structure-canvas');
         if (pc) {
-          var dpr = window.devicePixelRatio || 1;
-          var W = pc.offsetWidth || pc.clientWidth || 300;
-          var H = pc.offsetHeight || pc.clientHeight || 180;
-          pc.width = W * dpr; pc.height = H * dpr;
-          var ctx = pc.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
-          
           var gp = sum.grossProfit || 0;
           var gl = Math.abs(sum.grossLoss || 0);
           var np = sum.netProfit || 0;
           var com = Math.max(0, gp - gl - np);
-          
-          var bars = [
-            { label: 'Profit', val: gp, color: '#089981' },
-            { label: 'Loss', val: -gl, color: '#f23645' },
-            { label: 'Comm.', val: -com, color: '#ff9800' },
-            { label: 'Total', val: np, color: '#2962ff' }
-          ];
-          
-          var maxV = Math.max(gp, gl, Math.abs(np), 1);
-          var pad = { t: 20, b: 24, l: 12, r: 12 };
-          var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
-          var bw = Math.floor(cW / 4 * 0.6), gap = cW / 4;
-          var zeroY = pad.t + cH / 2;
-          
-          // Zero line
-          ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
-          
-          bars.forEach(function (b, i) {
-            var x = pad.l + i * gap + gap / 2;
-            var bh = (Math.abs(b.val) / maxV) * (cH / 2 - 10);
-            var y = b.val >= 0 ? zeroY - bh : zeroY;
-            
-            ctx.fillStyle = b.color;
-            ctx.fillRect(x - bw / 2, y, bw, bh);
-            
-            ctx.fillStyle = '#787b86'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText(b.label, x, H - 6);
-            
-            ctx.fillStyle = '#d1d4dc'; ctx.font = 'bold 9px sans-serif';
-            ctx.fillText((b.val >= 0 ? '+' : '') + b.val.toFixed(0), x, b.val >= 0 ? y - 4 : y + bh + 10);
-          });
+
+          if (window._myWaterfallChart && typeof window._myWaterfallChart.update === 'function') {
+            window._myWaterfallChart.data.datasets[0].data = [gp, -gl, -com, np];
+            window._myWaterfallChart.update('none');
+          } else {
+            window._myWaterfallChart = new Chart(pc, {
+              type: 'bar',
+              data: {
+                labels: ['Profit', 'Loss', 'Comm.', 'Total'],
+                datasets: [{
+                  data: [gp, -gl, -com, np],
+                  backgroundColor: ['rgba(8,153,129,0.8)', 'rgba(242,54,69,0.8)', 'rgba(255,152,0,0.8)', 'rgba(41,98,255,0.8)'],
+                  borderRadius: 4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  y: { grid: { color: '#2a2e39' }, ticks: { color: '#787b86' } },
+                  x: { grid: { display: false }, ticks: { color: '#787b86' } }
+                }
+              }
+            });
+          }
         }
         
-        /* 2. Benchmarking Canvas */
+        /* 2. Benchmarking Chart */
         var bc = document.getElementById('tv-benchmarking-canvas');
         if (bc) {
-          var dpr = window.devicePixelRatio || 1;
-          var W = bc.offsetWidth || bc.clientWidth || 300;
-          var H = bc.offsetHeight || bc.clientHeight || 180;
-          bc.width = W * dpr; bc.height = H * dpr;
-          var ctx = bc.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
-          
           var stratPct = sum.initialCapital ? (sum.netProfit / sum.initialCapital * 100) : 0;
           var bhPct = 12.89; 
           if (sr.trades && sr.trades.length > 0) {
@@ -15300,36 +15285,40 @@
               bhPct = ((lastPrice - firstPrice) / firstPrice) * 100;
             }
           }
-          
-          var bars = [
-            { label: 'Buy & Hold', val: bhPct, color: '#ff9800' },
-            { label: 'Strategy', val: stratPct, color: '#2962ff' }
-          ];
-          
-          var maxV = Math.max(Math.abs(stratPct), Math.abs(bhPct), 15);
-          var pad = { t: 20, b: 24, l: 20, r: 20 };
-          var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
-          var bw = Math.floor(cW / 2 * 0.4), gap = cW / 2;
-          var zeroY = pad.t + cH / 2;
-          
-          ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
-          
-          bars.forEach(function (b, i) {
-            var x = pad.l + i * gap + gap / 2;
-            var bh = (Math.abs(b.val) / maxV) * (cH / 2 - 10);
-            var y = b.val >= 0 ? zeroY - bh : zeroY;
-            
-            ctx.fillStyle = b.color;
-            ctx.fillRect(x - bw / 2, y, bw, bh);
-            
-            ctx.fillStyle = '#787b86'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText(b.label, x, H - 6);
-            
-            ctx.fillStyle = '#d1d4dc'; ctx.font = 'bold 9px sans-serif';
-            ctx.fillText((b.val >= 0 ? '+' : '') + b.val.toFixed(2) + '%', x, b.val >= 0 ? y - 4 : y + bh + 10);
-          });
+
+          if (window._myBenchChart && typeof window._myBenchChart.update === 'function') {
+            window._myBenchChart.data.datasets[0].data = [bhPct, stratPct];
+            window._myBenchChart.update('none');
+          } else {
+            window._myBenchChart = new Chart(bc, {
+              type: 'bar',
+              data: {
+                labels: ['Buy & Hold', 'Strategy'],
+                datasets: [{
+                  data: [bhPct, stratPct],
+                  backgroundColor: ['rgba(255,152,0,0.8)', 'rgba(41,98,255,0.8)'],
+                  borderRadius: 4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  y: { 
+                    grid: { color: '#2a2e39' }, 
+                    ticks: { 
+                      color: '#787b86',
+                      callback: function(v) { return v.toFixed(2) + '%'; }
+                    } 
+                  },
+                  x: { grid: { display: false }, ticks: { color: '#787b86' } }
+                }
+              }
+            });
+          }
         }
+      };
       };
 
       var _eqChartLayers = { equity: true, buyhold: false, excursions: true, drawdowns: false };
@@ -15379,13 +15368,6 @@
         var vals = Array.from(ec).map(function (v) { return v - cap; });
         var labels = vals.map(function (_, i) { return i; });
 
-        if (window._myEquityChart && typeof window._myEquityChart.update === 'function') {
-          window._myEquityChart.data.labels = labels;
-          window._myEquityChart.data.datasets = datasets;
-          window._myEquityChart.update('none');
-          return;
-        }
-
         var tooltipEl = document.getElementById('tv-equity-tooltip');
         if (tooltipEl) tooltipEl.style.display = 'none';
 
@@ -15399,8 +15381,8 @@
             label: 'Equity P&L',
             data: vals,
             borderColor: '#1D9E75',
-            backgroundColor: 'rgba(29, 158, 117, 0.08)',
-            fill: true,
+            borderWidth: 1.5,
+            fill: false,
             tension: 0.4,
             pointRadius: function(context) {
               var index = context.dataIndex;
@@ -15467,6 +15449,13 @@
             borderWidth: 0,
             barPercentage: 0.5
           });
+        }
+
+        if (window._myEquityChart && typeof window._myEquityChart.update === 'function') {
+          window._myEquityChart.data.labels = labels;
+          window._myEquityChart.data.datasets = datasets;
+          window._myEquityChart.update('none');
+          return;
         }
 
         window._myEquityChart = new Chart(canvas, {
