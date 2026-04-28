@@ -723,6 +723,8 @@
             case 'str.tonumber': { var s = e(0); if (FS.isNa(s) || typeof s !== 'string') return FS.NA; var n = Number(s); return isNaN(n) ? FS.NA : n; }
             case 'str.trim': { var s = e(0); return FS.isNa(s) ? FS.NA : String(s).trim(); }
             case 'str.repeat': { var s = e(0), cnt = e(1); if (FS.isNa(s) || FS.isNa(cnt)) return FS.NA; var r = ''; for (var ri = 0; ri < Math.max(0, Math.round(cnt)); ri++) r += String(s); return r; }
+            case 'str.pos': { var s = e(0), sub = e(1); if (FS.isNa(s) || FS.isNa(sub)) return FS.NA; return String(s).indexOf(String(sub)); }
+            case 'str.replace_all': { var s = e(0), pat = e(1), rep = e(2); if (FS.isNa(s) || FS.isNa(pat) || FS.isNa(rep)) return FS.NA; return String(s).split(String(pat)).join(String(rep)); }
             case 'str.match': { var s = e(0), rx = e(1); if (FS.isNa(s) || FS.isNa(rx)) return FS.NA; try { var m = String(s).match(new RegExp(String(rx))); return m ? m[0] : ''; } catch (e) { return FS.NA; } }
             default:
                 return { __error__: { line: node.line, col: node.col, message: "Unknown str function '" + name + "'" } };
@@ -966,10 +968,17 @@
 
         switch (name) {
             case 'color.new': {
-                var r = e(0), g = e(1), b = e(2), t = e(3);
-                if (FS.isNa(r) || FS.isNa(g) || FS.isNa(b)) return FS.NA;
-                var tr = Math.max(0, Math.min(1, FS.isNa(t) ? 1 : 1 - t / 100));
-                return 'rgba(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ',' + tr.toFixed(3) + ')';
+                var arg0 = e(0), arg1 = e(1), arg2 = e(2), arg3 = e(3);
+                /* 2-arg form: color.new(color, transp) — standard Pine Script */
+                if (typeof arg0 === 'string' || FS.isNa(arg2)) {
+                    if (FS.isNa(arg0)) return FS.NA;
+                    var transp = FS.isNa(arg1) ? 0 : +arg1;
+                    return applyTransparency(arg0, transp);
+                }
+                /* 4-arg form: color.new(r, g, b, transp) */
+                if (FS.isNa(arg0) || FS.isNa(arg1) || FS.isNa(arg2)) return FS.NA;
+                var tr = Math.max(0, Math.min(1, FS.isNa(arg3) ? 1 : 1 - arg3 / 100));
+                return 'rgba(' + Math.round(arg0) + ',' + Math.round(arg1) + ',' + Math.round(arg2) + ',' + tr.toFixed(3) + ')';
             }
             case 'color.from_gradient': {
                 var value = e(0);
