@@ -15093,6 +15093,7 @@
       window._hideStrategyReport = function () {
         var p = document.getElementById('strategyReportPanel');
         if (p) p.classList.remove('srp-open');
+        window._srpUserClosed = true;
       };
 
       window._buildStrategyReport = function (result) {
@@ -15221,12 +15222,12 @@
         }
 
         var panel = document.getElementById('strategyReportPanel');
-        if (panel) panel.classList.add('srp-open');
+        if (panel && !window._srpUserClosed) panel.classList.add('srp-open');
 
         setTimeout(function () {
           _drawEquityChart(document.getElementById('srp-equity-canvas'), result);
           _drawPerformanceCharts(result);
-        }, 30);
+        }, 350);
       };
 
       /* ── Benchmarking and Profit waterfall charts ── */
@@ -15378,8 +15379,11 @@
         var vals = Array.from(ec).map(function (v) { return v - cap; });
         var labels = vals.map(function (_, i) { return i; });
 
-        if (window._myEquityChart && typeof window._myEquityChart.destroy === 'function') {
-          window._myEquityChart.destroy();
+        if (window._myEquityChart && typeof window._myEquityChart.update === 'function') {
+          window._myEquityChart.data.labels = labels;
+          window._myEquityChart.data.datasets = datasets;
+          window._myEquityChart.update('none');
+          return;
         }
 
         var tooltipEl = document.getElementById('tv-equity-tooltip');
@@ -16175,6 +16179,7 @@
       };
       window._runFractalFromModal = function () {
         if (ta) window.fractalSource = ta.value;
+        window._srpUserClosed = false;
         _runFractalScript();
       };
       window._clearFractalScript = function () {
