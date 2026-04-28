@@ -637,12 +637,57 @@
                     expr.typeArg = tArg.value;
                     continue;
                 }
-                if (at(TT.LPAREN) && expr.type === 'MemberAccess' || (at(TT.LPAREN) && expr.type === 'Identifier')) {
-                    var l3 = loc(); pos++;
-                    var args = parseArgList(); if (args.error) return args;
-                    var r2 = eat(TT.RPAREN); if (r2 && r2.error) return r2;
-                    expr = { type: 'Call', callee: expr, args: args, line: l3.line, col: l3.col };
-                    continue;
+                if (at(TT.LPAREN) && (expr.type === 'MemberAccess' || expr.type === 'Identifier')) {
+                    var l3 = loc();
+                    var isFuncDecl = false;
+                    var depth = 0;
+                    for (var i = pos; i < tokens.length; i++) {
+                        if (tokens[i].type === TT.LPAREN) depth++;
+                        else if (tokens[i].type === TT.RPAREN) {
+                            depth--;
+                            if (depth === 0) {
+                                var nextPos = i + 1;
+                                while (nextPos < tokens.length && tokens[nextPos].type === TT.NEWLINE) {
+                                    nextPos++;
+                                }
+                                if (nextPos < tokens.length && tokens[nextPos].type === TT.ARROW) {
+                                    isFuncDecl = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isFuncDecl) {
+                        pos++; 
+                        var params = [];
+                        skipNewlines();
+                        if (!at(TT.RPAREN)) {
+                            while (true) {
+                                skipNewlines();
+                                var idents = [];
+                                while (at(TT.IDENT) || at(TT.KW_VAR)) {
+                                    idents.push(tokens[pos++]);
+                                }
+                                if (idents.length === 0) {
+                                    return { error: { line: cur().line, col: cur().col, message: "Expected parameter name" } };
+                                }
+                                var pName = idents[idents.length - 1];
+                                params.push({ type: 'Identifier', name: pName.value, line: pName.line, col: pName.col });
+                                skipNewlines();
+                                if (!tryEat(TT.COMMA)) break;
+                            }
+                        }
+                        var r2 = eat(TT.RPAREN); if (r2 && r2.error) return r2;
+                        expr = { type: 'Call', callee: expr, args: params, line: l3.line, col: l3.col };
+                        continue;
+                    } else {
+                        pos++;
+                        var args = parseArgList(); if (args.error) return args;
+                        var r2 = eat(TT.RPAREN); if (r2 && r2.error) return r2;
+                        expr = { type: 'Call', callee: expr, args: args, line: l3.line, col: l3.col };
+                        continue;
+                    }
                 }
                 break;
             }
