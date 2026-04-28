@@ -3905,6 +3905,36 @@
     .tv-perf-table tr:hover td {
       background: #1e222d;
     }
+
+    /* TradingView Accordions */
+    .tv-accordion {
+      background: #131722;
+      border: 1px solid #2a2e39;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    
+    .tv-accordion-header {
+      background: #171b26;
+      padding: 12px 16px;
+      font: bold 13px 'Trebuchet MS', sans-serif;
+      color: #d1d4dc;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+    
+    .tv-accordion-header:hover {
+      background: #1e222d;
+    }
+    
+    .tv-accordion-content {
+      border-top: 1px solid #2a2e39;
+      padding: 0px;
+      display: none;
+    }
     
     /* Trades List */
     .tv-trades-table {
@@ -4957,41 +4987,54 @@
 
           <!-- Strategy Report Panel — hidden until a strategy script runs -->
           <div id="strategyReportPanel">
-            <div id="srpHeader">
-              <span id="srp-stratName">Strategy Tester</span>
-              <div id="srp-tabs">
-                <button class="srp-tab srp-active" data-tab="overview" onclick="_srpTab(this)">Overview</button>
-                <button class="srp-tab" data-tab="perf" onclick="_srpTab(this)">Performance Summary</button>
-                <button class="srp-tab" data-tab="trades" onclick="_srpTab(this)">List of Trades</button>
+            <!-- TV Top Header -->
+            <div id="srpHeader" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #131722; border-bottom: 1px solid #2a2e39;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <span id="srp-stratName" style="font: 600 15px 'Trebuchet MS', sans-serif; color: #d1d4dc;">Strategy Tester</span>
               </div>
-              <div id="srp-hdr-btns" style="display:flex; align-items:center;">
-                <button class="srp-hdr-btn" onclick="_srpExportXlsx()" title="Export data as XLSX">Export XLSX</button>
-                <button class="srp-hdr-btn" onclick="_srpDownloadReport()" title="Export HTML Report">Download Report</button>
-                <button id="srp-close" onclick="_hideStrategyReport()" title="Close">✕</button>
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="font: 12px 'Trebuchet MS', sans-serif; color: #787b86; display: flex; align-items: center; gap: 6px;">
+                  <span id="srp-date-range">Apr 6, 2026 — Apr 27, 2026</span>
+                </div>
+                <div style="display:flex; align-items:center; gap: 6px;">
+                  <button class="srp-hdr-btn" onclick="_srpExportXlsx()" title="Export data as XLSX">Export XLSX</button>
+                  <button id="srp-close" onclick="_hideStrategyReport()" title="Close">✕</button>
+                </div>
               </div>
+            </div>
+
+            <!-- TV Round Tabs Row -->
+            <div style="display: flex; align-items: center; padding: 10px 20px; background: #131722; border-bottom: 1px solid #2a2e39; gap: 6px;">
+              <button class="srp-tab srp-active" data-tab="metrics" onclick="_srpTab(this)" style="background: #2a2e39; color: #2962ff; border: none; padding: 6px 16px; border-radius: 20px; font: bold 12px 'Trebuchet MS', sans-serif; cursor: pointer;">Metrics</button>
+              <button class="srp-tab" data-tab="trades" onclick="_srpTab(this)" style="background: transparent; color: #787b86; border: none; padding: 6px 16px; border-radius: 20px; font: bold 12px 'Trebuchet MS', sans-serif; cursor: pointer;">List of trades</button>
             </div>
             
-            <!-- TV Overview Tab -->
-            <div id="srp-overview" class="srp-pane srp-active">
-              <div class="tv-banner" id="tv-ov-banner">
-                <!-- Injected dynamically -->
+            <!-- TV Metrics Tab Content -->
+            <div id="srp-metrics" class="srp-pane srp-active" style="background:#131722; overflow-y: auto; padding-bottom: 20px;">
+              <!-- TV Overview Banner -->
+              <div class="tv-banner" id="tv-ov-banner" style="display: flex; justify-content: space-around; padding: 20px; background: #131722; border-bottom: 1px solid #2a2e39;">
+                <!-- Populated dynamically: Total P&L | Max DD | Total Trades | Profitable trades | Profit Factor -->
               </div>
-              <div class="tv-equity-wrapper">
-                <canvas id="srp-equity-canvas" style="width:100%; height:220px;"></canvas>
+              
+              <!-- TV Equity Chart -->
+              <div style="padding: 20px 20px 0 20px; background: #131722;">
+                <div style="font: bold 13px 'Trebuchet MS', sans-serif; color: #d1d4dc; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                  Equity chart <span style="font-size: 11px; font-weight: normal; color: #787b86;">ⓘ</span>
+                </div>
+                <div class="tv-equity-wrapper" style="position: relative; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; padding: 16px 12px;">
+                  <canvas id="srp-equity-canvas" style="width:100%; height:260px;"></canvas>
+                </div>
+              </div>
+              <!-- TV Accordions Container -->
+              <div id="tv-accordions-container" style="padding: 20px 20px 0 20px; background: #131722;">
+                <!-- Injected dynamically: Performance, Returns, trades analysis etc -->
               </div>
             </div>
 
-            <!-- TV Performance Summary Tab -->
-            <div id="srp-perf" class="srp-pane">
-              <div id="tv-perf-container" style="padding: 16px 20px;">
-                <!-- Injected dynamically -->
-              </div>
-            </div>
-
-            <!-- TV Trades List Tab -->
-            <div id="srp-trades" class="srp-pane">
-              <div id="tv-trades-container" style="padding: 16px 20px; width:100%;">
-                <!-- Injected dynamically -->
+            <!-- TV Trades List Tab Content -->
+            <div id="srp-trades" class="srp-pane" style="display: none; background: #131722; overflow-y: auto; padding: 20px;">
+              <div id="tv-trades-container" style="width: 100%;">
+                <!-- Populated dynamically -->
               </div>
             </div>
           </div>
@@ -14993,16 +15036,33 @@
       /* Tab switching */
       window._srpTab = function (btn) {
         var tab = btn.dataset.tab;
-        document.querySelectorAll('.srp-tab').forEach(function (b) { b.classList.remove('srp-active'); });
-        document.querySelectorAll('.srp-pane').forEach(function (p) { p.classList.remove('srp-active'); });
-        btn.classList.add('srp-active');
+        document.querySelectorAll('.srp-tab').forEach(function (b) { 
+          b.style.background = 'transparent'; 
+          b.style.color = '#787b86'; 
+        });
+        btn.style.background = '#2a2e39';
+        btn.style.color = '#2962ff';
+        
+        document.querySelectorAll('.srp-pane').forEach(function (p) { p.style.display = 'none'; });
         var pane = document.getElementById('srp-' + tab);
-        if (pane) pane.classList.add('srp-active');
+        if (pane) {
+          pane.style.display = 'block';
+          pane.style.flexDirection = 'column';
+        }
         var r = window._srpLastResult;
         if (!r) return;
         setTimeout(function () {
-          if (tab === 'overview') _drawEquityChart(document.getElementById('srp-equity-canvas'), r);
+          if (tab === 'metrics') _drawEquityChart(document.getElementById('srp-equity-canvas'), r);
         }, 10);
+      };
+
+      window._toggleAccordion = function (id) {
+        var content = document.getElementById(id);
+        if (!content) return;
+        var isHidden = content.style.display === 'none' || !content.style.display;
+        content.style.display = isHidden ? 'block' : 'none';
+        var arrow = document.getElementById(id + '-arrow');
+        if (arrow) arrow.textContent = isHidden ? '▲' : '▼';
       };
 
       window._hideStrategyReport = function () {
@@ -15015,29 +15075,37 @@
         window._srpLastResult = result;
         var sr = result.strategyResult;
         var sum = sr.summary;
+        var winCount = sr.trades.filter(function(t) { return t.profit > 0; }).length;
         
         /* ── Strategy name ── */
         var nameEl = document.getElementById('srp-stratName');
         if (nameEl) nameEl.textContent = (result.strategyName || 'Strategy Tester');
 
+        /* ── Date Range mock ── */
+        var dRange = document.getElementById('srp-date-range');
+        if (dRange) {
+          var today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          dRange.textContent = 'Through ' + today;
+        }
+
         /* ── Overview Tab Banner ── */
         var ovBanner = document.getElementById('tv-ov-banner');
         if (ovBanner) {
-          var pf = isFinite(sum.profitFactor) ? sum.profitFactor.toFixed(2) : '∞';
+          var pf = isFinite(sum.profitFactor) ? sum.profitFactor.toFixed(3) : '∞';
           var pnl = sum.netProfit;
           var pnlPct = sum.initialCapital ? (pnl / sum.initialCapital * 100) : 0;
           
           ovBanner.innerHTML = 
-            '<div class="tv-metric-box"><div class="tv-metric-lbl">Net Profit</div><div class="tv-metric-val ' + (pnl >= 0 ? 'up' : 'down') + '">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + ' (' + pnlPct.toFixed(2) + '%)</div></div>' +
-            '<div class="tv-metric-box"><div class="tv-metric-lbl">Total Closed Trades</div><div class="tv-metric-val">' + sum.totalTrades + '</div></div>' +
-            '<div class="tv-metric-box"><div class="tv-metric-lbl">Profit Factor</div><div class="tv-metric-val">' + pf + '</div></div>' +
-            '<div class="tv-metric-box"><div class="tv-metric-lbl">Max Drawdown</div><div class="tv-metric-val down">' + (sum.maxDrawdown * 100).toFixed(2) + '%</div></div>';
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Total P&L</div><div class="tv-metric-val ' + (pnl >= 0 ? 'up' : 'down') + '">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + ' <span style="font-size:11px; font-weight:normal; color:#787b86;">USDT</span> <span style="font-size:11px; font-weight:normal; margin-left:4px;">' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%</span></div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Max equity drawdown</div><div class="tv-metric-val down">' + (sum.maxDrawdown * 100).toFixed(2) + '%</div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Total trades</div><div class="tv-metric-val">' + sum.totalTrades + '</div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Profitable trades</div><div class="tv-metric-val">' + (sum.winRate * 100).toFixed(2) + '% <span style="font-size:11px; font-weight:normal; color:#787b86; margin-left:4px;">' + winCount + '/' + sum.totalTrades + '</span></div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Profit Factor</div><div class="tv-metric-val">' + pf + '</div></div>';
         }
 
-        /* ── Performance Summary ── */
-        var perfDiv = document.getElementById('tv-perf-container');
-        if (perfDiv) {
-          var pf = isFinite(sum.profitFactor) ? sum.profitFactor.toFixed(2) : '∞';
+        /* ── Performance & Ratios Accordions ── */
+        var accDiv = document.getElementById('tv-accordions-container');
+        if (accDiv) {
           var longT = sr.trades.filter(function(t){ return t.direction === 'long'; });
           var shortT = sr.trades.filter(function(t){ return t.direction === 'short'; });
           
@@ -15048,17 +15116,44 @@
           var lPnl = calcPnl(longT);
           var sPnl = calcPnl(shortT);
 
-          perfDiv.innerHTML = '<table class="tv-perf-table">' +
-            '<thead><tr><th>Performance Metric</th><th>All</th><th>Long Trades</th><th>Short Trades</th></tr></thead>' +
-            '<tbody>' +
-              '<tr><td>Net Profit</td><td class="' + (allPnl>=0?'up':'down') + '">' + allPnl.toFixed(2) + '</td><td class="' + (lPnl>=0?'up':'down') + '">' + lPnl.toFixed(2) + '</td><td class="' + (sPnl>=0?'up':'down') + '">' + sPnl.toFixed(2) + '</td></tr>' +
-              '<tr><td>Gross Profit</td><td class="up">' + sum.grossProfit.toFixed(2) + '</td><td class="up">' + calcPnl(longT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td><td class="up">' + calcPnl(shortT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td></tr>' +
-              '<tr><td>Gross Loss</td><td class="down">' + sum.grossLoss.toFixed(2) + '</td><td class="down">' + calcPnl(longT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td><td class="down">' + calcPnl(shortT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td></tr>' +
-              '<tr><td>Total Open Trades</td><td>0</td><td>0</td><td>0</td></tr>' +
-              '<tr><td>Win Rate</td><td>' + (sum.winRate * 100).toFixed(2) + '%</td><td>' + (calcWinRate(longT) * 100).toFixed(2) + '%</td><td>' + (calcWinRate(shortT) * 100).toFixed(2) + '%</td></tr>' +
-              '<tr><td>Profit Factor</td><td>' + pf + '</td><td>—</td><td>—</td></tr>' +
-              '<tr><td>Avg Trade</td><td>' + (sum.totalTrades ? (sum.netProfit / sum.totalTrades).toFixed(2) : '0.00') + '</td><td>' + (longT.length ? (lPnl / longT.length).toFixed(2) : '0.00') + '</td><td>' + (shortT.length ? (sPnl / shortT.length).toFixed(2) : '0.00') + '</td></tr>' +
-            '</tbody></table>';
+          var grossProfit = sum.grossProfit || 0;
+          var grossLoss = sum.grossLoss || 0;
+
+          var largestWin = Math.max.apply(null, sr.trades.map(function(t){ return t.profit; }).concat([0]));
+          var largestLoss = Math.min.apply(null, sr.trades.map(function(t){ return t.profit; }).concat([0]));
+
+          accDiv.innerHTML = 
+            /* Accordion: Performance */
+            '<div class="tv-accordion">' +
+              '<div class="tv-accordion-header" onclick="_toggleAccordion(\'tv-acc-perf\')"><span>Performance</span><span id="tv-acc-perf-arrow">▼</span></div>' +
+              '<div id="tv-acc-perf" class="tv-accordion-content" style="display:block;">' +
+                '<table class="tv-perf-table">' +
+                  '<thead><tr><th>Metric</th><th>All</th><th>Long</th><th>Short</th></tr></thead>' +
+                  '<tbody>' +
+                    '<tr><td>Net Profit</td><td class="' + (allPnl>=0?'up':'down') + '">' + allPnl.toFixed(2) + '</td><td class="' + (lPnl>=0?'up':'down') + '">' + lPnl.toFixed(2) + '</td><td class="' + (sPnl>=0?'up':'down') + '">' + sPnl.toFixed(2) + '</td></tr>' +
+                    '<tr><td>Gross Profit</td><td class="up">' + grossProfit.toFixed(2) + '</td><td class="up">' + calcPnl(longT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td><td class="up">' + calcPnl(shortT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td></tr>' +
+                    '<tr><td>Gross Loss</td><td class="down">' + grossLoss.toFixed(2) + '</td><td class="down">' + calcPnl(longT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td><td class="down">' + calcPnl(shortT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td></tr>' +
+                    '<tr><td>Win Rate</td><td>' + (sum.winRate * 100).toFixed(2) + '%</td><td>' + (calcWinRate(longT) * 100).toFixed(2) + '%</td><td>' + (calcWinRate(shortT) * 100).toFixed(2) + '%</td></tr>' +
+                  '</tbody>' +
+                '</table>' +
+              '</div>' +
+            '</div>' +
+
+            /* Accordion: Returns & Details */
+            '<div class="tv-accordion">' +
+              '<div class="tv-accordion-header" onclick="_toggleAccordion(\'tv-acc-ret\')"><span>Returns & Details</span><span id="tv-acc-ret-arrow">▼</span></div>' +
+              '<div id="tv-acc-ret" class="tv-accordion-content" style="display:none;">' +
+                '<table class="tv-perf-table">' +
+                  '<thead><tr><th>Metric</th><th>Value</th></tr></thead>' +
+                  '<tbody>' +
+                    '<tr><td>Initial Capital</td><td>' + (sum.initialCapital || 10000) + ' USDT</td></tr>' +
+                    '<tr><td>Avg Trade</td><td>' + (sum.totalTrades ? (sum.netProfit / sum.totalTrades).toFixed(2) : '0.00') + '</td></tr>' +
+                    '<tr><td>Largest Winning Trade</td><td class="up">' + largestWin.toFixed(2) + '</td></tr>' +
+                    '<tr><td>Largest Losing Trade</td><td class="down">' + largestLoss.toFixed(2) + '</td></tr>' +
+                  '</tbody>' +
+                '</table>' +
+              '</div>' +
+            '</div>';
         }
 
         /* ── Trades List ── */
