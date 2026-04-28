@@ -5024,10 +5024,10 @@
                 <div class="tv-equity-wrapper" style="display: flex; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; height: 300px; overflow: hidden;">
                   <!-- Sidebar Options -->
                   <div id="eq-sidebar" style="width: 150px; border-right: 1px solid #2a2e39; padding: 10px 0; display: flex; flex-direction: column; background: #171b26; flex-shrink: 0;">
-                    <div class="eq-option active" onclick="_changeEqView('equity')" id="eq-opt-equity" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Equity <span>👁️</span></div>
-                    <div class="eq-option" onclick="_changeEqView('buyhold')" id="eq-opt-buyhold" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer; opacity: 0.5; display: flex; justify-content: space-between; align-items: center;">Buy & hold <span>👁️</span></div>
-                    <div class="eq-option active" onclick="_changeEqView('excursions')" id="eq-opt-excursions" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Trades excursions <span>👁️</span></div>
-                    <div class="eq-option" onclick="_changeEqView('drawdowns')" id="eq-opt-drawdowns" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer; opacity: 0.5; display: flex; justify-content: space-between; align-items: center;">Run-up / Drawdowns <span>👁️</span></div>
+                    <div class="eq-option active" onclick="_changeEqView('equity')" id="eq-opt-equity" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Equity <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
+                    <div class="eq-option" onclick="_changeEqView('buyhold')" id="eq-opt-buyhold" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer; opacity: 0.5; display: flex; justify-content: space-between; align-items: center;">Buy & hold <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
+                    <div class="eq-option active" onclick="_changeEqView('excursions')" id="eq-opt-excursions" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Trades excursions <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
+                    <div class="eq-option" onclick="_changeEqView('drawdowns')" id="eq-opt-drawdowns" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer; opacity: 0.5; display: flex; justify-content: space-between; align-items: center;">Run-up / Drawdowns <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
                   </div>
                   <!-- Chart Panel -->
                   <div style="flex: 1; position: relative; padding: 16px;">
@@ -15171,7 +15171,7 @@
                 '<table class="tv-perf-table">' +
                   '<thead><tr><th>Metric</th><th>Value</th></tr></thead>' +
                   '<tbody>' +
-                    '<tr><td>Initial Capital</td><td>' + (sum.initialCapital || 10000) + ' USDT</td></tr>' +
+                    '<tr><td>Initial Capital</td><td>' + (sum.initialCapital || 10000) + ' USD</td></tr>' +
                     '<tr><td>Avg Trade</td><td>' + (sum.totalTrades ? (sum.netProfit / sum.totalTrades).toFixed(2) : '0.00') + '</td></tr>' +
                     '<tr><td>Largest Winning Trade</td><td class="up">' + largestWin.toFixed(2) + '</td></tr>' +
                     '<tr><td>Largest Losing Trade</td><td class="down">' + largestLoss.toFixed(2) + '</td></tr>' +
@@ -15417,10 +15417,13 @@
               ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
             }
 
+            var dotStep = Math.max(1, Math.ceil(n / 30));
             for (var i = 0; i < n; i++) {
-              ctx.fillStyle = vals[i] >= 0 ? '#089981' : '#f23645';
-              ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 3.5, 0, Math.PI * 2); ctx.fill();
-              ctx.strokeStyle = '#131722'; ctx.lineWidth = 1; ctx.stroke();
+              if (i % dotStep === 0 || i === n - 1) {
+                ctx.fillStyle = vals[i] >= 0 ? '#089981' : '#f23645';
+                ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 2.5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#131722'; ctx.lineWidth = 1; ctx.stroke();
+              }
             }
           }
 
@@ -15499,7 +15502,7 @@
             
             tooltip.innerHTML = 
               '<div style="font-weight:bold; margin-bottom:4px; color:#fff;">Point #' + closestIdx + '</div>' +
-              '<div>Equity P&L: <span style="color:' + (val>=0?'#089981':'#f23645') + '">' + (val>=0?'+':'') + val.toFixed(2) + ' USDT</span></div>' +
+              '<div>Equity P&L: <span style="color:' + (val>=0?'#089981':'#f23645') + '">' + (val>=0?'+':'') + val.toFixed(2) + ' USD</span></div>' +
               '<div style="margin-top:4px; border-top:1px solid #2a2e39; padding-top:4px;">' +
                 'Last Trade: <b style="color:#2962ff;">' + trade.direction.toUpperCase() + '</b><br/>' +
                 'Trade P&L: <span style="color:' + (trade.profit>=0?'#089981':'#f23645') + '">' + (trade.profit>=0?'+':'') + trade.profit.toFixed(2) + '</span>' +
