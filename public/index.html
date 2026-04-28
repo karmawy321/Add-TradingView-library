@@ -15214,8 +15214,8 @@
         var pc = document.getElementById('tv-profit-structure-canvas');
         if (pc) {
           var dpr = window.devicePixelRatio || 1;
-          var W = pc.offsetWidth || 300;
-          var H = pc.offsetHeight || 180;
+          var W = pc.offsetWidth || pc.clientWidth || 300;
+          var H = pc.offsetHeight || pc.clientHeight || 180;
           pc.width = W * dpr; pc.height = H * dpr;
           var ctx = pc.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
           
@@ -15261,8 +15261,8 @@
         var bc = document.getElementById('tv-benchmarking-canvas');
         if (bc) {
           var dpr = window.devicePixelRatio || 1;
-          var W = bc.offsetWidth || 300;
-          var H = bc.offsetHeight || 180;
+          var W = bc.offsetWidth || bc.clientWidth || 300;
+          var H = bc.offsetHeight || bc.clientHeight || 180;
           bc.width = W * dpr; bc.height = H * dpr;
           var ctx = bc.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
           
@@ -15356,7 +15356,7 @@
           ctx.save();
           // Green above cap
           var gradUp = ctx.createLinearGradient(0, pad.t, 0, zeroY);
-          gradUp.addColorStop(0, 'rgba(8,153,129,0.2)');
+          gradUp.addColorStop(0, 'rgba(8,153,129,0.08)');
           gradUp.addColorStop(1, 'rgba(8,153,129,0)');
           ctx.beginPath(); ctx.moveTo(px(0), Math.min(zeroY, py(vals[0])));
           for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
@@ -15366,25 +15366,15 @@
           // Red below cap
           var gradDn = ctx.createLinearGradient(0, zeroY, 0, pad.t + cH);
           gradDn.addColorStop(0, 'rgba(242,54,69,0)');
-          gradDn.addColorStop(1, 'rgba(242,54,69,0.2)');
+          gradDn.addColorStop(1, 'rgba(242,54,69,0.08)');
           ctx.beginPath(); ctx.moveTo(px(0), Math.max(zeroY, py(vals[0])));
           for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
           ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
           ctx.fillStyle = gradDn; ctx.fill();
           ctx.restore();
 
-          // Excursion Bars at the zero line
-          sr.trades.forEach(function(t, idx) {
-            if (idx >= n) return;
-            var bx = px(idx);
-            var bColor = t.profit >= 0 ? '#08998144' : '#f2364544';
-            var bh = 12;
-            ctx.fillStyle = bColor;
-            ctx.fillRect(bx - 2, zeroY - bh/2, 4, bh);
-          });
-
           // Dynamic Curve Color mapping (Green above, Red below)
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 1.5;
           for (var i = 0; i < n - 1; i++) {
             var x1 = px(i), y1 = py(vals[i]);
             var x2 = px(i+1), y2 = py(vals[i+1]);
@@ -15392,11 +15382,10 @@
             ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
           }
 
-          // Dots
-          for (var i = 0; i < n; i++) {
-            ctx.fillStyle = vals[i] >= 0 ? '#089981' : '#f23645';
-            ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 3, 0, Math.PI * 2); ctx.fill();
-          }
+          // Endpoint dot
+          ctx.fillStyle = vals[n-1] >= 0 ? '#089981' : '#f23645';
+          ctx.beginPath(); ctx.arc(px(n-1), py(vals[n-1]), 4, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.stroke();
 
           // Crosshair & Hover Highlights
           if (hoverIdx !== undefined && hoverIdx >= 0 && hoverIdx < n) {
