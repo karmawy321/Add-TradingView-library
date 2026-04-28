@@ -15352,11 +15352,19 @@
             ctx.fillText((gv >= 0 ? '+' : '') + gv.toFixed(0), pad.l - 8, gy);
           }
 
+          // Legend text upper-left
+          ctx.fillStyle = '#d1d4dc'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          ctx.fillText('Equity', pad.l + 10, pad.t + 10);
+          ctx.fillStyle = '#787b86';
+          ctx.fillText('Buy & hold', pad.l + 10, pad.t + 25);
+          ctx.fillText('Trades excursions', pad.l + 10, pad.t + 40);
+          ctx.fillText('Run-up / Drawdowns', pad.l + 10, pad.t + 55);
+
           // Area fills
           ctx.save();
           // Green above cap
           var gradUp = ctx.createLinearGradient(0, pad.t, 0, zeroY);
-          gradUp.addColorStop(0, 'rgba(8,153,129,0.08)');
+          gradUp.addColorStop(0, 'rgba(8,153,129,0.12)');
           gradUp.addColorStop(1, 'rgba(8,153,129,0)');
           ctx.beginPath(); ctx.moveTo(px(0), Math.min(zeroY, py(vals[0])));
           for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
@@ -15366,15 +15374,34 @@
           // Red below cap
           var gradDn = ctx.createLinearGradient(0, zeroY, 0, pad.t + cH);
           gradDn.addColorStop(0, 'rgba(242,54,69,0)');
-          gradDn.addColorStop(1, 'rgba(242,54,69,0.08)');
+          gradDn.addColorStop(1, 'rgba(242,54,69,0.12)');
           ctx.beginPath(); ctx.moveTo(px(0), Math.max(zeroY, py(vals[0])));
           for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
           ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
           ctx.fillStyle = gradDn; ctx.fill();
           ctx.restore();
 
+          // Excursion Bars at the zero line (Drawdowns / Run-ups)
+          sr.trades.forEach(function(t, idx) {
+            if (idx >= n) return;
+            var bx = px(idx + 1);
+            var isWin = t.profit >= 0;
+            var bColor = isWin ? 'rgba(8,153,129,0.4)' : 'rgba(242,54,69,0.4)';
+            var bh = Math.max(4, Math.min(24, Math.abs(t.profit) / 10)); // scaled bar
+            ctx.fillStyle = bColor;
+            if (isWin) {
+              ctx.fillRect(bx - 2, zeroY - bh, 4, bh);
+            } else {
+              ctx.fillRect(bx - 2, zeroY, 4, bh);
+            }
+          });
+
+          // Center zero baseline
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
+
           // Dynamic Curve Color mapping (Green above, Red below)
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = 2;
           for (var i = 0; i < n - 1; i++) {
             var x1 = px(i), y1 = py(vals[i]);
             var x2 = px(i+1), y2 = py(vals[i+1]);
@@ -15382,10 +15409,12 @@
             ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
           }
 
-          // Endpoint dot
-          ctx.fillStyle = vals[n-1] >= 0 ? '#089981' : '#f23645';
-          ctx.beginPath(); ctx.arc(px(n-1), py(vals[n-1]), 4, 0, Math.PI * 2); ctx.fill();
-          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.stroke();
+          // Dots on every single trade point
+          for (var i = 0; i < n; i++) {
+            ctx.fillStyle = vals[i] >= 0 ? '#089981' : '#f23645';
+            ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 3.5, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#131722'; ctx.lineWidth = 1; ctx.stroke();
+          }
 
           // Crosshair & Hover Highlights
           if (hoverIdx !== undefined && hoverIdx >= 0 && hoverIdx < n) {
