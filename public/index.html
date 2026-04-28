@@ -15196,6 +15196,9 @@
             '<tbody>' + (rows || '<tr><td colspan="7" style="text-align:center;color:#787b86;">No trades recorded</td></tr>') + '</tbody></table>';
         }
 
+        var panel = document.getElementById('strategyReportPanel');
+        if (panel) panel.classList.add('srp-open');
+
         setTimeout(function () {
           _drawEquityChart(document.getElementById('srp-equity-canvas'), result);
           _drawPerformanceCharts(result);
