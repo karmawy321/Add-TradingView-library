@@ -25,7 +25,7 @@
                 return execFn(args[i].value);
             }
         }
-        if (defIdx !== undefined && defIdx < args.length && args[defIdx].type !== 'NamedArg') {
+        if (defIdx !== undefined && defIdx >= 0 && defIdx < args.length && args[defIdx].type !== 'NamedArg') {
             return execFn(args[defIdx]);
         }
         return FS.NA;
