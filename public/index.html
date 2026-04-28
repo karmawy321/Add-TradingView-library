@@ -3876,6 +3876,18 @@
       position: relative;
     }
 
+    .tv-equity-wrapper.expanded {
+      position: fixed !important;
+      top: 20px;
+      left: 20px;
+      right: 20px;
+      bottom: 20px;
+      height: calc(100vh - 40px) !important;
+      z-index: 100000;
+      box-shadow: 0 10px 50px rgba(0,0,0,0.9);
+      background: #131722 !important;
+    }
+
     /* Performance Summary Table */
     .tv-perf-table {
       width: 100%;
@@ -5021,6 +5033,7 @@
               <div style="padding: 20px 20px 0 20px; background: #131722;">
                 <div style="font: bold 13px 'Trebuchet MS', sans-serif; color: #d1d4dc; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
                   Equity chart <span style="font-size: 11px; font-weight: normal; color: #787b86;">ⓘ</span>
+                  <button id="btn-expand-equity" onclick="_toggleExpandEquity()" style="background: rgba(201, 168, 76, 0.1); border: 1px solid rgba(201, 168, 76, 0.3); color: #c9a84c; font: 10px 'DM Mono', monospace; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-left: auto;">Expand</button>
                 </div>
                 <div class="tv-equity-wrapper" style="display: flex; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; height: 500px; overflow: hidden;">
                   <!-- Sidebar Options -->
@@ -15341,6 +15354,21 @@
         }
       };
 
+      window._toggleExpandEquity = function() {
+        var wrapper = document.querySelector('.tv-equity-wrapper');
+        var btn = document.getElementById('btn-expand-equity');
+        if (wrapper.classList.contains('expanded')) {
+          wrapper.classList.remove('expanded');
+          btn.innerText = 'Expand';
+        } else {
+          wrapper.classList.add('expanded');
+          btn.innerText = 'Collapse';
+        }
+        if (window._myEquityChart) {
+          setTimeout(function() { window._myEquityChart.resize(); }, 100);
+        }
+      };
+
       window._drawEquityChart = function (canvas, result) {
         _lastResult = result;
         if (!canvas || !result || !result.strategyResult) return;
@@ -15372,7 +15400,12 @@
             backgroundColor: 'rgba(29, 158, 117, 0.08)',
             fill: true,
             tension: 0.4,
-            pointRadius: 4,
+            pointRadius: function(context) {
+              var index = context.dataIndex;
+              var count = context.dataset.data.length;
+              var step = Math.max(1, Math.ceil(count / 12));
+              return (index === 0 || index === count - 1 || index % step === 0) ? 4 : 0;
+            },
             pointBackgroundColor: '#1D9E75',
             pointBorderColor: '#131722',
             pointBorderWidth: 1
