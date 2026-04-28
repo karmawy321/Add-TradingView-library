@@ -5021,7 +5021,7 @@
                 <div style="font: bold 13px 'Trebuchet MS', sans-serif; color: #d1d4dc; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
                   Equity chart <span style="font-size: 11px; font-weight: normal; color: #787b86;">ⓘ</span>
                 </div>
-                <div class="tv-equity-wrapper" style="display: flex; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; height: 300px; overflow: hidden;">
+                <div class="tv-equity-wrapper" style="display: flex; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; height: 500px; overflow: hidden;">
                   <!-- Sidebar Options -->
                   <div id="eq-sidebar" style="width: 150px; border-right: 1px solid #2a2e39; padding: 10px 0; display: flex; flex-direction: column; background: #171b26; flex-shrink: 0;">
                     <div class="eq-option active" onclick="_changeEqView('equity')" id="eq-opt-equity" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Equity <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
@@ -15391,37 +15391,21 @@
 
           // Layer: Equity
           if (_eqChartLayers.equity) {
-            ctx.save();
-            var gradUp = ctx.createLinearGradient(0, pad.t, 0, zeroY);
-            gradUp.addColorStop(0, 'rgba(8,153,129,0.15)');
-            gradUp.addColorStop(1, 'rgba(8,153,129,0)');
-            ctx.beginPath(); ctx.moveTo(px(0), Math.min(zeroY, py(vals[0])));
-            for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
-            ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
-            ctx.fillStyle = gradUp; ctx.fill();
-
-            var gradDn = ctx.createLinearGradient(0, zeroY, 0, pad.t + cH);
-            gradDn.addColorStop(0, 'rgba(242,54,69,0)');
-            gradDn.addColorStop(1, 'rgba(242,54,69,0.15)');
-            ctx.beginPath(); ctx.moveTo(px(0), Math.max(zeroY, py(vals[0])));
-            for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
-            ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
-            ctx.fillStyle = gradDn; ctx.fill();
-            ctx.restore();
-
-            ctx.lineWidth = 2;
-            for (var i = 0; i < n - 1; i++) {
-              var x1 = px(i), y1 = py(vals[i]);
-              var x2 = px(i+1), y2 = py(vals[i+1]);
-              ctx.strokeStyle = vals[i+1] >= 0 ? '#089981' : '#f23645';
-              ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            // Simple Polyline
+            ctx.strokeStyle = '#089981'; ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(px(0), py(vals[0]));
+            for (var i = 1; i < n; i++) {
+              ctx.lineTo(px(i), py(vals[i]));
             }
+            ctx.stroke();
 
-            var dotStep = Math.max(1, Math.ceil(n / 30));
+            // Simple Sparse Nodes
+            var dotStep = Math.max(1, Math.ceil(n / 40));
             for (var i = 0; i < n; i++) {
               if (i % dotStep === 0 || i === n - 1) {
-                ctx.fillStyle = vals[i] >= 0 ? '#089981' : '#f23645';
-                ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 2.5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#089981';
+                ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 3, 0, Math.PI * 2); ctx.fill();
                 ctx.strokeStyle = '#131722'; ctx.lineWidth = 1; ctx.stroke();
               }
             }
