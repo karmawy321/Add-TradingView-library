@@ -725,7 +725,8 @@
                     namespace = 'array';
                 } else if (methodObj && typeof methodObj === 'object' && methodObj.__map__) {
                     namespace = 'map';
-                } else if (typeof methodObj === 'string' && !FS.isNa(methodObj)) {
+                } else if (typeof methodObj === 'string' && !FS.isNa(methodObj) &&
+                           ['ta', 'strategy', 'math', 'color', 'input', 'str', 'array', 'map', 'box', 'table', 'label', 'line', 'shape', 'location', 'size', 'hline', 'barstate', 'timeframe', 'extend', 'position', 'text', 'syminfo', 'barmerge', 'plot', 'order'].indexOf(methodObj) === -1) {
                     namespace = 'str';
                 }
 
