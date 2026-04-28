@@ -120,6 +120,7 @@
         if (obj === 'position') return FS.POSITIONS[member] || member;
         if (obj === 'text') return FS.TEXT_ALIGN[member] || member;
         if (obj === 'table') return 'table.' + member;
+        if (obj === 'map') return 'map.' + member;
 
         /* UDT field access */
         if (obj && typeof obj === 'object' && !obj.__fractal_na__ && obj.__type__) {

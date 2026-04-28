@@ -31,6 +31,7 @@
         var labels = [];
         var tables = [];
         var boxes = [];
+        var fills = [];
 
         var nextLineId = 1;
         var nextLabelId = 1;
@@ -884,6 +885,7 @@
                 max_labels_count: max_labels_count,
                 max_boxes_count: max_boxes_count,
                 lines: lines, labels: labels, tables: tables, boxes: boxes,
+                fills: fills,
                 isStrategy: isStrategy,
                 stratCapital: stratCapital,
                 stratCommission: stratCommission,

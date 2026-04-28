@@ -28,6 +28,38 @@
             t = (t !== undefined) ? t : 0;
             var a = Math.max(0, Math.min(1, 1 - t / 100));
             return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
+        },
+        from_gradient: function (value, bottom_value, top_value, bottom_color, top_color) {
+            if (isNaN(value) || isNa(value)) return NA;
+            var t = top_value === bottom_value ? 0 : Math.max(0, Math.min(1, (value - bottom_value) / (top_value - bottom_value)));
+            function parseHex(c) {
+                if (!c || typeof c !== 'string') return [128, 128, 128];
+                var h = c;
+                if (h[0] === '#') h = h.slice(1);
+                if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+                if (h.length < 6) return [128, 128, 128];
+                return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+            }
+            function parseRGBA(c) {
+                if (!c || typeof c !== 'string') return [128, 128, 128, 1];
+                if (c.indexOf('rgba') === 0) {
+                    var m = c.match(/[\d.]+/g);
+                    if (m && m.length >= 4) return [+m[0], +m[1], +m[2], +m[3]];
+                }
+                if (c.indexOf('rgb') === 0) {
+                    var m2 = c.match(/[\d]+/g);
+                    if (m2 && m2.length >= 3) return [+m2[0], +m2[1], +m2[2], 1];
+                }
+                var p = parseHex(c);
+                return [p[0], p[1], p[2], 1];
+            }
+            var bc = parseRGBA(bottom_color);
+            var tc = parseRGBA(top_color);
+            var r = Math.round(bc[0] + (tc[0] - bc[0]) * t);
+            var g = Math.round(bc[1] + (tc[1] - bc[1]) * t);
+            var b = Math.round(bc[2] + (tc[2] - bc[2]) * t);
+            var a = bc[3] + (tc[3] - bc[3]) * t;
+            return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
         }
     };
 
@@ -61,11 +93,18 @@
             }
             return n > 0 ? s / n : NA;
         },
-        pi: Math.PI, e: Math.E
+        pi: Math.PI, e: Math.E,
+        sin: Math.sin, cos: Math.cos, tan: Math.tan,
+        asin: Math.asin, acos: Math.acos, atan: Math.atan,
+        exp: Math.exp, random: function (min, max) {
+            if (arguments.length === 0) return Math.random();
+            if (arguments.length === 1) return Math.random() * min;
+            return min + Math.random() * (max - min);
+        }
     };
 
     var LINE_STYLES = { style_solid: 'solid', style_dashed: 'dashed', style_dotted: 'dotted' };
-    var BOX_STYLES  = { style_solid: 'solid', style_dashed: 'dashed', style_dotted: 'dotted' };
+    var BOX_STYLES = { style_solid: 'solid', style_dashed: 'dashed', style_dotted: 'dotted' };
     var EXTEND_MODES = { none: 'none', right: 'right', left: 'left', both: 'both' };
     var LABEL_STYLES = {
         style_none: 'none',

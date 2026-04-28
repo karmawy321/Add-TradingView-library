@@ -92,6 +92,8 @@
         if (callName.indexOf('str.') === 0) return execStrCall(callName, args, node, ctx);
         /* array.* */
         if (callName.indexOf('array.') === 0) return execArrayCall(callName, args, node, ctx);
+        /* map.* */
+        if (callName.indexOf('map.') === 0) return execMapCall(callName, args, node, ctx);
         /* ta.* */
         if (callName.indexOf('ta.') === 0) return execTaCall(callName, args, node, ctx);
         /* strategy.* */
@@ -225,6 +227,31 @@
             }
             if (cArgs.length >= 2 && typeof cArgs[0] === 'string') {
                 return applyTransparency(cArgs[0], cArgs[1]);
+            }
+            return FS.NA;
+        }
+
+        /* fill() - fills area between two plot lines */
+        if (callName === 'fill') {
+            var p1 = null, p2 = null, fillColor = null, fillTransp = FS.NA, fillTitle = '';
+            for (var fi = 0; fi < args.length; fi++) {
+                var fa = args[fi];
+                if (fa.type === 'NamedArg') {
+                    if (fa.name === 'color') fillColor = execFn(fa.value);
+                    else if (fa.name === 'transp') fillTransp = execFn(fa.value);
+                    else if (fa.name === 'title') fillTitle = String(execFn(fa.value) || '');
+                } else {
+                    if (fi === 0) p1 = execFn(fa);
+                    else if (fi === 1) p2 = execFn(fa);
+                }
+            }
+            if (fillColor && !FS.isNa(fillColor)) {
+                var finalColor = !FS.isNa(fillTransp) ? applyTransparency(fillColor, fillTransp) : fillColor;
+                ctx.fills.push({
+                    plot1: p1, plot2: p2,
+                    color: finalColor,
+                    title: fillTitle || ''
+                });
             }
             return FS.NA;
         }
@@ -702,6 +729,11 @@
             case 'str.lower': { var s = e(0); return FS.isNa(s) ? FS.NA : String(s).toLowerCase(); }
             case 'str.upper': { var s = e(0); return FS.isNa(s) ? FS.NA : String(s).toUpperCase(); }
             case 'str.replace': { var s = e(0), pat = e(1), rep = e(2); if (FS.isNa(s) || FS.isNa(pat) || FS.isNa(rep)) return FS.NA; return String(s).split(String(pat)).join(String(rep)); }
+            case 'str.split': { var s = e(0), sep = e(1); if (FS.isNa(s) || FS.isNa(sep)) return [String(s)]; return String(s).split(String(sep)); }
+            case 'str.tonumber': { var s = e(0); if (FS.isNa(s) || typeof s !== 'string') return FS.NA; var n = Number(s); return isNaN(n) ? FS.NA : n; }
+            case 'str.trim': { var s = e(0); return FS.isNa(s) ? FS.NA : String(s).trim(); }
+            case 'str.repeat': { var s = e(0), cnt = e(1); if (FS.isNa(s) || FS.isNa(cnt)) return FS.NA; var r = ''; for (var ri = 0; ri < Math.max(0, Math.round(cnt)); ri++) r += String(s); return r; }
+            case 'str.match': { var s = e(0), rx = e(1); if (FS.isNa(s) || FS.isNa(rx)) return FS.NA; try { var m = String(s).match(new RegExp(String(rx))); return m ? m[0] : ''; } catch (e) { return FS.NA; } }
             default:
                 return { __error__: { line: node.line, col: node.col, message: "Unknown str function '" + name + "'" } };
         }
@@ -761,6 +793,54 @@
             case 'array.indexof': { var a = e(0), v = e(1); return Array.isArray(a) ? a.indexOf(v) : -1; }
             case 'array.includes': { var a = e(0), v = e(1); return Array.isArray(a) ? a.indexOf(v) !== -1 : false; }
             case 'array.reverse': { var a = e(0); if (Array.isArray(a)) a.reverse(); return FS.NA; }
+            case 'array.copy': { var a = e(0); return Array.isArray(a) ? a.slice() : []; }
+            case 'array.fill': {
+                var a = e(0), v = e(1), from = e(2), to = e(3);
+                if (!Array.isArray(a)) return FS.NA;
+                var f = FS.isNa(from) ? 0 : Math.max(0, Math.round(from));
+                var t = FS.isNa(to) ? a.length : Math.min(a.length, Math.round(to));
+                for (var fi = f; fi < t; fi++) a[fi] = v;
+                return FS.NA;
+            }
+            case 'array.from': {
+                var vals = [];
+                for (var fi = 0; fi < args.length; fi++) vals.push(evalArg(args, fi, execFn));
+                return vals;
+            }
+            case 'array.join': { var a = e(0), sep = e(1); if (!Array.isArray(a)) return FS.NA; return a.map(function (x) { return FS.isNa(x) ? 'na' : String(x); }).join(FS.isNa(sep) ? '' : String(sep)); }
+            case 'array.stdev': {
+                var a = e(0);
+                if (!Array.isArray(a)) return FS.NA;
+                var sum = 0, cnt = 0;
+                for (var si = 0; si < a.length; si++) { if (!FS.isNa(a[si])) { sum += a[si]; cnt++; } }
+                if (cnt < 2) return FS.NA;
+                var mean = sum / cnt;
+                var sq = 0;
+                for (var si2 = 0; si2 < a.length; si2++) { if (!FS.isNa(a[si2])) sq += (a[si2] - mean) * (a[si2] - mean); }
+                return Math.sqrt(sq / (cnt - 1));
+            }
+            case 'array.median': {
+                var a = e(0);
+                if (!Array.isArray(a)) return FS.NA;
+                var sorted = [];
+                for (var mi = 0; mi < a.length; mi++) { if (!FS.isNa(a[mi])) sorted.push(a[mi]); }
+                sorted.sort(function (x, y) { return x - y; });
+                if (sorted.length === 0) return FS.NA;
+                var mid = Math.floor(sorted.length / 2);
+                return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            }
+            case 'array.every': {
+                var a = e(0), pred = args[1] ? ctx.userFunctions && ctx.userFunctions[nodes && nodes.callee ? '' : ''] : null;
+                if (!Array.isArray(a)) return false;
+                for (var ei = 0; ei < a.length; ei++) { if (FS.isNa(a[ei])) return false; if (!a[ei]) return false; }
+                return a.length > 0;
+            }
+            case 'array.some': {
+                var a = e(0);
+                if (!Array.isArray(a)) return false;
+                for (var soi = 0; soi < a.length; soi++) { if (!FS.isNa(a[soi]) && a[soi]) return true; }
+                return false;
+            }
             default:
                 return { __error__: { line: node.line, col: node.col, message: "Unknown array function '" + name + "'" } };
         }
@@ -883,6 +963,90 @@
                 return FS.NA;
             }
             default: return FS.NA;
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       map.* DISPATCH
+       ══════════════════════════════════════════════════════════════ */
+
+    function execMapCall(name, args, node, ctx) {
+        var execFn = ctx.execNode;
+        function e(idx) { return evalArg(args, idx, execFn); }
+
+        switch (name) {
+            case 'map.new':
+            case 'map.new_int':
+            case 'map.new_float':
+            case 'map.new_bool':
+            case 'map.new_string':
+            case 'map.new_color':
+            case 'map.new_label':
+            case 'map.new_line':
+            case 'map.new_box':
+            case 'map.new_table': {
+                var m = { __map__: true, _keys: {}, _vals: {} };
+                return m;
+            }
+            case 'map.put': {
+                var m = e(0), k = e(1), v = e(2);
+                if (m && m.__map__ && !FS.isNa(k)) {
+                    var ks = String(k);
+                    m._keys[ks] = true;
+                    m._vals[ks] = v;
+                }
+                return FS.NA;
+            }
+            case 'map.get': {
+                var m = e(0), k = e(1);
+                if (m && m.__map__ && !FS.isNa(k)) {
+                    var ks = String(k);
+                    if (m._keys[ks]) return m._vals[ks];
+                }
+                return FS.NA;
+            }
+            case 'map.remove': {
+                var m = e(0), k = e(1);
+                if (m && m.__map__ && !FS.isNa(k)) {
+                    var ks = String(k);
+                    delete m._keys[ks];
+                    delete m._vals[ks];
+                }
+                return FS.NA;
+            }
+            case 'map.clear': {
+                var m = e(0);
+                if (m && m.__map__) { m._keys = {}; m._vals = {}; }
+                return FS.NA;
+            }
+            case 'map.contains': {
+                var m = e(0), k = e(1);
+                if (m && m.__map__ && !FS.isNa(k)) {
+                    return !!(m._keys[String(k)]);
+                }
+                return false;
+            }
+            case 'map.size': {
+                var m = e(0);
+                if (m && m.__map__) return Object.keys(m._keys).length;
+                return 0;
+            }
+            case 'map.keys': {
+                var m = e(0);
+                if (m && m.__map__) return Object.keys(m._keys);
+                return [];
+            }
+            case 'map.values': {
+                var m = e(0);
+                if (m && m.__map__) {
+                    var varr = [];
+                    for (var ki in m._keys) { if (m._keys.hasOwnProperty(ki)) varr.push(m._vals[ki]); }
+                    return varr;
+                }
+                return [];
+            }
+            default:
+                return { __error__: { line: node.line, col: node.col, message: "Unknown map function '" + name + "'" } };
         }
     }
 
