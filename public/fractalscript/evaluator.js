@@ -379,6 +379,7 @@
                     typeRegistry[node.name] = { fields: node.fields };
                     return FS.NA;
                 case 'MemberAssign': return execMemberAssign(node);
+                case '__resolved__': return node.__resolvedValue__;
                 default: return FS.NA;
             }
         }
@@ -712,6 +713,44 @@
                 }
             }
 
+            /* Method-style calls: myArr.push(val) → array.push(myArr, val)
+               Resolve the object to detect its type, then rewrite to namespace call */
+            if (node.callee.type === 'MemberAccess') {
+                var methodObj = execNode(node.callee.object);
+                if (methodObj && methodObj.__error__) return methodObj;
+                var methodName = node.callee.member;
+                var namespace = null;
+
+                if (Array.isArray(methodObj)) {
+                    namespace = 'array';
+                } else if (methodObj && typeof methodObj === 'object' && methodObj.__map__) {
+                    namespace = 'map';
+                } else if (typeof methodObj === 'string' && !FS.isNa(methodObj)) {
+                    namespace = 'str';
+                }
+
+                if (namespace) {
+                    /* Check user-defined methods first (e.g. method addDouble) */
+                    if (userFunctions[methodName]) {
+                        var objLitU = { type: '__resolved__', __resolvedValue__: methodObj, line: node.line, col: node.col };
+                        var userArgs = [objLitU].concat(node.args);
+                        return execUserFunction(methodName, userArgs, node);
+                    }
+                    /* Built-in namespace method: array.push, str.contains, etc. */
+                    var objLiteral = { type: '__resolved__', __resolvedValue__: methodObj, line: node.line, col: node.col };
+                    var rewrittenArgs = [objLiteral].concat(node.args);
+                    var rewrittenName = namespace + '.' + methodName;
+                    return FS.execCallDispatch(rewrittenName, rewrittenArgs, node, evalCtx());
+                }
+
+                /* User-defined method call on any type (UDTs, primitives, etc.) */
+                if (userFunctions[methodName]) {
+                    var objLit2 = { type: '__resolved__', __resolvedValue__: methodObj, line: node.line, col: node.col };
+                    var methodArgs = [objLit2].concat(node.args);
+                    return execUserFunction(methodName, methodArgs, node);
+                }
+            }
+
             var callName = getCallName(node.callee);
 
             /* User-defined function */
@@ -722,6 +761,7 @@
             /* Delegate to shared dispatchers */
             return FS.execCallDispatch(callName, node.args, node, evalCtx());
         }
+
 
         function execUserFunction(name, callArgs, node) {
             if (fnCallDepth > 50) {

@@ -85,6 +85,9 @@
             if (at(TT.KW_SWITCH)) return parseSwitch();
             if (at(TT.KW_TYPE)) return parseTypeDecl();
 
+            /* method declarations: method name(params) => body — parsed as function */
+            if (at(TT.KW_METHOD)) return parseMethodDecl();
+
             /* plot / plotshape / bgcolor / hline */
             if (at(TT.KW_PLOT)) return parsePlotCall();
             if (at(TT.KW_PLOTSHAPE)) return parsePlotShapeCall();
@@ -180,6 +183,58 @@
                 return { error: { line: l.line, col: l.col, message: 'Type "' + typeName + '" must have at least one field' } };
             }
             return { type: 'TypeDecl', name: typeName, fields: fields, line: l.line, col: l.col };
+        }
+
+        /* method declarations: method name(Type self, Type arg) => body
+           Parsed as a standard FunctionDecl. Type annotations before params are skipped. */
+        function parseMethodDecl() {
+            var l = loc(); pos++; // consume 'method'
+            var nameToken = eat(TT.IDENT); if (nameToken.error) return nameToken;
+            var funcName = nameToken.value;
+            var r = eat(TT.LPAREN); if (r && r.error) return r;
+
+            /* Parse parameters, skipping optional type annotations */
+            var params = [];
+            while (!at(TT.RPAREN) && !at(TT.EOF)) {
+                skipNewlines();
+                /* If next two tokens are both IDENT, first is a type annotation — skip it */
+                if (at(TT.IDENT) && pos + 1 < tokens.length && tokens[pos + 1].type === TT.IDENT) {
+                    pos++; // skip type annotation
+                }
+                /* Handle generic types like array<float> */
+                if (at(TT.IDENT) && pos + 1 < tokens.length && tokens[pos + 1].type === TT.OP && tokens[pos + 1].value === '<') {
+                    pos++; // skip type name
+                    pos++; // skip <
+                    while (!at(TT.EOF) && !(at(TT.OP) && cur().value === '>')) pos++;
+                    if (at(TT.OP) && cur().value === '>') pos++; // skip >
+                    /* Now skip whitespace and the next IDENT is the param name */
+                }
+                var paramToken = eat(TT.IDENT); if (paramToken.error) return paramToken;
+                params.push(paramToken.value);
+                skipNewlines();
+                if (!tryEat(TT.COMMA)) break;
+                skipNewlines();
+            }
+            r = eat(TT.RPAREN); if (r && r.error) return r;
+
+            /* Expect => */
+            if (!at(TT.ARROW)) {
+                return { error: { line: cur().line, col: cur().col, message: "Expected '=>' after method parameters" } };
+            }
+            pos++;
+
+            var body;
+            if (at(TT.NEWLINE)) {
+                skipNewlines();
+                body = parseBlock(l.col);
+                if (body && body.error) return body;
+                if (!body) return { error: { line: l.line, col: l.col, message: 'Empty method body' } };
+            } else {
+                body = parseExpression();
+                if (body && body.error) return body;
+            }
+
+            return { type: 'FunctionDecl', name: funcName, params: params, body: body, line: l.line, col: l.col };
         }
 
         function parseTupleAssign() {
@@ -303,6 +358,18 @@
                     var val2 = parseExpression();
                     if (val2 && val2.error) return val2;
                     return { type: 'Reassign', name: expr.name, value: val2, line: l.line, col: l.col };
+                }
+                /* Compound assignment: x += expr  →  x := x + expr */
+                if (at(TT.COMPOUND_ASSIGN)) {
+                    var compOp = cur().value[0]; // '+' from '+=', '-' from '-=', etc.
+                    pos++;
+                    var val3 = parseExpression();
+                    if (val3 && val3.error) return val3;
+                    return {
+                        type: 'Reassign', name: expr.name,
+                        value: { type: 'BinaryExpr', op: compOp, left: expr, right: val3, line: l.line, col: l.col },
+                        line: l.line, col: l.col
+                    };
                 }
             }
 

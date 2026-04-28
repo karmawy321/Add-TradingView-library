@@ -16,6 +16,7 @@
     function evalArg(args, idx, execFn) {
         if (idx >= args.length) return FS.NA;
         var a = args[idx];
+        if (a.type === '__resolved__') return a.__resolvedValue__;
         return execFn(a.type === 'NamedArg' ? a.value : a);
     }
 
@@ -26,6 +27,7 @@
             }
         }
         if (defIdx !== undefined && defIdx >= 0 && defIdx < args.length && args[defIdx].type !== 'NamedArg') {
+            if (args[defIdx].type === '__resolved__') return args[defIdx].__resolvedValue__;
             return execFn(args[defIdx]);
         }
         return FS.NA;

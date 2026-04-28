@@ -18,7 +18,7 @@
         OP: 'OP', LPAREN: 'LPAREN', RPAREN: 'RPAREN',
         LBRACKET: 'LBRACKET', RBRACKET: 'RBRACKET',
         COMMA: 'COMMA', DOT: 'DOT', COLON: 'COLON',
-        ASSIGN: 'ASSIGN', REASSIGN: 'REASSIGN', QUESTION: 'QUESTION', ARROW: 'ARROW',
+        ASSIGN: 'ASSIGN', REASSIGN: 'REASSIGN', COMPOUND_ASSIGN: 'COMPOUND_ASSIGN', QUESTION: 'QUESTION', ARROW: 'ARROW',
         NEWLINE: 'NEWLINE', EOF: 'EOF',
         // keywords
         KW_IF: 'KW_IF', KW_ELSE: 'KW_ELSE', KW_FOR: 'KW_FOR',
@@ -30,7 +30,7 @@
         KW_BGCOLOR: 'KW_BGCOLOR', KW_HLINE: 'KW_HLINE',
         KW_SWITCH: 'KW_SWITCH', KW_WHILE: 'KW_WHILE', KW_BREAK: 'KW_BREAK',
         KW_CONTINUE: 'KW_CONTINUE', KW_IN: 'KW_IN', KW_TYPE: 'KW_TYPE',
-        KW_STRATEGY: 'KW_STRATEGY'
+        KW_STRATEGY: 'KW_STRATEGY', KW_METHOD: 'KW_METHOD'
     };
 
     var KEYWORDS = {
@@ -43,7 +43,8 @@
         'bgcolor': TT.KW_BGCOLOR, 'hline': TT.KW_HLINE,
         'switch': TT.KW_SWITCH, 'while': TT.KW_WHILE, 'break': TT.KW_BREAK,
         'continue': TT.KW_CONTINUE, 'in': TT.KW_IN, 'type': TT.KW_TYPE,
-        'strategy': TT.KW_STRATEGY
+        'strategy': TT.KW_STRATEGY, 'method': TT.KW_METHOD,
+        'varip': TT.KW_VAR
     };
 
     var OPS_2CHAR = [':=', '==', '!=', '>=', '<='];
@@ -175,6 +176,11 @@
             if (two === '!=') { advance(); advance(); tokens.push(tok(TT.OP, '!=', startLine, startCol)); continue; }
             if (two === '>=') { advance(); advance(); tokens.push(tok(TT.OP, '>=', startLine, startCol)); continue; }
             if (two === '<=') { advance(); advance(); tokens.push(tok(TT.OP, '<=', startLine, startCol)); continue; }
+            /* Compound assignment operators: +=, -=, *=, /= */
+            if (two === '+=') { advance(); advance(); tokens.push(tok(TT.COMPOUND_ASSIGN, '+=', startLine, startCol)); continue; }
+            if (two === '-=') { advance(); advance(); tokens.push(tok(TT.COMPOUND_ASSIGN, '-=', startLine, startCol)); continue; }
+            if (two === '*=') { advance(); advance(); tokens.push(tok(TT.COMPOUND_ASSIGN, '*=', startLine, startCol)); continue; }
+            if (two === '/=') { advance(); advance(); tokens.push(tok(TT.COMPOUND_ASSIGN, '/=', startLine, startCol)); continue; }
 
             /* Single-char tokens */
             if (ch === '(') { advance(); tokens.push(tok(TT.LPAREN, '(', startLine, startCol)); continue; }
