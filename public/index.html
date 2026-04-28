@@ -32,8 +32,7 @@
 
     // Prevent FOUC and aggressively strip UI when loaded as an inner Multi-chart Pane
     if (isEmbedded) {
-      document.write(`
-  `);
+      document.write('<style>nav,header,footer,#home,.hero,#how,#about,#aiToolsPanel,.az-bar,.gate-overlay,#chartWatermark,#layoutIn,#drawToolbar,.nav-credits{display:none!important}#chartToolsPanel>div>div:first-child,#liveTicker{display:none!important}body,#analyzer{padding:0!important;margin:0!important;overflow:hidden!important}.az-box,.az-wrap,#chartToolsPanel,#chartToolsPanel>div,.nd-chart-area,#chartArea{border:none!important;padding:0!important;max-width:100%!important;margin:0!important;border-radius:0!important;height:100vh!important;background:#000!important}#chartCanvasWrap{height:100vh!important}#chartCanvas{height:100vh!important}</style>');
 
       // Listen for clicks inside the Iframe body to alert the parent
       window.addEventListener('mousedown', function () {
