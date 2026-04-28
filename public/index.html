@@ -19,6 +19,7 @@
   <script src="fractalscript/evaluator.js"></script>
   <script src="fractalscript/index.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Fractal AI Agent v3.0 -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link
@@ -15348,158 +15349,153 @@
         var cap = sr.summary.initialCapital || 10000;
         if (!ec || ec.length < 2) return;
 
-        var dpr = window.devicePixelRatio || 1;
-        var W = canvas.offsetWidth || 400;
-        var H = canvas.offsetHeight || 260;
-        canvas.width = W * dpr;
-        canvas.height = H * dpr;
-        var ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
-
         var vals = Array.from(ec).map(function (v) { return v - cap; });
-        var n = vals.length;
-        
-        var minV = Math.min.apply(null, vals);
-        var maxV = Math.max.apply(null, vals);
-        var range = (maxV - minV) || 1;
-        
-        // Extra right space for Y-axis labels
-        var pad = { t: 24, b: 36, l: 24, r: 72 };
-        var cW = W - pad.l - pad.r;
-        var cH = H - pad.t - pad.b;
+        var labels = vals.map(function (_, i) { return i; });
 
-        function px(i) { return pad.l + (i / (n - 1)) * cW; }
-        function py(v) { return pad.t + (1 - (v - minV) / range) * cH; }
-        var zeroY = py(0);
+        if (window._myEquityChart && typeof window._myEquityChart.destroy === 'function') {
+          window._myEquityChart.destroy();
+        }
 
-        function redraw(hoverIdx) {
-          ctx.clearRect(0, 0, W, H);
+        var tooltipEl = document.getElementById('tv-equity-tooltip');
+        if (tooltipEl) tooltipEl.style.display = 'none';
 
-          // Grid
-          ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 0.5;
-          var gridSteps = 4;
-          for (var gi = 0; gi <= gridSteps; gi++) {
-            var gv = minV + (gi / gridSteps) * range;
-            var gy = py(gv);
-            ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(W - pad.r, gy); ctx.stroke();
-            
-            ctx.fillStyle = '#787b86'; ctx.font = '10px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-            ctx.fillText((gv >= 0 ? '+' : '') + gv.toFixed(0), W - pad.r + 8, gy);
+        canvas.onmousemove = null;
+        canvas.onmouseleave = null;
+
+        var datasets = [];
+
+        if (_eqChartLayers.equity) {
+          datasets.push({
+            label: 'Equity P&L',
+            data: vals,
+            borderColor: '#1D9E75',
+            backgroundColor: 'rgba(29, 158, 117, 0.08)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 4,
+            pointBackgroundColor: '#1D9E75',
+            pointBorderColor: '#131722',
+            pointBorderWidth: 1
+          });
+        }
+
+        if (_eqChartLayers.buyhold) {
+          var range = (Math.max.apply(null, vals) - Math.min.apply(null, vals)) || 1;
+          var bhData = vals.map(function (_, i) { return (i / (vals.length - 1)) * range * 0.2; });
+          datasets.push({
+            label: 'Buy & Hold',
+            data: bhData,
+            borderColor: '#ff9800',
+            borderWidth: 1.5,
+            fill: false,
+            pointRadius: 0,
+            tension: 0
+          });
+        }
+
+        if (_eqChartLayers.drawdowns) {
+          var curDD = 0;
+          var ddData = [0];
+          for (var i = 1; i < vals.length; i++) {
+            if (vals[i] < vals[i-1]) curDD += (vals[i] - vals[i-1]);
+            else curDD = Math.min(0, curDD + (vals[i] - vals[i-1]) * 0.5);
+            ddData.push(curDD);
           }
+          datasets.push({
+            label: 'Drawdown',
+            data: ddData,
+            borderColor: '#f23645',
+            borderWidth: 1.5,
+            fill: false,
+            pointRadius: 0,
+            tension: 0
+          });
+        }
 
-          // Center zero baseline
-          ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
+        if (_eqChartLayers.excursions) {
+          var excData = vals.map(function () { return null; });
+          var excColors = [];
+          if (sr.trades) {
+            sr.trades.forEach(function(t, idx) {
+              if (idx + 1 < vals.length) {
+                excData[idx + 1] = t.profit;
+                excColors.push(t.profit >= 0 ? 'rgba(8,153,129,0.5)' : 'rgba(242,54,69,0.5)');
+              }
+            });
+          }
+          datasets.push({
+            type: 'bar',
+            label: 'Excursions',
+            data: excData,
+            backgroundColor: excColors,
+            borderColor: 'transparent',
+            borderWidth: 0,
+            barPercentage: 0.5
+          });
+        }
 
-          // Layer: Equity
-          if (_eqChartLayers.equity) {
-            // Simple Polyline
-            ctx.strokeStyle = '#089981'; ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(px(0), py(vals[0]));
-            for (var i = 1; i < n; i++) {
-              ctx.lineTo(px(i), py(vals[i]));
-            }
-            ctx.stroke();
-
-            // Simple Sparse Nodes
-            var dotStep = Math.max(1, Math.ceil(n / 40));
-            for (var i = 0; i < n; i++) {
-              if (i % dotStep === 0 || i === n - 1) {
-                ctx.fillStyle = '#089981';
-                ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 3, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = '#131722'; ctx.lineWidth = 1; ctx.stroke();
+        window._myEquityChart = new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                mode: 'index',
+                intersect: false,
+                backgroundColor: '#1e222d',
+                titleColor: '#fff',
+                bodyColor: '#d1d4dc',
+                borderColor: '#2a2e39',
+                borderWidth: 1,
+                padding: 10,
+                titleFont: { size: 11, family: "'Trebuchet MS', sans-serif", weight: 'bold' },
+                bodyFont: { size: 11, family: "'Trebuchet MS', sans-serif" },
+                displayColors: false,
+                callbacks: {
+                  title: function(context) {
+                    return 'Point #' + context[0].dataIndex;
+                  },
+                  label: function(context) {
+                    var idx = context.dataIndex;
+                    var dataset = context.dataset;
+                    var val = context.parsed.y;
+                    var lines = [];
+                    lines.push(dataset.label + ': ' + (val >= 0 ? '+' : '') + val.toFixed(2) + ' USD');
+                    
+                    if (dataset.label === 'Equity P&L' && sr.trades && sr.trades[idx - 1]) {
+                      var trade = sr.trades[idx - 1];
+                      lines.push('Last Trade: ' + trade.direction.toUpperCase());
+                      lines.push('Trade P&L: ' + (trade.profit >= 0 ? '+' : '') + trade.profit.toFixed(2));
+                    }
+                    return lines;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                display: false
+              },
+              y: {
+                grid: {
+                  color: '#2a2e39'
+                },
+                ticks: {
+                  color: '#787b86',
+                  callback: function(value) {
+                    return (value >= 0 ? '+' : '') + value.toFixed(0);
+                  }
+                }
               }
             }
           }
-
-          // Layer: Buy & Hold
-          if (_eqChartLayers.buyhold) {
-            ctx.strokeStyle = '#ff9800'; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(px(0), zeroY);
-            for (var i = 1; i < n; i++) ctx.lineTo(px(i), py((i / (n - 1)) * range * 0.2));
-            ctx.stroke();
-          }
-
-          // Layer: Excursion Bars
-          if (_eqChartLayers.excursions) {
-            sr.trades.forEach(function(t, idx) {
-              if (idx >= n) return;
-              var bx = px(idx + 1);
-              var isWin = t.profit >= 0;
-              var bColor = isWin ? 'rgba(8,153,129,0.5)' : 'rgba(242,54,69,0.5)';
-              var bh = Math.max(4, Math.min(cH/2, Math.abs(t.profit) / range * cH));
-              ctx.fillStyle = bColor;
-              if (isWin) ctx.fillRect(bx - 2, zeroY - bh, 4, bh);
-              else ctx.fillRect(bx - 2, zeroY, 4, bh);
-            });
-          }
-
-          // Layer: Drawdowns
-          if (_eqChartLayers.drawdowns) {
-            ctx.strokeStyle = '#f23645'; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(px(0), zeroY);
-            var curDD = 0;
-            for (var i = 1; i < n; i++) {
-              if (vals[i] < vals[i-1]) curDD += (vals[i] - vals[i-1]);
-              else curDD = Math.min(0, curDD + (vals[i] - vals[i-1]) * 0.5);
-              ctx.lineTo(px(i), py(curDD));
-            }
-            ctx.stroke();
-          }
-
-          // Crosshair & Hover Highlights
-          if (hoverIdx !== undefined && hoverIdx >= 0 && hoverIdx < n) {
-            var hx = px(hoverIdx);
-            var hy = py(vals[hoverIdx]);
-
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-            ctx.beginPath(); ctx.moveTo(hx, pad.t); ctx.lineTo(hx, H - pad.b); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(pad.l, hy); ctx.lineTo(W - pad.r, hy); ctx.stroke();
-            ctx.setLineDash([]);
-
-            ctx.fillStyle = '#2962ff';
-            ctx.beginPath(); ctx.arc(hx, hy, 5, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
-          }
-        }
-
-        redraw();
-
-        var tooltip = document.getElementById('tv-equity-tooltip');
-        
-        canvas.onmousemove = function (e) {
-          var rect = canvas.getBoundingClientRect();
-          var mx = e.clientX - rect.left;
-          
-          var closestIdx = Math.round(((mx - pad.l) / cW) * (n - 1));
-          if (closestIdx < 0) closestIdx = 0;
-          if (closestIdx >= n) closestIdx = n - 1;
-
-          redraw(closestIdx);
-
-          if (tooltip) {
-            tooltip.style.display = 'block';
-            tooltip.style.left = (e.clientX + 16) + 'px';
-            tooltip.style.top = (e.clientY + 16) + 'px';
-            
-            var trade = sr.trades[closestIdx - 1] || { profit: 0, direction: 'N/A' };
-            var val = vals[closestIdx];
-            
-            tooltip.innerHTML = 
-              '<div style="font-weight:bold; margin-bottom:4px; color:#fff;">Point #' + closestIdx + '</div>' +
-              '<div>Equity P&L: <span style="color:' + (val>=0?'#089981':'#f23645') + '">' + (val>=0?'+':'') + val.toFixed(2) + ' USD</span></div>' +
-              '<div style="margin-top:4px; border-top:1px solid #2a2e39; padding-top:4px;">' +
-                'Last Trade: <b style="color:#2962ff;">' + trade.direction.toUpperCase() + '</b><br/>' +
-                'Trade P&L: <span style="color:' + (trade.profit>=0?'#089981':'#f23645') + '">' + (trade.profit>=0?'+':'') + trade.profit.toFixed(2) + '</span>' +
-              '</div>';
-          }
-        };
-
-        canvas.onmouseleave = function () {
-          redraw();
-          if (tooltip) tooltip.style.display = 'none';
-        };
+        });
       };
 
       /* helper: rounded rect replacement placeholder cleanup */
