@@ -982,6 +982,12 @@
                 var tr = Math.max(0, Math.min(1, FS.isNa(arg3) ? 1 : 1 - arg3 / 100));
                 return 'rgba(' + Math.round(arg0) + ',' + Math.round(arg1) + ',' + Math.round(arg2) + ',' + tr.toFixed(3) + ')';
             }
+            case 'color.rgb': {
+                var r = e(0), g = e(1), b = e(2), transp = args.length > 3 ? e(3) : 0;
+                if (FS.isNa(r) || FS.isNa(g) || FS.isNa(b)) return FS.NA;
+                var tr = Math.max(0, Math.min(1, FS.isNa(transp) ? 1 : 1 - transp / 100));
+                return 'rgba(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ',' + tr.toFixed(3) + ')';
+            }
             case 'color.from_gradient': {
                 var value = e(0);
                 var bottom_value = e(1), top_value = e(2);
