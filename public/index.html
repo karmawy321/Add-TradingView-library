@@ -16149,41 +16149,56 @@
           }
         }
 
-        if (!window.FractalScriptEngine) { _showfractalError('FractalScript engine not loaded'); return; }
         var candles = window.chartCandles;
         if (!candles || candles.length < 2) { _showfractalError('No candle data available'); return; }
 
-        var result = window.FractalScriptEngine.run(src, candles, overrides);
+        /* Kill any in-flight worker before starting a new one */
+        if (window._fsWorker) { window._fsWorker.terminate(); window._fsWorker = null; }
 
-        /* Sync button state */
         var glow = document.getElementById('fsBtnGlow');
         var txt = document.getElementById('fsLabelText');
 
-        if (result.errors && result.errors.length > 0) {
-          var errMsg = result.errors.map(function (e) { return 'Line ' + e.line + ':' + e.col + ' — ' + e.message; }).join('\n');
-          _showfractalError(errMsg);
+        var worker = new Worker('/fractalscript/worker.js');
+        window._fsWorker = worker;
+
+        worker.onmessage = function (e) {
+          window._fsWorker = null;
+          worker.terminate();
+          var result = e.data;
+
+          if (result.errors && result.errors.length > 0) {
+            var errMsg = result.errors.map(function (e) { return 'Line ' + e.line + ':' + e.col + ' — ' + e.message; }).join('\n');
+            _showfractalError(errMsg);
+            if (glow) glow.style.opacity = '1';
+            if (txt) {
+              txt.style.color = '#c9a84c';
+              txt.style.textShadow = '0 0 10px rgba(201,168,76,0.3)';
+            }
+            if (result.inputs && result.inputs.length > 0) _buildFractalInputs(result.inputs);
+            return;
+          }
+
+          window.fractalResult = result;
+          window.fractalOverlayOn = true;
           if (glow) glow.style.opacity = '1';
           if (txt) {
             txt.style.color = '#c9a84c';
             txt.style.textShadow = '0 0 10px rgba(201,168,76,0.3)';
           }
-          /* Still show inputs if available */
+          _hidefractalError();
           if (result.inputs && result.inputs.length > 0) _buildFractalInputs(result.inputs);
-          return;
-        }
+          if (typeof buildToolbar === 'function') buildToolbar();
+          if (typeof renderChart === 'function') renderChart();
+          if (typeof _buildStrategyReport === 'function') _buildStrategyReport(result);
+        };
 
-        window.fractalResult = result;
-        window.fractalOverlayOn = true;
-        if (glow) glow.style.opacity = '1';
-        if (txt) {
-          txt.style.color = '#c9a84c';
-          txt.style.textShadow = '0 0 10px rgba(201,168,76,0.3)';
-        }
-        _hidefractalError();
-        if (result.inputs && result.inputs.length > 0) _buildFractalInputs(result.inputs);
-        if (typeof buildToolbar === 'function') buildToolbar();
-        if (typeof renderChart === 'function') renderChart();
-        if (typeof _buildStrategyReport === 'function') _buildStrategyReport(result);
+        worker.onerror = function (err) {
+          window._fsWorker = null;
+          worker.terminate();
+          _showfractalError('Engine error: ' + (err.message || 'unknown'));
+        };
+
+        worker.postMessage({ source: src, candles: candles, inputs: overrides });
       };
       window._runFractalFromModal = function () {
         if (ta) window.fractalSource = ta.value;
