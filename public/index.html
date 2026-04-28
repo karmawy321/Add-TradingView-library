@@ -15100,8 +15100,9 @@
         if (!result || !result.strategyResult) { _hideStrategyReport(); return; }
         window._srpLastResult = result;
         var sr = result.strategyResult;
-        var sum = sr.summary;
-        var winCount = sr.trades.filter(function(t) { return t.profit > 0; }).length;
+        var sum = sr.summary || {};
+        var trades = Array.isArray(sr.trades) ? sr.trades : [];
+        var winCount = trades.filter(function(t) { return t.profit > 0; }).length;
         
         /* ── Strategy name ── */
         var nameEl = document.getElementById('srp-stratName');
@@ -15118,14 +15119,17 @@
         var ovBanner = document.getElementById('tv-ov-banner');
         if (ovBanner) {
           var pf = isFinite(sum.profitFactor) ? sum.profitFactor.toFixed(3) : '∞';
-          var pnl = sum.netProfit;
+          var pnl = sum.netProfit || 0;
           var pnlPct = sum.initialCapital ? (pnl / sum.initialCapital * 100) : 0;
+          var maxDD = sum.maxDrawdown || 0;
+          var totalTrades = sum.totalTrades || trades.length;
+          var winRate = sum.winRate || 0;
           
           ovBanner.innerHTML = 
             '<div class="tv-metric-box"><div class="tv-metric-lbl">Total P&L</div><div class="tv-metric-val ' + (pnl >= 0 ? 'up' : 'down') + '">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + ' <span style="font-size:11px; font-weight:normal; color:#787b86;">USDT</span> <span style="font-size:11px; font-weight:normal; margin-left:4px;">' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%</span></div></div>' +
-            '<div class="tv-metric-box"><div class="tv-metric-lbl">Max equity drawdown</div><div class="tv-metric-val down">' + (sum.maxDrawdown * 100).toFixed(2) + '%</div></div>' +
-            '<div class="tv-metric-box"><div class="tv-metric-lbl">Total trades</div><div class="tv-metric-val">' + sum.totalTrades + '</div></div>' +
-            '<div class="tv-metric-box"><div class="tv-metric-lbl">Profitable trades</div><div class="tv-metric-val">' + (sum.winRate * 100).toFixed(2) + '% <span style="font-size:11px; font-weight:normal; color:#787b86; margin-left:4px;">' + winCount + '/' + sum.totalTrades + '</span></div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Max equity drawdown</div><div class="tv-metric-val down">' + (maxDD * 100).toFixed(2) + '%</div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Total trades</div><div class="tv-metric-val">' + totalTrades + '</div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Profitable trades</div><div class="tv-metric-val">' + (winRate * 100).toFixed(2) + '% <span style="font-size:11px; font-weight:normal; color:#787b86; margin-left:4px;">' + winCount + '/' + totalTrades + '</span></div></div>' +
             '<div class="tv-metric-box"><div class="tv-metric-lbl">Profit Factor</div><div class="tv-metric-val">' + pf + '</div></div>';
         }
 
@@ -15133,25 +15137,26 @@
         var accDiv = document.getElementById('tv-accordions-container');
         var tDiv = document.getElementById('tv-trades-container');
         if (accDiv && tDiv) {
-          var shouldBuildHTML = !accDiv.innerHTML.trim() || !window._srpLastTradeCount || window._srpLastTradeCount !== sr.trades.length;
-          window._srpLastTradeCount = sr.trades.length;
+          var tradeCount = trades.length;
+          var shouldBuildHTML = !accDiv.innerHTML.trim() || !window._srpLastTradeCount || window._srpLastTradeCount !== tradeCount;
+          window._srpLastTradeCount = tradeCount;
 
           if (shouldBuildHTML) {
-            var longT = sr.trades.filter(function(t){ return t.direction === 'long'; });
-            var shortT = sr.trades.filter(function(t){ return t.direction === 'short'; });
+            var longT = trades.filter(function(t){ return t.direction === 'long'; });
+            var shortT = trades.filter(function(t){ return t.direction === 'short'; });
             
             function calcPnl(list) { return list.reduce(function(a,t){ return a+t.profit; }, 0); }
             function calcWinRate(list) { if (!list.length) return 0; return list.filter(function(t){ return t.profit > 0; }).length / list.length; }
             
-            var allPnl = sum.netProfit;
+            var allPnl = sum.netProfit || 0;
             var lPnl = calcPnl(longT);
             var sPnl = calcPnl(shortT);
 
             var grossProfit = sum.grossProfit || 0;
             var grossLoss = sum.grossLoss || 0;
 
-            var largestWin = Math.max.apply(null, sr.trades.map(function(t){ return t.profit; }).concat([0]));
-            var largestLoss = Math.min.apply(null, sr.trades.map(function(t){ return t.profit; }).concat([0]));
+            var largestWin = Math.max.apply(null, trades.map(function(t){ return t.profit; }).concat([0]));
+            var largestLoss = Math.min.apply(null, trades.map(function(t){ return t.profit; }).concat([0]));
 
             accDiv.innerHTML = 
               /* Accordion: Performance */
