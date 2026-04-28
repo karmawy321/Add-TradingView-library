@@ -18,6 +18,7 @@
   <script src="fractalscript/dispatchers.js"></script>
   <script src="fractalscript/evaluator.js"></script>
   <script src="fractalscript/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Fractal AI Agent v3.0 -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link
@@ -3740,26 +3741,195 @@
       transition: height .3s cubic-bezier(.4, 0, .2, 1), opacity .25s ease;
       opacity: 0;
       flex-shrink: 0;
-      background: linear-gradient(180deg, #080b12 0%, #060810 100%);
-      border-top: 1px solid rgba(201, 168, 76, .2);
+      background: #131722; /* TV dark theme base */
+      border-top: 1px solid #2a2e39;
       box-shadow: 0 -4px 24px rgba(0, 0, 0, .4);
       position: relative;
-    }
-
-    #strategyReportPanel::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent 0%, rgba(201, 168, 76, .5) 30%, rgba(201, 168, 76, .8) 50%, rgba(201, 168, 76, .5) 70%, transparent 100%);
+      display: flex;
+      flex-direction: column;
     }
 
     #strategyReportPanel.srp-open {
-      height: 316px;
-      opacity: 1
+      height: 340px;
+      opacity: 1;
     }
+
+    #srpHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #1e222d;
+      border-bottom: 1px solid #2a2e39;
+      padding: 6px 16px;
+      min-height: 38px;
+      flex-wrap: nowrap;
+    }
+
+    #srp-stratName {
+      font: bold 12px 'Trebuchet MS', sans-serif;
+      color: #d1d4dc;
+      margin-right: 20px;
+    }
+
+    #srp-tabs {
+      display: flex;
+      gap: 4px;
+    }
+
+    .srp-tab {
+      background: transparent;
+      border: none;
+      color: #b2b5be;
+      padding: 6px 14px;
+      font: 600 11px 'Trebuchet MS', sans-serif;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .srp-tab:hover {
+      color: #d1d4dc;
+      background: #2a2e39;
+    }
+
+    .srp-tab.srp-active {
+      color: #2962ff;
+      background: #2a2e39;
+    }
+
+    .srp-hdr-btn {
+      background: #2a2e39;
+      border: 1px solid #363c4e;
+      color: #d1d4dc;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font: 10px 'Trebuchet MS', sans-serif;
+      cursor: pointer;
+      margin-left: 6px;
+    }
+
+    .srp-hdr-btn:hover {
+      background: #363c4e;
+      color: #ffffff;
+    }
+
+    #srp-close {
+      background: transparent;
+      border: none;
+      color: #787b86;
+      font-size: 18px;
+      cursor: pointer;
+      margin-left: 12px;
+      padding: 2px 6px;
+    }
+
+    #srp-close:hover {
+      color: #f23645;
+    }
+
+    .srp-pane {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      background: #131722;
+      box-sizing: border-box;
+    }
+
+    .srp-pane.srp-active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Overview Tab */
+    .tv-banner {
+      display: flex;
+      gap: 24px;
+      padding: 16px 20px;
+      background: #171b26;
+      border-bottom: 1px solid #2a2e39;
+    }
+
+    .tv-metric-box {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tv-metric-lbl {
+      font: 10px 'Trebuchet MS', sans-serif;
+      color: #787b86;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .tv-metric-val {
+      font: bold 18px 'Trebuchet MS', sans-serif;
+      color: #d1d4dc;
+    }
+
+    .tv-metric-val.up { color: #089981; }
+    .tv-metric-val.down { color: #f23645; }
+
+    .tv-equity-wrapper {
+      flex: 1;
+      padding: 12px 20px;
+      position: relative;
+    }
+
+    /* Performance Summary Table */
+    .tv-perf-table {
+      width: 100%;
+      border-collapse: collapse;
+      font: 12px 'Trebuchet MS', sans-serif;
+      color: #d1d4dc;
+    }
+
+    .tv-perf-table th, .tv-perf-table td {
+      padding: 10px 16px;
+      text-align: right;
+      border-bottom: 1px solid #2a2e39;
+    }
+
+    .tv-perf-table th {
+      font-weight: bold;
+      color: #787b86;
+      background: #171b26;
+      border-top: 1px solid #2a2e39;
+    }
+
+    .tv-perf-table td:first-child, .tv-perf-table th:first-child {
+      text-align: left;
+      font-weight: bold;
+      color: #b2b5be;
+    }
+
+    .tv-perf-table tr:hover td {
+      background: #1e222d;
+    }
+    
+    /* Trades List */
+    .tv-trades-table {
+      width: 100%;
+      border-collapse: collapse;
+      font: 11px 'Trebuchet MS', sans-serif;
+      color: #d1d4dc;
+    }
+
+    .tv-trades-table th, .tv-trades-table td {
+      padding: 8px 14px;
+      text-align: left;
+      border-bottom: 1px solid #2a2e39;
+    }
+
+    .tv-trades-table th {
+      color: #787b86;
+      background: #171b26;
+      position: sticky;
+      top: 0;
+    }
+
+    .tv-trades-table tr:hover td { background: #1e222d; }
+    .tv-tr-win { color: #089981; }
+    .tv-tr-loss { color: #f23645; }
 
     /* Header */
     #srpHeader {
@@ -4788,56 +4958,42 @@
           <!-- Strategy Report Panel — hidden until a strategy script runs -->
           <div id="strategyReportPanel">
             <div id="srpHeader">
-              <span id="srp-stratName">Strategy Report</span>
+              <span id="srp-stratName">Strategy Tester</span>
               <div id="srp-tabs">
-                <button class="srp-tab srp-active" data-tab="metrics" onclick="_srpTab(this)">Metrics</button>
-                <button class="srp-tab" data-tab="equity" onclick="_srpTab(this)">Equity</button>
-                <button class="srp-tab" data-tab="perf" onclick="_srpTab(this)">Performance</button>
-                <button class="srp-tab" data-tab="analysis" onclick="_srpTab(this)">Analysis</button>
-                <button class="srp-tab srp-premium" data-tab="efficiency" onclick="_srpTab(this)">Efficiency ★</button>
-                <button class="srp-tab" data-tab="drawdowns" onclick="_srpTab(this)">Drawdowns</button>
-                <button class="srp-tab srp-premium" data-tab="trades" onclick="_srpTab(this)">Trades ★</button>
+                <button class="srp-tab srp-active" data-tab="overview" onclick="_srpTab(this)">Overview</button>
+                <button class="srp-tab" data-tab="perf" onclick="_srpTab(this)">Performance Summary</button>
+                <button class="srp-tab" data-tab="trades" onclick="_srpTab(this)">List of Trades</button>
               </div>
-              <div id="srp-hdr-btns">
-                <button class="srp-hdr-btn srp-dl" onclick="_srpDownloadReport()" title="Download HTML report">↓
-                  Report</button>
-                <button class="srp-hdr-btn" onclick="_srpExportXlsx()" title="Export data as XLSX">↓ XLSX</button>
+              <div id="srp-hdr-btns" style="display:flex; align-items:center;">
+                <button class="srp-hdr-btn" onclick="_srpExportXlsx()" title="Export data as XLSX">Export XLSX</button>
+                <button class="srp-hdr-btn" onclick="_srpDownloadReport()" title="Export HTML Report">Download Report</button>
+                <button id="srp-close" onclick="_hideStrategyReport()" title="Close">✕</button>
               </div>
-              <button id="srp-close" onclick="_hideStrategyReport()" title="Close">✕</button>
             </div>
-            <div id="srp-metrics" class="srp-pane srp-active"></div>
-            <div id="srp-equity" class="srp-pane"><canvas id="srp-equity-canvas"></canvas></div>
+            
+            <!-- TV Overview Tab -->
+            <div id="srp-overview" class="srp-pane srp-active">
+              <div class="tv-banner" id="tv-ov-banner">
+                <!-- Injected dynamically -->
+              </div>
+              <div class="tv-equity-wrapper">
+                <canvas id="srp-equity-canvas" style="width:100%; height:220px;"></canvas>
+              </div>
+            </div>
+
+            <!-- TV Performance Summary Tab -->
             <div id="srp-perf" class="srp-pane">
-              <div class="srp-chart-col">
-                <div class="srp-chart-title">Profit structure</div>
-                <canvas id="srp-perf-bars" style="width:100%;height:210px;display:block"></canvas>
-                <div class="srp-chart-legend" id="srp-perf-legend"></div>
-              </div>
-              <div class="srp-chart-col">
-                <div class="srp-chart-title">Benchmarking</div>
-                <canvas id="srp-bench-canvas" style="width:100%;height:210px;display:block"></canvas>
-                <div class="srp-chart-legend" id="srp-bench-legend"></div>
+              <div id="tv-perf-container" style="padding: 16px 20px;">
+                <!-- Injected dynamically -->
               </div>
             </div>
-            <div id="srp-analysis" class="srp-pane">
-              <div class="srp-chart-col">
-                <div class="srp-chart-title">P&amp;L Distribution</div>
-                <canvas id="srp-hist-canvas" style="width:100%;height:210px;display:block"></canvas>
-                <div class="srp-chart-legend" id="srp-hist-legend"></div>
-              </div>
-              <div class="srp-chart-col">
-                <div class="srp-chart-title">Win / Loss ratio</div>
-                <canvas id="srp-donut-canvas" style="width:100%;height:210px;display:block"></canvas>
-                <div class="srp-chart-legend" id="srp-donut-legend"></div>
+
+            <!-- TV Trades List Tab -->
+            <div id="srp-trades" class="srp-pane">
+              <div id="tv-trades-container" style="padding: 16px 20px; width:100%;">
+                <!-- Injected dynamically -->
               </div>
             </div>
-            <div id="srp-efficiency" class="srp-pane">
-              <div class="srp-eff-grid" id="srp-eff-cards"></div>
-            </div>
-            <div id="srp-drawdowns" class="srp-pane">
-              <div class="srp-dd-table-wrap" id="srp-dd-body"></div>
-            </div>
-            <div id="srp-trades" class="srp-pane"></div>
           </div>
 
           <!-- BOTTOM STRIP: AI tools — horizontal row below canvas -->
@@ -14845,11 +15001,7 @@
         var r = window._srpLastResult;
         if (!r) return;
         setTimeout(function () {
-          if (tab === 'equity') _drawEquityChart(document.getElementById('srp-equity-canvas'), r);
-          if (tab === 'perf') { _drawProfitBars(r); _drawBenchmark(r); }
-          if (tab === 'analysis') { _drawHistogram(r); _drawDonut(r); }
-          if (tab === 'efficiency') _buildEfficiencyCards(r);
-          if (tab === 'drawdowns') _buildDrawdownTable(r);
+          if (tab === 'overview') _drawEquityChart(document.getElementById('srp-equity-canvas'), r);
         }, 10);
       };
 
@@ -14863,88 +15015,82 @@
         window._srpLastResult = result;
         var sr = result.strategyResult;
         var sum = sr.summary;
-        var pnl = sum.netProfit;
-        var pnlPct = sum.initialCapital ? (pnl / sum.initialCapital * 100) : 0;
-        var green = '#26a69a', red = '#ef5350', muted = 'rgba(180,190,210,.55)';
-
+        
         /* ── Strategy name ── */
         var nameEl = document.getElementById('srp-stratName');
-        if (nameEl) nameEl.textContent = (result.strategyName || 'Strategy Report');
+        if (nameEl) nameEl.textContent = (result.strategyName || 'Strategy Tester');
 
-        /* ── Metrics tab ── */
-        var mDiv = document.getElementById('srp-metrics');
-        if (mDiv) {
-          function card(label, value, color, sub) {
-            return '<div class="srp-card">' +
-              '<div class="srp-card-label">' + label + '</div>' +
-              '<div class="srp-card-value" style="color:' + color + '">' + value + '</div>' +
-              (sub ? '<div class="srp-card-sub">' + sub + '</div>' : '') +
-              '</div>';
-          }
+        /* ── Overview Tab Banner ── */
+        var ovBanner = document.getElementById('tv-ov-banner');
+        if (ovBanner) {
           var pf = isFinite(sum.profitFactor) ? sum.profitFactor.toFixed(2) : '∞';
-          var winCount = Math.round(sum.winRate * sum.totalTrades);
-          mDiv.innerHTML =
-            card('Net P&L', (pnl >= 0 ? '+' : '') + pnl.toFixed(2), pnl >= 0 ? green : red,
-              (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') +
-            card('Max Drawdown', (sum.maxDrawdown * 100).toFixed(2) + '%', red) +
-            card('Total Trades', sum.totalTrades, '#e0e4f0') +
-            card('Win Rate', (sum.winRate * 100).toFixed(1) + '%',
-              sum.winRate >= 0.5 ? green : red,
-              winCount + ' / ' + sum.totalTrades) +
-            card('Profit Factor', pf, parseFloat(pf) >= 1 ? green : red) +
-            card('Gross Profit', '+' + sum.grossProfit.toFixed(2), green) +
-            card('Gross Loss', sum.grossLoss.toFixed(2), red) +
-            card('Final Equity', sum.finalEquity.toFixed(2), pnl >= 0 ? green : muted);
+          var pnl = sum.netProfit;
+          var pnlPct = sum.initialCapital ? (pnl / sum.initialCapital * 100) : 0;
+          
+          ovBanner.innerHTML = 
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Net Profit</div><div class="tv-metric-val ' + (pnl >= 0 ? 'up' : 'down') + '">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + ' (' + pnlPct.toFixed(2) + '%)</div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Total Closed Trades</div><div class="tv-metric-val">' + sum.totalTrades + '</div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Profit Factor</div><div class="tv-metric-val">' + pf + '</div></div>' +
+            '<div class="tv-metric-box"><div class="tv-metric-lbl">Max Drawdown</div><div class="tv-metric-val down">' + (sum.maxDrawdown * 100).toFixed(2) + '%</div></div>';
         }
 
-        /* ── Equity tab ── (drawn on demand when tab is active) */
-        var activeTab = document.querySelector('.srp-tab.srp-active');
-        if (activeTab && activeTab.dataset.tab === 'equity') {
-          _drawEquityChart(document.getElementById('srp-equity-canvas'), result);
+        /* ── Performance Summary ── */
+        var perfDiv = document.getElementById('tv-perf-container');
+        if (perfDiv) {
+          var pf = isFinite(sum.profitFactor) ? sum.profitFactor.toFixed(2) : '∞';
+          var longT = sr.trades.filter(function(t){ return t.direction === 'long'; });
+          var shortT = sr.trades.filter(function(t){ return t.direction === 'short'; });
+          
+          function calcPnl(list) { return list.reduce(function(a,t){ return a+t.profit; }, 0); }
+          function calcWinRate(list) { if (!list.length) return 0; return list.filter(function(t){ return t.profit > 0; }).length / list.length; }
+          
+          var allPnl = sum.netProfit;
+          var lPnl = calcPnl(longT);
+          var sPnl = calcPnl(shortT);
+
+          perfDiv.innerHTML = '<table class="tv-perf-table">' +
+            '<thead><tr><th>Performance Metric</th><th>All</th><th>Long Trades</th><th>Short Trades</th></tr></thead>' +
+            '<tbody>' +
+              '<tr><td>Net Profit</td><td class="' + (allPnl>=0?'up':'down') + '">' + allPnl.toFixed(2) + '</td><td class="' + (lPnl>=0?'up':'down') + '">' + lPnl.toFixed(2) + '</td><td class="' + (sPnl>=0?'up':'down') + '">' + sPnl.toFixed(2) + '</td></tr>' +
+              '<tr><td>Gross Profit</td><td class="up">' + sum.grossProfit.toFixed(2) + '</td><td class="up">' + calcPnl(longT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td><td class="up">' + calcPnl(shortT.filter(function(t){ return t.profit>0; })).toFixed(2) + '</td></tr>' +
+              '<tr><td>Gross Loss</td><td class="down">' + sum.grossLoss.toFixed(2) + '</td><td class="down">' + calcPnl(longT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td><td class="down">' + calcPnl(shortT.filter(function(t){ return t.profit<0; })).toFixed(2) + '</td></tr>' +
+              '<tr><td>Total Open Trades</td><td>0</td><td>0</td><td>0</td></tr>' +
+              '<tr><td>Win Rate</td><td>' + (sum.winRate * 100).toFixed(2) + '%</td><td>' + (calcWinRate(longT) * 100).toFixed(2) + '%</td><td>' + (calcWinRate(shortT) * 100).toFixed(2) + '%</td></tr>' +
+              '<tr><td>Profit Factor</td><td>' + pf + '</td><td>—</td><td>—</td></tr>' +
+              '<tr><td>Avg Trade</td><td>' + (sum.totalTrades ? (sum.netProfit / sum.totalTrades).toFixed(2) : '0.00') + '</td><td>' + (longT.length ? (lPnl / longT.length).toFixed(2) : '0.00') + '</td><td>' + (shortT.length ? (sPnl / shortT.length).toFixed(2) : '0.00') + '</td></tr>' +
+            '</tbody></table>';
         }
 
-        /* ── Trades tab ── */
-        var tDiv = document.getElementById('srp-trades');
+        /* ── Trades List ── */
+        var tDiv = document.getElementById('tv-trades-container');
         if (tDiv) {
-          if (typeof userTier !== 'undefined' && (userTier === 'pro' || userTier === 'mentor')) {
-            var trades = sr.trades;
-            var shown = trades.slice(0, 200);
-            var cumPnl = 0;
-            var rows = shown.map(function (t, i) {
-              cumPnl += t.profit;
-              var win = t.profit >= 0;
-              var cls = win ? 'srp-tr-win' : 'srp-tr-loss';
-              var dir = t.direction === 'long' ? '▲ Long' : '▼ Short';
-              return '<tr class="' + cls + '">' +
-                '<td>' + (i + 1) + '</td>' +
-                '<td>' + dir + '</td>' +
-                '<td>' + t.entryPrice.toFixed(4) + '</td>' +
-                '<td>' + t.exitPrice.toFixed(4) + '</td>' +
-                '<td>' + (t.exitBar - t.entryBar) + '</td>' +
-                '<td>' + (win ? '+' : '') + t.profit.toFixed(4) + '</td>' +
-                '<td>' + (cumPnl >= 0 ? '+' : '') + cumPnl.toFixed(4) + '</td>' +
-                '</tr>';
-            }).join('');
-            var extra = trades.length > 200 ? '<tr><td colspan="7" style="text-align:center;color:rgba(180,190,210,.4);padding:6px">' + (trades.length - 200) + ' more trades not shown</td></tr>' : '';
-            tDiv.innerHTML = '<table class="srp-trades-table">' +
-              '<thead><tr><th>#</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Bars</th><th>P&L</th><th>Cum. P&L</th></tr></thead>' +
-              '<tbody>' + rows + extra + '</tbody></table>';
-          } else {
-            tDiv.innerHTML = '<div class="srp-lock"><div class="srp-lock-icon">🔒</div>' +
-              '<div>Full trade list — Pro feature</div>' +
-              '<div style="font-size:10px;opacity:.6">Upgrade to see all ' + sr.trades.length + ' trades</div></div>';
-          }
+          var cumPnl = 0;
+          var rows = sr.trades.map(function (t, i) {
+            cumPnl += t.profit;
+            var win = t.profit >= 0;
+            var cls = win ? 'tv-tr-win' : 'tv-tr-loss';
+            var dir = t.direction === 'long' ? '▲ Long' : '▼ Short';
+            return '<tr>' +
+              '<td>' + (i + 1) + '</td>' +
+              '<td class="' + cls + '">' + dir + '</td>' +
+              '<td>' + t.entryPrice.toFixed(4) + '</td>' +
+              '<td>' + t.exitPrice.toFixed(4) + '</td>' +
+              '<td>' + (t.exitBar - t.entryBar) + '</td>' +
+              '<td class="' + cls + '">' + (win ? '+' : '') + t.profit.toFixed(4) + '</td>' +
+              '<td>' + (cumPnl >= 0 ? '+' : '') + cumPnl.toFixed(4) + '</td>' +
+              '</tr>';
+          }).join('');
+
+          tDiv.innerHTML = '<table class="tv-trades-table">' +
+            '<thead><tr><th>#</th><th>Type</th><th>Entry Price</th><th>Exit Price</th><th>Bars Held</th><th>Profit</th><th>Cum. Profit</th></tr></thead>' +
+            '<tbody>' + (rows || '<tr><td colspan="7" style="text-align:center;color:#787b86;">No trades recorded</td></tr>') + '</tbody></table>';
         }
 
-        /* Show panel, then draw canvas-based charts for whichever tab is active */
         var panel = document.getElementById('strategyReportPanel');
         if (panel) panel.classList.add('srp-open');
+        
         setTimeout(function () {
-          var activeTab = document.querySelector('.srp-tab.srp-active');
-          var t = activeTab ? activeTab.dataset.tab : 'metrics';
-          if (t === 'equity') _drawEquityChart(document.getElementById('srp-equity-canvas'), result);
-          if (t === 'perf') { _drawProfitBars(result); _drawBenchmark(result); }
-          if (t === 'analysis') { _drawHistogram(result); _drawDonut(result); }
+          _drawEquityChart(document.getElementById('srp-equity-canvas'), result);
         }, 30);
       };
 
