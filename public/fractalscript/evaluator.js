@@ -728,6 +728,11 @@
                 } else if (typeof methodObj === 'string' && !FS.isNa(methodObj) &&
                            ['ta', 'strategy', 'math', 'color', 'input', 'str', 'array', 'map', 'box', 'table', 'label', 'line', 'shape', 'location', 'size', 'hline', 'barstate', 'timeframe', 'extend', 'position', 'text', 'syminfo', 'barmerge', 'plot', 'order'].indexOf(methodObj) === -1) {
                     namespace = 'str';
+                } else if (methodObj && typeof methodObj === 'object' && methodObj.id !== undefined) {
+                    if (methodObj.hasOwnProperty('text') && methodObj.hasOwnProperty('x') && methodObj.hasOwnProperty('y')) namespace = 'label';
+                    else if (methodObj.hasOwnProperty('cells') && methodObj.hasOwnProperty('rows')) namespace = 'table';
+                    else if (methodObj.hasOwnProperty('x1') && methodObj.hasOwnProperty('y1')) namespace = 'line';
+                    else if (methodObj.hasOwnProperty('left') && methodObj.hasOwnProperty('top')) namespace = 'box';
                 }
 
                 if (namespace) {
