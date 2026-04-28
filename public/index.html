@@ -5024,10 +5024,10 @@
                 <div class="tv-equity-wrapper" style="display: flex; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; height: 300px; overflow: hidden;">
                   <!-- Sidebar Options -->
                   <div id="eq-sidebar" style="width: 150px; border-right: 1px solid #2a2e39; padding: 10px 0; display: flex; flex-direction: column; background: #171b26; flex-shrink: 0;">
-                    <div class="eq-option active" onclick="_changeEqView('equity')" id="eq-opt-equity" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #2962ff; cursor: pointer; background: #1e222d;">Equity</div>
-                    <div class="eq-option" onclick="_changeEqView('buyhold')" id="eq-opt-buyhold" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer;">Buy & hold</div>
-                    <div class="eq-option" onclick="_changeEqView('excursions')" id="eq-opt-excursions" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer;">Trades excursions</div>
-                    <div class="eq-option" onclick="_changeEqView('drawdowns')" id="eq-opt-drawdowns" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer;">Run-up / Drawdowns</div>
+                    <div class="eq-option active" onclick="_changeEqView('equity')" id="eq-opt-equity" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Equity <span>👁️</span></div>
+                    <div class="eq-option" onclick="_changeEqView('buyhold')" id="eq-opt-buyhold" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer; opacity: 0.5; display: flex; justify-content: space-between; align-items: center;">Buy & hold <span>👁️</span></div>
+                    <div class="eq-option active" onclick="_changeEqView('excursions')" id="eq-opt-excursions" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Trades excursions <span>👁️</span></div>
+                    <div class="eq-option" onclick="_changeEqView('drawdowns')" id="eq-opt-drawdowns" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer; opacity: 0.5; display: flex; justify-content: space-between; align-items: center;">Run-up / Drawdowns <span>👁️</span></div>
                   </div>
                   <!-- Chart Panel -->
                   <div style="flex: 1; position: relative; padding: 16px;">
@@ -15317,20 +15317,21 @@
         }
       };
 
-      var _currentEqView = 'equity';
+      var _eqChartLayers = { equity: true, buyhold: false, excursions: true, drawdowns: false };
       var _lastResult = null;
 
-      window._changeEqView = function(view) {
-        _currentEqView = view;
-        var opts = document.querySelectorAll('.eq-option');
-        opts.forEach(function(opt) {
-          opt.style.color = '#787b86';
-          opt.style.background = 'transparent';
-        });
-        var activeOpt = document.getElementById('eq-opt-' + view);
+      window._changeEqView = function(layer) {
+        _eqChartLayers[layer] = !_eqChartLayers[layer];
+        
+        var activeOpt = document.getElementById('eq-opt-' + layer);
         if (activeOpt) {
-          activeOpt.style.color = '#2962ff';
-          activeOpt.style.background = '#1e222d';
+          if (_eqChartLayers[layer]) {
+            activeOpt.style.color = '#d1d4dc';
+            activeOpt.style.opacity = '1';
+          } else {
+            activeOpt.style.color = '#787b86';
+            activeOpt.style.opacity = '0.5';
+          }
         }
         if (_lastResult) {
           window._drawEquityChart(document.getElementById('srp-equity-canvas'), _lastResult);
@@ -15360,7 +15361,8 @@
         var maxV = Math.max.apply(null, vals);
         var range = (maxV - minV) || 1;
         
-        var pad = { t: 24, b: 36, l: 56, r: 20 };
+        // Extra right space for Y-axis labels
+        var pad = { t: 24, b: 36, l: 24, r: 72 };
         var cW = W - pad.l - pad.r;
         var cH = H - pad.t - pad.b;
 
@@ -15379,24 +15381,19 @@
             var gy = py(gv);
             ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(W - pad.r, gy); ctx.stroke();
             
-            ctx.fillStyle = '#787b86'; ctx.font = '9px monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-            ctx.fillText((gv >= 0 ? '+' : '') + gv.toFixed(0), pad.l - 8, gy);
+            ctx.fillStyle = '#787b86'; ctx.font = '10px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+            ctx.fillText((gv >= 0 ? '+' : '') + gv.toFixed(0), W - pad.r + 8, gy);
           }
 
-          // Legend text upper-left
-          ctx.fillStyle = '#d1d4dc'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-          ctx.fillText('Equity', pad.l + 10, pad.t + 10);
-          ctx.fillStyle = '#787b86';
-          ctx.fillText('Buy & hold', pad.l + 10, pad.t + 25);
-          ctx.fillText('Trades excursions', pad.l + 10, pad.t + 40);
-          ctx.fillText('Run-up / Drawdowns', pad.l + 10, pad.t + 55);
+          // Center zero baseline
+          ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
 
-          // Conditional Drawing Logic per view
-          if (_currentEqView === 'equity' || _currentEqView === 'buyhold') {
-            // Area fills for Equity
+          // Layer: Equity
+          if (_eqChartLayers.equity) {
             ctx.save();
             var gradUp = ctx.createLinearGradient(0, pad.t, 0, zeroY);
-            gradUp.addColorStop(0, 'rgba(8,153,129,0.12)');
+            gradUp.addColorStop(0, 'rgba(8,153,129,0.15)');
             gradUp.addColorStop(1, 'rgba(8,153,129,0)');
             ctx.beginPath(); ctx.moveTo(px(0), Math.min(zeroY, py(vals[0])));
             for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
@@ -15405,14 +15402,13 @@
 
             var gradDn = ctx.createLinearGradient(0, zeroY, 0, pad.t + cH);
             gradDn.addColorStop(0, 'rgba(242,54,69,0)');
-            gradDn.addColorStop(1, 'rgba(242,54,69,0.12)');
+            gradDn.addColorStop(1, 'rgba(242,54,69,0.15)');
             ctx.beginPath(); ctx.moveTo(px(0), Math.max(zeroY, py(vals[0])));
             for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
             ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
             ctx.fillStyle = gradDn; ctx.fill();
             ctx.restore();
 
-            // Main Curve
             ctx.lineWidth = 2;
             for (var i = 0; i < n - 1; i++) {
               var x1 = px(i), y1 = py(vals[i]);
@@ -15421,7 +15417,6 @@
               ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
             }
 
-            // Dots
             for (var i = 0; i < n; i++) {
               ctx.fillStyle = vals[i] >= 0 ? '#089981' : '#f23645';
               ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 3.5, 0, Math.PI * 2); ctx.fill();
@@ -15429,34 +15424,30 @@
             }
           }
 
-          if (_currentEqView === 'buyhold') {
-            // Draw Buy & Hold Line (Orange)
+          // Layer: Buy & Hold
+          if (_eqChartLayers.buyhold) {
             ctx.strokeStyle = '#ff9800'; ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(px(0), zeroY);
-            for (var i = 1; i < n; i++) {
-              var pct = (i / (n - 1)) * 12.89; // Mock growth path
-              ctx.lineTo(px(i), py(pct));
-            }
+            ctx.beginPath(); ctx.moveTo(px(0), zeroY);
+            for (var i = 1; i < n; i++) ctx.lineTo(px(i), py((i / (n - 1)) * range * 0.2));
             ctx.stroke();
           }
 
-          if (_currentEqView === 'excursions') {
-            // Excursion Bars
+          // Layer: Excursion Bars
+          if (_eqChartLayers.excursions) {
             sr.trades.forEach(function(t, idx) {
               if (idx >= n) return;
               var bx = px(idx + 1);
               var isWin = t.profit >= 0;
-              var bColor = isWin ? 'rgba(8,153,129,0.6)' : 'rgba(242,54,69,0.6)';
-              var bh = Math.max(5, Math.min(cH / 2, Math.abs(t.profit) / range * cH));
+              var bColor = isWin ? 'rgba(8,153,129,0.5)' : 'rgba(242,54,69,0.5)';
+              var bh = Math.max(4, Math.min(cH/2, Math.abs(t.profit) / range * cH));
               ctx.fillStyle = bColor;
-              if (isWin) ctx.fillRect(bx - 3, zeroY - bh, 6, bh);
-              else ctx.fillRect(bx - 3, zeroY, 6, bh);
+              if (isWin) ctx.fillRect(bx - 2, zeroY - bh, 4, bh);
+              else ctx.fillRect(bx - 2, zeroY, 4, bh);
             });
           }
 
-          if (_currentEqView === 'drawdowns') {
-            // Drawdown Curves
+          // Layer: Drawdowns
+          if (_eqChartLayers.drawdowns) {
             ctx.strokeStyle = '#f23645'; ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.moveTo(px(0), zeroY);
             var curDD = 0;
@@ -15466,28 +15457,6 @@
               ctx.lineTo(px(i), py(curDD));
             }
             ctx.stroke();
-          }
-
-          // Center zero baseline
-
-          // Center zero baseline
-          ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
-
-          // Dynamic Curve Color mapping (Green above, Red below)
-          ctx.lineWidth = 2;
-          for (var i = 0; i < n - 1; i++) {
-            var x1 = px(i), y1 = py(vals[i]);
-            var x2 = px(i+1), y2 = py(vals[i+1]);
-            ctx.strokeStyle = vals[i+1] >= 0 ? '#089981' : '#f23645';
-            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-          }
-
-          // Dots on every single trade point
-          for (var i = 0; i < n; i++) {
-            ctx.fillStyle = vals[i] >= 0 ? '#089981' : '#f23645';
-            ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 3.5, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = '#131722'; ctx.lineWidth = 1; ctx.stroke();
           }
 
           // Crosshair & Hover Highlights
