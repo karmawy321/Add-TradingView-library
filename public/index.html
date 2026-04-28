@@ -5022,7 +5022,8 @@
                   Equity chart <span style="font-size: 11px; font-weight: normal; color: #787b86;">ⓘ</span>
                 </div>
                 <div class="tv-equity-wrapper" style="position: relative; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; padding: 16px 12px;">
-                  <canvas id="srp-equity-canvas" style="width:100%; height:260px;"></canvas>
+                  <canvas id="srp-equity-canvas" style="width:100%; height:260px; cursor:crosshair;"></canvas>
+                  <div id="tv-equity-tooltip" style="display:none; position:fixed; background:#1e222d; border:1px solid #2a2e39; border-radius:4px; padding:10px; font:11px 'Trebuchet MS',sans-serif; color:#d1d4dc; pointer-events:none; z-index:99999; box-shadow:0 4px 12px rgba(0,0,0,0.5);"></div>
                 </div>
               </div>
               <!-- TV Accordions Container -->
@@ -15127,6 +15128,20 @@
             '<div class="tv-accordion">' +
               '<div class="tv-accordion-header" onclick="_toggleAccordion(\'tv-acc-perf\')"><span>Performance</span><span id="tv-acc-perf-arrow">▼</span></div>' +
               '<div id="tv-acc-perf" class="tv-accordion-content" style="display:block;">' +
+                '<div style="display:flex; gap:20px; padding:16px; border-bottom:1px solid #2a2e39;">' +
+                  '<div style="flex:1; display:flex; flex-direction:column;">' +
+                    '<div style="font:bold 12px \'Trebuchet MS\',sans-serif; color:#787b86; margin-bottom:8px;">Profit structure</div>' +
+                    '<div style="background:#131722; border:1px solid #2a2e39; border-radius:4px; position:relative; height:180px;">' +
+                      '<canvas id="tv-profit-structure-canvas" style="width:100%; height:100%;"></canvas>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div style="flex:1; display:flex; flex-direction:column;">' +
+                    '<div style="font:bold 12px \'Trebuchet MS\',sans-serif; color:#787b86; margin-bottom:8px;">Benchmarking</div>' +
+                    '<div style="background:#131722; border:1px solid #2a2e39; border-radius:4px; position:relative; height:180px;">' +
+                      '<canvas id="tv-benchmarking-canvas" style="width:100%; height:100%;"></canvas>' +
+                    '</div>' +
+                  '</div>' +
+                '</div>' +
                 '<table class="tv-perf-table">' +
                   '<thead><tr><th>Metric</th><th>All</th><th>Long</th><th>Short</th></tr></thead>' +
                   '<tbody>' +
@@ -15181,12 +15196,112 @@
             '<tbody>' + (rows || '<tr><td colspan="7" style="text-align:center;color:#787b86;">No trades recorded</td></tr>') + '</tbody></table>';
         }
 
-        var panel = document.getElementById('strategyReportPanel');
-        if (panel) panel.classList.add('srp-open');
-        
         setTimeout(function () {
           _drawEquityChart(document.getElementById('srp-equity-canvas'), result);
+          _drawPerformanceCharts(result);
         }, 30);
+      };
+
+      /* ── Benchmarking and Profit waterfall charts ── */
+      window._drawPerformanceCharts = function (result) {
+        if (!result || !result.strategyResult) return;
+        var sum = result.strategyResult.summary;
+        
+        /* 1. Profit Waterfall Canvas */
+        var pc = document.getElementById('tv-profit-structure-canvas');
+        if (pc) {
+          var dpr = window.devicePixelRatio || 1;
+          var W = pc.offsetWidth || 300;
+          var H = pc.offsetHeight || 180;
+          pc.width = W * dpr; pc.height = H * dpr;
+          var ctx = pc.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
+          
+          var gp = sum.grossProfit || 0;
+          var gl = Math.abs(sum.grossLoss || 0);
+          var np = sum.netProfit || 0;
+          var com = Math.max(0, gp - gl - np);
+          
+          var bars = [
+            { label: 'Profit', val: gp, color: '#089981' },
+            { label: 'Loss', val: -gl, color: '#f23645' },
+            { label: 'Comm.', val: -com, color: '#ff9800' },
+            { label: 'Total', val: np, color: '#2962ff' }
+          ];
+          
+          var maxV = Math.max(gp, gl, Math.abs(np), 1);
+          var pad = { t: 20, b: 24, l: 12, r: 12 };
+          var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+          var bw = Math.floor(cW / 4 * 0.6), gap = cW / 4;
+          var zeroY = pad.t + cH / 2;
+          
+          // Zero line
+          ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
+          
+          bars.forEach(function (b, i) {
+            var x = pad.l + i * gap + gap / 2;
+            var bh = (Math.abs(b.val) / maxV) * (cH / 2 - 10);
+            var y = b.val >= 0 ? zeroY - bh : zeroY;
+            
+            ctx.fillStyle = b.color;
+            ctx.fillRect(x - bw / 2, y, bw, bh);
+            
+            ctx.fillStyle = '#787b86'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(b.label, x, H - 6);
+            
+            ctx.fillStyle = '#d1d4dc'; ctx.font = 'bold 9px sans-serif';
+            ctx.fillText((b.val >= 0 ? '+' : '') + b.val.toFixed(0), x, b.val >= 0 ? y - 4 : y + bh + 10);
+          });
+        }
+        
+        /* 2. Benchmarking Canvas */
+        var bc = document.getElementById('tv-benchmarking-canvas');
+        if (bc) {
+          var dpr = window.devicePixelRatio || 1;
+          var W = bc.offsetWidth || 300;
+          var H = bc.offsetHeight || 180;
+          bc.width = W * dpr; bc.height = H * dpr;
+          var ctx = bc.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
+          
+          var stratPct = sum.initialCapital ? (sum.netProfit / sum.initialCapital * 100) : 0;
+          var bhPct = 12.89; 
+          if (sr.trades && sr.trades.length > 0) {
+            var firstPrice = sr.trades[0].entryPrice;
+            var lastPrice = sr.trades[sr.trades.length - 1].exitPrice;
+            if (firstPrice && lastPrice) {
+              bhPct = ((lastPrice - firstPrice) / firstPrice) * 100;
+            }
+          }
+          
+          var bars = [
+            { label: 'Buy & Hold', val: bhPct, color: '#ff9800' },
+            { label: 'Strategy', val: stratPct, color: '#2962ff' }
+          ];
+          
+          var maxV = Math.max(Math.abs(stratPct), Math.abs(bhPct), 15);
+          var pad = { t: 20, b: 24, l: 20, r: 20 };
+          var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+          var bw = Math.floor(cW / 2 * 0.4), gap = cW / 2;
+          var zeroY = pad.t + cH / 2;
+          
+          ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY); ctx.stroke();
+          
+          bars.forEach(function (b, i) {
+            var x = pad.l + i * gap + gap / 2;
+            var bh = (Math.abs(b.val) / maxV) * (cH / 2 - 10);
+            var y = b.val >= 0 ? zeroY - bh : zeroY;
+            
+            ctx.fillStyle = b.color;
+            ctx.fillRect(x - bw / 2, y, bw, bh);
+            
+            ctx.fillStyle = '#787b86'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(b.label, x, H - 6);
+            
+            ctx.fillStyle = '#d1d4dc'; ctx.font = 'bold 9px sans-serif';
+            ctx.fillText((b.val >= 0 ? '+' : '') + b.val.toFixed(2) + '%', x, b.val >= 0 ? y - 4 : y + bh + 10);
+          });
+        }
       };
 
       window._drawEquityChart = function (canvas, result) {
@@ -15198,109 +15313,143 @@
 
         var dpr = window.devicePixelRatio || 1;
         var W = canvas.offsetWidth || 400;
-        var H = canvas.offsetHeight || 220;
+        var H = canvas.offsetHeight || 260;
         canvas.width = W * dpr;
         canvas.height = H * dpr;
         var ctx = canvas.getContext('2d');
         ctx.scale(dpr, dpr);
-        ctx.clearRect(0, 0, W, H);
 
         var vals = Array.from(ec).map(function (v) { return v - cap; });
+        var n = vals.length;
+        
         var minV = Math.min.apply(null, vals);
         var maxV = Math.max.apply(null, vals);
         var range = (maxV - minV) || 1;
-        var pad = { t: 18, b: 28, l: 52, r: 16 };
+        
+        var pad = { t: 24, b: 36, l: 56, r: 20 };
         var cW = W - pad.l - pad.r;
         var cH = H - pad.t - pad.b;
-        var n = vals.length;
 
         function px(i) { return pad.l + (i / (n - 1)) * cW; }
         function py(v) { return pad.t + (1 - (v - minV) / range) * cH; }
         var zeroY = py(0);
 
-        /* Horizontal grid lines */
-        var gridSteps = 4;
-        ctx.font = '9px DM Mono, monospace';
-        for (var gi = 0; gi <= gridSteps; gi++) {
-          var gv = minV + (gi / gridSteps) * range;
-          var gy = py(gv);
-          var isZero = Math.abs(gv) < range * 0.05;
-          ctx.strokeStyle = isZero ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.05)';
-          ctx.lineWidth = isZero ? 1 : 0.5;
-          ctx.setLineDash(isZero ? [4, 4] : []);
-          ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(W - pad.r, gy); ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.fillStyle = 'rgba(160,175,200,.4)';
-          ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-          var lbl = (gv >= 0 ? '+' : '') + gv.toFixed(0);
-          ctx.fillText(lbl, pad.l - 6, gy);
+        function redraw(hoverIdx) {
+          ctx.clearRect(0, 0, W, H);
+
+          // Grid
+          ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 0.5;
+          var gridSteps = 4;
+          for (var gi = 0; gi <= gridSteps; gi++) {
+            var gv = minV + (gi / gridSteps) * range;
+            var gy = py(gv);
+            ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(W - pad.r, gy); ctx.stroke();
+            
+            ctx.fillStyle = '#787b86'; ctx.font = '9px monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            ctx.fillText((gv >= 0 ? '+' : '') + gv.toFixed(0), pad.l - 8, gy);
+          }
+
+          // Area fills
+          ctx.save();
+          // Green above cap
+          var gradUp = ctx.createLinearGradient(0, pad.t, 0, zeroY);
+          gradUp.addColorStop(0, 'rgba(8,153,129,0.2)');
+          gradUp.addColorStop(1, 'rgba(8,153,129,0)');
+          ctx.beginPath(); ctx.moveTo(px(0), Math.min(zeroY, py(vals[0])));
+          for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
+          ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
+          ctx.fillStyle = gradUp; ctx.fill();
+
+          // Red below cap
+          var gradDn = ctx.createLinearGradient(0, zeroY, 0, pad.t + cH);
+          gradDn.addColorStop(0, 'rgba(242,54,69,0)');
+          gradDn.addColorStop(1, 'rgba(242,54,69,0.2)');
+          ctx.beginPath(); ctx.moveTo(px(0), Math.max(zeroY, py(vals[0])));
+          for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
+          ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
+          ctx.fillStyle = gradDn; ctx.fill();
+          ctx.restore();
+
+          // Excursion Bars at the zero line
+          sr.trades.forEach(function(t, idx) {
+            if (idx >= n) return;
+            var bx = px(idx);
+            var bColor = t.profit >= 0 ? '#08998144' : '#f2364544';
+            var bh = 12;
+            ctx.fillStyle = bColor;
+            ctx.fillRect(bx - 2, zeroY - bh/2, 4, bh);
+          });
+
+          // Dynamic Curve Color mapping (Green above, Red below)
+          ctx.lineWidth = 2;
+          for (var i = 0; i < n - 1; i++) {
+            var x1 = px(i), y1 = py(vals[i]);
+            var x2 = px(i+1), y2 = py(vals[i+1]);
+            ctx.strokeStyle = vals[i+1] >= 0 ? '#089981' : '#f23645';
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          }
+
+          // Dots
+          for (var i = 0; i < n; i++) {
+            ctx.fillStyle = vals[i] >= 0 ? '#089981' : '#f23645';
+            ctx.beginPath(); ctx.arc(px(i), py(vals[i]), 3, 0, Math.PI * 2); ctx.fill();
+          }
+
+          // Crosshair & Hover Highlights
+          if (hoverIdx !== undefined && hoverIdx >= 0 && hoverIdx < n) {
+            var hx = px(hoverIdx);
+            var hy = py(vals[hoverIdx]);
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(hx, pad.t); ctx.lineTo(hx, H - pad.b); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(pad.l, hy); ctx.lineTo(W - pad.r, hy); ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#2962ff';
+            ctx.beginPath(); ctx.arc(hx, hy, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+          }
         }
 
-        /* Gradient fill above zero */
-        var gradUp = ctx.createLinearGradient(0, pad.t, 0, zeroY);
-        gradUp.addColorStop(0, 'rgba(38,166,154,0.35)');
-        gradUp.addColorStop(1, 'rgba(38,166,154,0.03)');
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(px(0), Math.min(zeroY, py(vals[0])));
-        for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
-        ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
-        ctx.fillStyle = gradUp; ctx.fill();
+        redraw();
 
-        /* Gradient fill below zero */
-        var gradDn = ctx.createLinearGradient(0, zeroY, 0, pad.t + cH);
-        gradDn.addColorStop(0, 'rgba(239,83,80,0.03)');
-        gradDn.addColorStop(1, 'rgba(239,83,80,0.35)');
-        ctx.beginPath();
-        ctx.moveTo(px(0), Math.max(zeroY, py(vals[0])));
-        for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
-        ctx.lineTo(px(n - 1), zeroY); ctx.lineTo(px(0), zeroY); ctx.closePath();
-        ctx.fillStyle = gradDn; ctx.fill();
-        ctx.restore();
+        var tooltip = document.getElementById('tv-equity-tooltip');
+        
+        canvas.onmousemove = function (e) {
+          var rect = canvas.getBoundingClientRect();
+          var mx = e.clientX - rect.left;
+          
+          var closestIdx = Math.round(((mx - pad.l) / cW) * (n - 1));
+          if (closestIdx < 0) closestIdx = 0;
+          if (closestIdx >= n) closestIdx = n - 1;
 
-        /* Glow pass */
-        var lineColor = vals[n - 1] >= 0 ? '#26a69a' : '#ef5350';
-        ctx.save();
-        ctx.shadowColor = lineColor;
-        ctx.shadowBlur = 6;
-        ctx.strokeStyle = lineColor + '55';
-        ctx.lineWidth = 4;
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        ctx.moveTo(px(0), py(vals[0]));
-        for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
-        ctx.stroke();
-        ctx.restore();
+          redraw(closestIdx);
 
-        /* Main equity line */
-        ctx.strokeStyle = lineColor;
-        ctx.lineWidth = 2;
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        ctx.moveTo(px(0), py(vals[0]));
-        for (var i = 1; i < n; i++) ctx.lineTo(px(i), py(vals[i]));
-        ctx.stroke();
+          if (tooltip) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = (e.clientX + 16) + 'px';
+            tooltip.style.top = (e.clientY + 16) + 'px';
+            
+            var trade = sr.trades[closestIdx - 1] || { profit: 0, direction: 'N/A' };
+            var val = vals[closestIdx];
+            
+            tooltip.innerHTML = 
+              '<div style="font-weight:bold; margin-bottom:4px; color:#fff;">Point #' + closestIdx + '</div>' +
+              '<div>Equity P&L: <span style="color:' + (val>=0?'#089981':'#f23645') + '">' + (val>=0?'+':'') + val.toFixed(2) + ' USDT</span></div>' +
+              '<div style="margin-top:4px; border-top:1px solid #2a2e39; padding-top:4px;">' +
+                'Last Trade: <b style="color:#2962ff;">' + trade.direction.toUpperCase() + '</b><br/>' +
+                'Trade P&L: <span style="color:' + (trade.profit>=0?'#089981':'#f23645') + '">' + (trade.profit>=0?'+':'') + trade.profit.toFixed(2) + '</span>' +
+              '</div>';
+          }
+        };
 
-        /* Endpoint dot */
-        ctx.fillStyle = lineColor;
-        ctx.beginPath();
-        ctx.arc(px(n - 1), py(vals[n - 1]), 3, 0, Math.PI * 2);
-        ctx.fill();
-
-        /* X-axis labels */
-        ctx.fillStyle = 'rgba(160,175,200,.35)';
-        ctx.font = '8px DM Mono, monospace';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-        ctx.fillText('Bar 0', pad.l, H - 14);
-        ctx.textAlign = 'right';
-        ctx.fillText('Bar ' + (n - 1), W - pad.r, H - 14);
-        if (n > 4) {
-          ctx.textAlign = 'center';
-          ctx.fillText('Bar ' + Math.round((n - 1) / 2), pad.l + cW / 2, H - 14);
-        }
+        canvas.onmouseleave = function () {
+          redraw();
+          if (tooltip) tooltip.style.display = 'none';
+        };
       };
 
-      /* ── helper: rounded rect ── */
+      /* helper: rounded rect replacement placeholder cleanup */
       function _rrect(ctx, x, y, w, h, r) {
         r = Math.min(r, Math.abs(h) / 2, Math.abs(w) / 2);
         ctx.beginPath();
