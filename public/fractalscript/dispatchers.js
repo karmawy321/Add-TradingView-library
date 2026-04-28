@@ -270,6 +270,10 @@
             case 'ta.wma': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.wma(s, Math.round(l), id); }
             case 'ta.highest': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.highest(s, Math.round(l), id); }
             case 'ta.lowest': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.lowest(s, Math.round(l), id); }
+            case 'ta.highestbars': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.highestbars(s, Math.round(l), id); }
+            case 'ta.lowestbars': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.lowestbars(s, Math.round(l), id); }
+            case 'ta.vwma': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.vwma(s, Math.round(l), +ctx.curCandle.v || 0, id); }
+            case 'ta.cmo': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.cmo(s, Math.round(l), id); }
             case 'ta.crossover': { var a = e(0), b = e(1); return ta.crossover(a, b, id); }
             case 'ta.crossunder': { var a = e(0), b = e(1); return ta.crossunder(a, b, id); }
             case 'ta.cross': { var a = e(0), b = e(1); return ta.crossover(a, b, id + '_o') || ta.crossunder(a, b, id + '_u'); }
@@ -406,8 +410,14 @@
             }
             case 'line.set_xy1': { var l = e(0), x = e(1), y = e(2); if (l && l.id) { l.x1 = x; l.y1 = y; } return FS.NA; }
             case 'line.set_xy2': { var l = e(0), x = e(1), y = e(2); if (l && l.id) { l.x2 = x; l.y2 = y; } return FS.NA; }
+            case 'line.set_x1': { var l = e(0), x = e(1); if (l && l.id && !FS.isNa(x)) l.x1 = x; return FS.NA; }
+            case 'line.set_y1': { var l = e(0), y = e(1); if (l && l.id && !FS.isNa(y)) l.y1 = y; return FS.NA; }
+            case 'line.set_x2': { var l = e(0), x = e(1); if (l && l.id && !FS.isNa(x)) l.x2 = x; return FS.NA; }
+            case 'line.set_y2': { var l = e(0), y = e(1); if (l && l.id && !FS.isNa(y)) l.y2 = y; return FS.NA; }
             case 'line.set_color': { var l = e(0), c = e(1); if (l && l.id && !FS.isNa(c)) l.color = c; return FS.NA; }
             case 'line.set_width': { var l = e(0), w = e(1); if (l && l.id && !FS.isNa(w)) l.width = w; return FS.NA; }
+            case 'line.set_style': { var l = e(0), s = e(1); if (l && l.id && !FS.isNa(s)) l.style = s; return FS.NA; }
+            case 'line.set_extend': { var l = e(0), ex = e(1); if (l && l.id && !FS.isNa(ex)) l.extend = ex; return FS.NA; }
             case 'line.get_x1': { var l = e(0); return (l && l.id) ? l.x1 : FS.NA; }
             case 'line.get_y1': { var l = e(0); return (l && l.id) ? l.y1 : FS.NA; }
             case 'line.get_x2': { var l = e(0); return (l && l.id) ? l.x2 : FS.NA; }
@@ -835,6 +845,43 @@
                 for (var soi = 0; soi < a.length; soi++) { if (!FS.isNa(a[soi]) && a[soi]) return true; }
                 return false;
             }
+            case 'array.concat': {
+                var a1 = e(0), a2 = e(1);
+                if (!Array.isArray(a1) || !Array.isArray(a2)) return FS.NA;
+                return a1.concat(a2);
+            }
+            case 'array.variance': {
+                var a = e(0);
+                if (!Array.isArray(a)) return FS.NA;
+                var sum = 0, cnt = 0;
+                for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i])) { sum += a[i]; cnt++; } }
+                if (cnt < 2) return FS.NA;
+                var mean = sum / cnt;
+                var sq = 0;
+                for (var j = 0; j < a.length; j++) { if (!FS.isNa(a[j])) sq += (a[j] - mean) * (a[j] - mean); }
+                return sq / (cnt - 1);
+            }
+            case 'array.covariance': {
+                var a1 = e(0), a2 = e(1);
+                if (!Array.isArray(a1) || !Array.isArray(a2) || a1.length !== a2.length) return FS.NA;
+                var sum1 = 0, sum2 = 0, cnt = 0;
+                for (var i = 0; i < a1.length; i++) {
+                    if (!FS.isNa(a1[i]) && !FS.isNa(a2[i])) { sum1 += a1[i]; sum2 += a2[i]; cnt++; }
+                }
+                if (cnt < 2) return FS.NA;
+                var mean1 = sum1 / cnt, mean2 = sum2 / cnt;
+                var cov = 0;
+                for (var j = 0; j < a1.length; j++) {
+                    if (!FS.isNa(a1[j]) && !FS.isNa(a2[j])) cov += (a1[j] - mean1) * (a2[j] - mean2);
+                }
+                return cov / (cnt - 1);
+            }
+            case 'array.abs': {
+                var a = e(0);
+                if (!Array.isArray(a)) return FS.NA;
+                for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i])) a[i] = Math.abs(a[i]); }
+                return FS.NA;
+            }
             default:
                 return { __error__: { line: node.line, col: node.col, message: "Unknown array function '" + name + "'" } };
         }
@@ -1082,6 +1129,32 @@
                     var ks = String(k);
                     m._keys[ks] = true;
                     m._vals[ks] = v;
+                }
+                return FS.NA;
+            }
+            case 'map.put_all': {
+                var m1 = e(0), m2 = e(1);
+                if (m1 && m1.__map__ && m2 && m2.__map__) {
+                    for (var ks in m2._keys) {
+                        if (m2._keys.hasOwnProperty(ks)) {
+                            m1._keys[ks] = true;
+                            m1._vals[ks] = m2._vals[ks];
+                        }
+                    }
+                }
+                return FS.NA;
+            }
+            case 'map.copy': {
+                var m = e(0);
+                if (m && m.__map__) {
+                    var copy = { __map__: true, _keys: {}, _vals: {} };
+                    for (var ks in m._keys) {
+                        if (m._keys.hasOwnProperty(ks)) {
+                            copy._keys[ks] = true;
+                            copy._vals[ks] = m._vals[ks];
+                        }
+                    }
+                    return copy;
                 }
                 return FS.NA;
             }

@@ -195,6 +195,66 @@
                 return min === Infinity ? FS.NA : min;
             },
 
+            highestbars: function (source, length, id) {
+                var c = getCache(id, function () { return { buf: [] }; });
+                if (FS.isNa(source)) return FS.NA;
+                c.buf.push(source);
+                if (c.buf.length > length) c.buf.shift();
+                var max = -Infinity;
+                var maxIdx = -1;
+                for (var i = 0; i < c.buf.length; i++) {
+                    if (!FS.isNa(c.buf[i]) && c.buf[i] > max) {
+                        max = c.buf[i];
+                        maxIdx = i;
+                    }
+                }
+                return maxIdx === -1 ? FS.NA : (c.buf.length - 1 - maxIdx);
+            },
+
+            lowestbars: function (source, length, id) {
+                var c = getCache(id, function () { return { buf: [] }; });
+                if (FS.isNa(source)) return FS.NA;
+                c.buf.push(source);
+                if (c.buf.length > length) c.buf.shift();
+                var min = Infinity;
+                var minIdx = -1;
+                for (var i = 0; i < c.buf.length; i++) {
+                    if (!FS.isNa(c.buf[i]) && c.buf[i] < min) {
+                        min = c.buf[i];
+                        minIdx = i;
+                    }
+                }
+                return minIdx === -1 ? FS.NA : (c.buf.length - 1 - minIdx);
+            },
+
+            vwma: function (source, length, volume, id) {
+                var num = this.sma(source * volume, length, id + '_num');
+                var den = this.sma(volume, length, id + '_den');
+                if (FS.isNa(num) || FS.isNa(den) || den === 0) return FS.NA;
+                return num / den;
+            },
+
+            cmo: function (source, length, id) {
+                var c = getCache(id, function () { return { prevSrc: FS.NA, gains: [], losses: [], sumG: 0, sumL: 0 }; });
+                if (FS.isNa(source)) return FS.NA;
+                if (FS.isNa(c.prevSrc)) { c.prevSrc = source; return FS.NA; }
+                var diff = source - c.prevSrc;
+                var gain = diff > 0 ? diff : 0;
+                var loss = diff < 0 ? -diff : 0;
+                c.prevSrc = source;
+                c.gains.push(gain);
+                c.losses.push(loss);
+                c.sumG += gain;
+                c.sumL += loss;
+                if (c.gains.length > length) {
+                    c.sumG -= c.gains.shift();
+                    c.sumL -= c.losses.shift();
+                }
+                if (c.gains.length < length) return FS.NA;
+                var total = c.sumG + c.sumL;
+                return total === 0 ? 0 : 100 * (c.sumG - c.sumL) / total;
+            },
+
             /* ════════ P5: Moving averages ════════ */
             hma: function (source, length, id) {
                 var c = getCache(id, function () { return { buf: [], rawBuf: [] }; });
