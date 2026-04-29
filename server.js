@@ -753,7 +753,93 @@ app.get('/price/:symbol', rateLimit(30, 60000), (req, res) => {
 app.get('/search', rateLimit(60, 60000), (req, res) => {
   const query = (req.query.q || '').trim();
   if (!query) return res.json({ data: [] });
-  if (!TD_KEY) return res.json({ error: 'No TD_KEY configured', data: [] });
+
+  /* Inject OANDA results — static catalog matching _maSymMap */
+  const _oandaCatalog = [
+    /* Metals / Commodities */
+    { symbol:'XAUUSD',  instrument_name:'Gold / US Dollar',            instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+    { symbol:'XAGUSD',  instrument_name:'Silver / US Dollar',          instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+    { symbol:'OILWTI',  instrument_name:'WTI Crude Oil',               instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
+    /* Commodities — TwelveData (aggregated, not broker-grade) */
+    { symbol:'BRENT',   instrument_name:'Brent Crude Oil',             instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+    { symbol:'NATGAS',  instrument_name:'Natural Gas',                 instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+    { symbol:'COPPER',  instrument_name:'Copper',                      instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+    { symbol:'XPTUSD',  instrument_name:'Platinum / US Dollar',        instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+    { symbol:'XPDUSD',  instrument_name:'Palladium / US Dollar',       instrument_type:'Commodity',         exchange:'TwelveData', source:'td' },
+    /* Forex majors */
+    { symbol:'EURUSD',  instrument_name:'Euro / US Dollar',            instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'GBPUSD',  instrument_name:'British Pound / US Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'USDJPY',  instrument_name:'US Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'USDCHF',  instrument_name:'US Dollar / Swiss Franc',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'AUDUSD',  instrument_name:'Australian Dollar / USD',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'NZDUSD',  instrument_name:'New Zealand Dollar / USD',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'USDCAD',  instrument_name:'US Dollar / Canadian Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    /* Forex crosses */
+    { symbol:'EURJPY',  instrument_name:'Euro / Japanese Yen',         instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'GBPJPY',  instrument_name:'British Pound / Japanese Yen',instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'EURGBP',  instrument_name:'Euro / British Pound',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'EURAUD',  instrument_name:'Euro / Australian Dollar',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'EURCAD',  instrument_name:'Euro / Canadian Dollar',      instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'EURCHF',  instrument_name:'Euro / Swiss Franc',          instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'EURNZD',  instrument_name:'Euro / New Zealand Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'GBPAUD',  instrument_name:'British Pound / Australian Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'GBPCAD',  instrument_name:'British Pound / Canadian Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'GBPCHF',  instrument_name:'British Pound / Swiss Franc',       instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'GBPNZD',  instrument_name:'British Pound / New Zealand Dollar',instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'AUDCAD',  instrument_name:'Australian Dollar / Canadian Dollar',instrument_type:'Physical Currency',exchange:'OANDA', source:'oanda' },
+    { symbol:'AUDCHF',  instrument_name:'Australian Dollar / Swiss Franc',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'AUDJPY',  instrument_name:'Australian Dollar / Japanese Yen',  instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'AUDNZD',  instrument_name:'Australian Dollar / New Zealand Dollar',instrument_type:'Physical Currency',exchange:'OANDA',source:'oanda'},
+    { symbol:'CADCHF',  instrument_name:'Canadian Dollar / Swiss Franc',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'CADJPY',  instrument_name:'Canadian Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'CHFJPY',  instrument_name:'Swiss Franc / Japanese Yen',        instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    { symbol:'NZDJPY',  instrument_name:'New Zealand Dollar / Japanese Yen', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
+    /* EM / exotic forex — TwelveData (aggregated) */
+    { symbol:'USDBRL',  instrument_name:'US Dollar / Brazilian Real',      instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+    { symbol:'USDMXN',  instrument_name:'US Dollar / Mexican Peso',        instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+    { symbol:'USDZAR',  instrument_name:'US Dollar / South African Rand',  instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+    { symbol:'USDTRY',  instrument_name:'US Dollar / Turkish Lira',        instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+    { symbol:'USDSGD',  instrument_name:'US Dollar / Singapore Dollar',    instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+    { symbol:'USDCNH',  instrument_name:'US Dollar / Offshore Yuan',       instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+    { symbol:'USDINR',  instrument_name:'US Dollar / Indian Rupee',        instrument_type:'Physical Currency', exchange:'TwelveData', source:'td' },
+    /* Crypto — Binance (broker-grade) */
+    { symbol:'BTCUSDT', instrument_name:'Bitcoin / US Dollar',         instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    { symbol:'ETHUSDT', instrument_name:'Ethereum / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+    { symbol:'SOLUSDT', instrument_name:'Solana / US Dollar',          instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+    { symbol:'ADAUSDT', instrument_name:'Cardano / US Dollar',         instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+    { symbol:'LTCUSD',  instrument_name:'Litecoin / US Dollar',        instrument_type:'Digital Currency',  exchange:'OANDA',       source:'oanda' },
+    /* Crypto — Binance direct */
+    { symbol:'BNBUSDT',   instrument_name:'BNB / US Dollar',           instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    { symbol:'XRPUSDT',   instrument_name:'XRP / US Dollar',           instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    { symbol:'DOGEUSDT',  instrument_name:'Dogecoin / US Dollar',      instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    { symbol:'DOTUSDT',   instrument_name:'Polkadot / US Dollar',      instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    { symbol:'LINKUSDT',  instrument_name:'Chainlink / US Dollar',     instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    { symbol:'AVAXUSDT',  instrument_name:'Avalanche / US Dollar',     instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    { symbol:'MATICUSDT', instrument_name:'Polygon / US Dollar',       instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    { symbol:'ATOMUSDT',  instrument_name:'Cosmos / US Dollar',        instrument_type:'Digital Currency',  exchange:'Binance', source:'binance' },
+    /* Equity CFDs */
+    { symbol:'TSLA',    instrument_name:'Tesla Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
+    { symbol:'NVDA',    instrument_name:'NVIDIA Corp',                 instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
+    { symbol:'AAPL',    instrument_name:'Apple Inc',                   instrument_type:'Common Stock',      exchange:'OANDA', source:'oanda' },
+    /* Indices */
+    { symbol:'US500',   instrument_name:'S&P 500',                     instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+    { symbol:'US30',    instrument_name:'Dow Jones 30',                instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+    { symbol:'US100',   instrument_name:'NASDAQ 100',                  instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+    { symbol:'DE30',    instrument_name:'Germany DAX 30',              instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+    { symbol:'GB100',   instrument_name:'UK FTSE 100',                 instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+    { symbol:'JP225',   instrument_name:'Japan Nikkei 225',            instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+    { symbol:'AU200',   instrument_name:'Australia ASX 200',           instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+    { symbol:'EU50',    instrument_name:'Euro Stoxx 50',               instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+    { symbol:'FR40',    instrument_name:'France CAC 40',               instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
+  ];
+
+  if (!TD_KEY) {
+    const q = query.toUpperCase().replace('/','');
+    const oandaMatches = _oandaCatalog.filter(o => {
+      return o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
+    });
+    return res.json({ data: oandaMatches });
+  }
 
   const params = new URLSearchParams({
     symbol: query,
@@ -2823,7 +2909,17 @@ app.post('/admin/cache-purge/:symbol', requireAdmin, async (req, res) => {
     for (const d of ['oanda_cache', 'td_cache', 'td_forex_cache']) {
       const op = path.join(__dirname, d, `${sym}.json`); if (fs.existsSync(op)) fs.unlinkSync(op);
     }
-    res.json({ ok: true, message: `Purged ${sym}` });
+
+    // Auto force-refresh for OANDA
+    if (source === 'oanda') {
+      try {
+        await oanda.fetchRecent(sym);
+      } catch (err) {
+        console.error(`[Cache Purge] Auto-refresh failed for ${sym}:`, err.message);
+      }
+    }
+
+    res.json({ ok: true, message: `Purged and auto-refreshed ${sym}` });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
