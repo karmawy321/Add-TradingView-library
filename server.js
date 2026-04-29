@@ -962,7 +962,10 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
         const oandaMatches = _oandaCatalog.filter(o => {
           return o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
         });
-        res.json({ data: [...oandaMatches, ...filtered] });
+        const capitalMatches = capital.getSymbols().map(k => ({
+          symbol: k, instrument_name: k, instrument_type: 'CFD', exchange: 'Capital', source: 'capital'
+        })).filter(o => o.symbol.includes(q) || o.instrument_name.includes(q));
+        res.json({ data: [...oandaMatches, ...capitalMatches, ...filtered] });
       } catch (e) {
         res.json({ data: [] });
       }
@@ -2726,7 +2729,7 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
     </div>
   </div>
   <table>
-    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
+    <thead><tr><th>Symbol</th><th>1m</th><th>5m</th><th>15m</th><th>30m</th><th>1h</th><th>4h</th><th>1d</th><th>1w</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
     <tbody id="capital-table"></tbody>
   </table>
 </div>
@@ -2817,7 +2820,8 @@ async function poll() {
     /* Crypto (Binance) + Stocks (TD) sections */
     const TD_TFS = ['1m','1h','4h','1d'];
 
-    function renderTDTable(section, tableId, accentColor, refreshingFlag, statsId, activeInfoId) {
+    function renderTDTable(section, tableId, accentColor, refreshingFlag, statsId, activeInfoId, tfList) {
+      const tfsToRender = tfList || TD_TFS;
       const loaded = section.loaded || 0;
       const total  = section.total  || 0;
       document.getElementById(statsId).textContent = loaded + ' / ' + total + ' symbols loaded';
@@ -2828,14 +2832,14 @@ async function poll() {
       document.getElementById(tableId).innerHTML = allRows.map(entry => {
         const sym = entry.sym || entry;
         const tfs = entry.tfs || {};
-        const cells = TD_TFS.map(tf => {
+        const cells = tfsToRender.map(tf => {
           const info = tfs[tf];
           if (!info || !info.candles) return '<td style="color:rgba(255,255,255,0.2)">—</td>';
           return '<td>' + info.candles.toLocaleString() + '</td>';
         }).join('');
         const lastCandle = (() => {
           let latest = null;
-          TD_TFS.forEach(tf => { if (tfs[tf]?.lastCandle) { const dt = new Date(tfs[tf].lastCandle); if (!latest || dt > latest) latest = dt; } });
+          tfsToRender.forEach(tf => { if (tfs[tf]?.lastCandle) { const dt = new Date(tfs[tf].lastCandle); if (!latest || dt > latest) latest = dt; } });
           return latest ? latest.toLocaleTimeString() : '—';
         })();
         const hasTfs = Object.keys(tfs).length > 0;
@@ -2843,11 +2847,11 @@ async function poll() {
           ? '<span class="badge" style="background:' + accentColor + '22;color:' + accentColor + '">loaded</span>'
           : '<span class="badge badge-empty">pending</span>';
         return '<tr><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td><td><button onclick="purgeSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#ef4444;border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:bold;">Purge</button></td></tr>';
-      }).join('') || '<tr><td colspan="8" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No data yet</td></tr>';
+      }).join('') || '<tr><td colspan="' + (tfsToRender.length + 4) + '" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No data yet</td></tr>';
     }
 
     renderTDTable(d.tdCrypto || {}, 'td-table',       '#60a5fa', d.tdCryptoRefreshing,  'td-stats',       'td-active-info');
-    renderTDTable(d.capitalData || {}, 'capital-table', '#c9a84c', d.capitalRefreshing, 'capital-stats', 'capital-active-info');
+    renderTDTable(d.capitalData || {}, 'capital-table', '#c9a84c', d.capitalRefreshing, 'capital-stats', 'capital-active-info', TFS);
     renderTDTable(d.tdStocks || {}, 'td-forex-table', '#4ade80', d.tdStocksRefreshing,  'td-forex-stats', 'td-forex-active-info');
 
   } catch(e) { console.error(e); }

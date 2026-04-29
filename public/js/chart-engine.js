@@ -3390,7 +3390,7 @@
       _updateSrcSwitch(sym);
       startPricePolling(sym);
 
-      var _srcParam = currentDataSource === 'oanda' ? '&source=oanda' : '';
+      var _srcParam = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
       fetch(BACKEND_URL + '/candles/' + sym + '?tf=' + currentInterval + _srcParam)
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -3422,7 +3422,7 @@
           }
         });
 
-      chartSSE = new EventSource(BACKEND_URL + '/subscribe/' + sym + (currentDataSource === 'oanda' ? '?source=oanda' : ''));
+      chartSSE = new EventSource(BACKEND_URL + '/subscribe/' + sym + ((currentDataSource === 'oanda' || currentDataSource === 'capital') ? '?source=' + currentDataSource : ''));
       chartSSE.onmessage = function (e) {
         try {
           var data = JSON.parse(e.data);
@@ -3518,7 +3518,7 @@
       var attempts = 0;
       var retryTimer = setInterval(function () {
         attempts++;
-        var _srcP = currentDataSource === 'oanda' ? '&source=oanda' : '';
+        var _srcP = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
         fetch(BACKEND_URL + '/candles/' + sym + '?tf=' + tf + _srcP)
           .then(function (r) { return r.json(); })
           .then(function (d) {
@@ -3576,7 +3576,7 @@
       if (!tf || !currentSymbol) return;
       currentInterval = tf.value;
       _historyLoading = false; _historyDepleted = false;
-      var _srcQ = currentDataSource === 'oanda' ? '&source=oanda' : '';
+      var _srcQ = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
       fetch(BACKEND_URL + '/candles/' + currentSymbol + '?tf=' + currentInterval + _srcQ)
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -3618,7 +3618,7 @@
       _historyLoading = true;
       renderChart && renderChart(); /* show loading indicator immediately */
       var endTime = chartCandles[0].t - 1;
-      var _hSrcQ = currentDataSource === 'oanda' ? '&source=oanda' : '';
+      var _hSrcQ = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
       fetch(BACKEND_URL + '/history/' + currentSymbol + '?tf=' + currentInterval + '&endTime=' + endTime + _hSrcQ)
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -3946,17 +3946,23 @@
             if (r.currency && sym.indexOf(r.currency) === -1 && r.instrument_type === 'Physical Currency') sym += r.currency;
             var isOanda = r.source === 'oanda';
             var isBinance = r.source === 'binance';
+            var isCapital = r.source === 'capital';
             var isCrypto = r.instrument_type === 'Digital Currency';
             var onclick = isOanda
               ? "selectPairWithSource('" + sym + "','oanda');closeSearchModal()"
               : isBinance
                 ? "selectPairWithSource('" + sym + "','binance');closeSearchModal()"
-                : "selectPair('" + sym + "');closeSearchModal()";
+                : isCapital
+                  ? "selectPairWithSource('" + sym + "','capital');closeSearchModal()"
+                  : "selectPair('" + sym + "');closeSearchModal()";
             /* Source badge — check OANDA first so crypto from OANDA gets OANDA badge */
             var badge;
             if (isOanda) {
               badge = '<span style="display:inline-flex;align-items:center;gap:3px;background:#00274d;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;letter-spacing:0.4px">'
                 + '<span style="color:#00c896;font-size:12px;line-height:1">✓</span>OANDA</span>';
+            } else if (isCapital) {
+              badge = '<span style="display:inline-flex;align-items:center;gap:3px;background:linear-gradient(135deg, #c9a84c, #9a7a2e);color:#0a0c12;font-size:10px;font-weight:800;padding:2px 7px;border-radius:3px;letter-spacing:0.5px">'
+                + '<span style="color:#fff;font-size:11px;line-height:1">✦</span>CAPITAL</span>';
             } else if (isCrypto) {
               badge = '<span style="display:inline-flex;align-items:center;gap:3px;background:#F3BA2F;color:#1a1a1a;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;letter-spacing:0.4px">'
                 + '<svg width="9" height="9" viewBox="0 0 24 24" fill="#1a1a1a" style="flex-shrink:0"><path d="M12 0L7.5 4.5 12 9l4.5-4.5L12 0zM3 9l-3 3 3 3 3-3-3-3zm18 0l-3 3 3 3 3-3-3-3zM7.5 13.5 12 18l4.5-4.5L12 9l-4.5 4.5zM12 15l-3 3 3 3 3-3-3-3z"/></svg>'
@@ -3966,7 +3972,7 @@
                 + '<span style="font-weight:700">twelve</span><span style="font-weight:400;color:rgba(255,255,255,0.55)">data</span></span>';
             }
             var isSelected = (sym === currentSymbol || sym.replace('/', '') === currentSymbol)
-              && (isOanda ? currentDataSource === 'oanda' : currentDataSource !== 'oanda');
+              && (isOanda ? currentDataSource === 'oanda' : isCapital ? currentDataSource === 'capital' : currentDataSource !== 'oanda' && currentDataSource !== 'capital');
             return '<div class="s-res-item' + (isSelected ? ' s-res-active' : '') + '" onclick="' + onclick + '">'
               + '<div class="s-res-info" style="min-width:0">'
               + '<div class="s-res-symbol">' + sym + '</div>'

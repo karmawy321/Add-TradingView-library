@@ -52,8 +52,9 @@ let connected = false;
 let ws = null;
 
 async function connect() {
+  console.log(`[Capital] Starting connection initialization... API_KEY Present: ${!!API_KEY}`);
   if (!API_KEY || !IDENTIFIER || !PASSWORD) {
-    console.warn('[Capital] Credentials missing in .env — skipping connect');
+    console.log('[Capital] WARNING: Credentials missing in .env — skipping connect (Check CAPITAL_API_KEY, CAPITAL_IDENTIFIER, CAPITAL_PASSWORD)');
     return;
   }
 
@@ -86,6 +87,13 @@ async function connect() {
           console.log('[Capital] Session authenticated successfully');
           setInterval(keepAlive, 9 * 60 * 1000);
           connectWS();
+          
+          /* Automatically start fetching historical data into cache */
+          setTimeout(() => {
+            console.log('[Capital] Bootstrapping cache for all symbols (Background)...');
+            refreshAllCache().catch(e => console.error('[Capital] Background sync error:', e));
+          }, 3000);
+          
           resolve();
         } else {
           console.error('[Capital] Authentication failed:', data);
