@@ -627,14 +627,16 @@
                 }
                 if (at(TT.OP) && cur().value === '<' &&
                     expr.type === 'MemberAccess' && expr.member === 'new' &&
-                    expr.object && expr.object.type === 'Identifier' && expr.object.name === 'array') {
+                    expr.object && expr.object.type === 'Identifier' && 
+                    (expr.object.name === 'array' || expr.object.name === 'map' || expr.object.name === 'matrix')) {
                     pos++;
-                    var tArg = eat(TT.IDENT); if (tArg.error) return tArg;
+                    while (!at(TT.EOF) && !(at(TT.OP) && cur().value === '>')) {
+                        pos++;
+                    }
                     if (!(at(TT.OP) && cur().value === '>')) {
                         return { error: { line: cur().line, col: cur().col, message: "Expected '>' after type parameter" } };
                     }
                     pos++;
-                    expr.typeArg = tArg.value;
                     continue;
                 }
                 if (at(TT.LPAREN) && (expr.type === 'MemberAccess' || expr.type === 'Identifier')) {
