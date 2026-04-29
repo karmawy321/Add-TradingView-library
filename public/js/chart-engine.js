@@ -1293,25 +1293,64 @@
             }
             /* text inside box */
             if (_BX.text) {
+              chartCtx.save();
+              chartCtx.beginPath();
+              chartCtx.rect(_bx1, _by1, _bw, _bh);
+              chartCtx.clip();
+
               var _bts = _bxSizePx[_BX.text_size] || 12;
               chartCtx.font = _bts + 'px "DM Sans", sans-serif';
               chartCtx.fillStyle = _BX.text_color || '#FFFFFF';
+              
+              var _btLines = [];
+              var _rawLines = String(_BX.text).split('\n');
+              var _maxW = _bw - 8;
+              if (_maxW < 20) _maxW = 20;
+              
+              for (var _r = 0; _r < _rawLines.length; _r++) {
+                var _line = _rawLines[_r];
+                if (chartCtx.measureText(_line).width <= _maxW) {
+                  _btLines.push(_line);
+                } else {
+                  var _words = _line.split(' ');
+                  var _currentLine = _words[0] || '';
+                  for (var _w = 1; _w < _words.length; _w++) {
+                    var _word = _words[_w];
+                    var _width = chartCtx.measureText(_currentLine + " " + _word).width;
+                    if (_width < _maxW) {
+                      _currentLine += " " + _word;
+                    } else {
+                      if (_currentLine) _btLines.push(_currentLine);
+                      _currentLine = _word;
+                    }
+                  }
+                  if (_currentLine) _btLines.push(_currentLine);
+                }
+              }
+
               chartCtx.textBaseline = (_BX.text_valign === 'top') ? 'top' :
                 (_BX.text_valign === 'bottom') ? 'bottom' : 'middle';
               var _btxX, _btxY;
               if (_BX.text_halign === 'left') { chartCtx.textAlign = 'left'; _btxX = _bx1 + 4; }
               else if (_BX.text_halign === 'right') { chartCtx.textAlign = 'right'; _btxX = _bx2 - 4; }
               else { chartCtx.textAlign = 'center'; _btxX = _bx1 + _bw / 2; }
-              if (_BX.text_valign === 'top') _btxY = _by1 + 2;
-              else if (_BX.text_valign === 'bottom') _btxY = _by2 - 2;
+              
+              if (_BX.text_valign === 'top') _btxY = _by1 + 4;
+              else if (_BX.text_valign === 'bottom') _btxY = _by2 - 4;
               else _btxY = _by1 + _bh / 2;
-              /* support multi-line text */
-              var _btLines = String(_BX.text).split('\n');
+
               var _btLh = _bts + 2;
-              var _btStartY = _btxY - ((_btLines.length - 1) * _btLh) / 2;
+              var _btStartY = _btxY;
+              if (_BX.text_valign === 'middle') {
+                _btStartY = _btxY - ((_btLines.length - 1) * _btLh) / 2;
+              } else if (_BX.text_valign === 'bottom') {
+                _btStartY = _btxY - (_btLines.length - 1) * _btLh;
+              }
+
               for (var _bli = 0; _bli < _btLines.length; _bli++) {
                 chartCtx.fillText(_btLines[_bli], _btxX, _btStartY + _bli * _btLh);
               }
+              chartCtx.restore();
             }
           }
           chartCtx.restore();
