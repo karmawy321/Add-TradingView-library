@@ -215,7 +215,8 @@
                 values: vals,
                 colors: cols,
                 color: p.color || '#2196F3',
-                lineWidth: p.lineWidth || 1
+                lineWidth: p.lineWidth || 1,
+                style: p.style || 'plot.style_line'
             });
         }
 

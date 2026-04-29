@@ -1438,10 +1438,13 @@
             chartCtx.textBaseline = 'middle';
             chartCtx.textAlign = 'center';
             var _ltext = String(_LB.text == null ? '' : _LB.text);
-            var _ltw = _ltext ? chartCtx.measureText(_ltext).width : 0;
+            var _ltlines = _ltext.split('\n');
+            var _llh = _lfont + 2;
+            var _ltw = 0;
+            for (var _lmi = 0; _lmi < _ltlines.length; _lmi++) { var _lmw = chartCtx.measureText(_ltlines[_lmi]).width; if (_lmw > _ltw) _ltw = _lmw; }
             var _lpadX = 6, _lpadY = 3;
             var _lbw = _ltw + _lpadX * 2;
-            var _lbh = _lfont + _lpadY * 2;
+            var _lbh = _ltlines.length * _llh + _lpadY * 2;
             var _style = _LB.style || 'label_down';
             var _lbox = null; // {x, y, w, h}
             var _arrow = null; // {ax, ay, bx, by, cx, cy}
@@ -1536,7 +1539,10 @@
                 chartCtx.textAlign = 'center';
                 _tx = _lx; _ty = _ly;
               }
-              chartCtx.fillText(_ltext, _tx, _ty);
+              var _tly0 = _lbox ? (_lbox.y + _lpadY + _llh / 2) : (_ty - (_ltlines.length - 1) * _llh / 2);
+              for (var _tli = 0; _tli < _ltlines.length; _tli++) {
+                chartCtx.fillText(_ltlines[_tli], _tx, _tly0 + _tli * _llh);
+              }
             }
           }
           chartCtx.restore();
