@@ -511,6 +511,7 @@
     var _historyLoading = false;
     var _historyDepleted = false;
     var chartSSE = null;
+    var _1mRefreshTimer = null;
     var sma50On = false;
     var sma200On = false;
     var sma400On = false;
@@ -3362,6 +3363,26 @@
       chartView.rightPad = 0;
     }
 
+    function _stop1mRefresh() {
+      if (_1mRefreshTimer) { clearInterval(_1mRefreshTimer); _1mRefreshTimer = null; }
+    }
+
+    function _start1mRefresh(sym) {
+      _stop1mRefresh();
+      _1mRefreshTimer = setInterval(function () {
+        if (currentInterval !== '1m' || currentSymbol !== sym) { _stop1mRefresh(); return; }
+        var _srcParam = currentDataSource === 'oanda' ? '&source=oanda' : '';
+        fetch(BACKEND_URL + '/candles/' + sym + '?tf=1m' + _srcParam)
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d.candles && d.candles.length > 0 && currentSymbol === sym && currentInterval === '1m') {
+              chartCandles = d.candles;
+              renderChart();
+            }
+          }).catch(function () {});
+      }, 5 * 60 * 1000);
+    }
+
     function loadChart(symbol, interval) {
       if (!symbol) return;
       var sym = symbol.toUpperCase().replace('/', '-'); // Keep URL safe but preserve format
@@ -3374,6 +3395,7 @@
       vpvrAnchorX = null; chartView.rightPad = 0; /* reset VPVR gap on new symbol */
       var empty = document.getElementById('chartEmpty'); if (empty) empty.style.display = 'none';
       if (chartSSE) { chartSSE.close(); chartSSE = null; }
+      _stop1mRefresh();
       chartCandles = []; _historyLoading = false; _historyDepleted = false;
       _animLivePrice = null; _animTargetPrice = null;
       resizeCanvas();
@@ -3497,6 +3519,8 @@
         } catch (err) { }
       };
       chartSSE.onerror = function () { console.warn('[SSE] error for', sym); };
+
+      if (currentInterval === '1m') _start1mRefresh(sym);
 
       fetch(BACKEND_URL + '/price/' + sym)
         .then(function (r) { return r.json(); })

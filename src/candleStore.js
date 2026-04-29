@@ -171,7 +171,7 @@ function writeCandles(source, sym, tf, candles) {
  */
 function readCandles(source, sym, tf) {
   const arr = _getArr(source, sym, tf);
-  return arr.slice();
+  return _dedup(arr.slice());
 }
 
 /**
@@ -241,15 +241,6 @@ function removeWhere(source, sym, tf, predicate) {
   const removed = before - _store[k][tf].length;
   if (removed > 0) _dirty.add(k);
   return removed;
-}
-
-/**
- * Clear all candles for a single timeframe slot (used to wipe stale derived data
- * before re-deriving from a lower TF).
- */
-function clearTF(source, sym, tf) {
-  const k = _key(source, sym);
-  if (_store[k]) { _store[k][tf] = []; _dirty.add(k); }
 }
 
 /**
@@ -338,7 +329,6 @@ module.exports = {
   highWaterMark,
   subscribe,
   purge,
-  clearTF,
   replaceBar,
   removeWhere,
   listKeys,
