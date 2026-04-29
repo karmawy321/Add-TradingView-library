@@ -91,12 +91,25 @@
             /* Newlines — significant in fractal */
             if (ch === '\n') {
                 advance();
-                /* Collapse multiple newlines */
+                /* Collapse multiple newlines and spaces */
                 while (i < len && (source[i] === '\n' || source[i] === '\r' || source[i] === ' ' || source[i] === '\t')) {
-                    if (source[i] === '\n') advance(); else advance();
+                    advance();
                 }
-                /* Don't push newline after another newline or at start */
-                if (tokens.length > 0 && tokens[tokens.length - 1].type !== TT.NEWLINE) {
+                
+                /* Pine Script v5 line continuation:
+                   If a line starts with indentation that is NOT a multiple of 4 spaces,
+                   it is a continuation of the previous line. */
+                var isContinuation = false;
+                if (i < len) {
+                    if (source[i] === '/' && i + 1 < len && source[i+1] === '/') {
+                        isContinuation = false; // comments don't force continuation
+                    } else {
+                        isContinuation = (col - 1) % 4 !== 0;
+                    }
+                }
+
+                /* Don't push newline if it's a continuation, or if we already just pushed one, or at start */
+                if (!isContinuation && tokens.length > 0 && tokens[tokens.length - 1].type !== TT.NEWLINE) {
                     tokens.push(tok(TT.NEWLINE, '\\n', startLine, startCol));
                 }
                 continue;
