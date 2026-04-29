@@ -18,6 +18,7 @@ const sse     = require('./src/sse');
 const oanda   = require('./src/sources/oanda');
 const binance = require('./src/sources/binance');
 const td      = require('./src/sources/twelvedata');
+const capital = require('./src/sources/capital');
 
 const _binanceSymSet = new Set(binance.SYMBOLS);
 
@@ -25,6 +26,7 @@ const _binanceSymSet = new Set(binance.SYMBOLS);
 function getSymSource(sym) {
   if (oanda.SYMBOL_MAP[sym])  return 'oanda';
   if (_binanceSymSet.has(sym)) return 'binance';
+  if (capital.SYMBOL_MAP[sym]) return 'capital';
   return 'td';
 }
 
@@ -3469,10 +3471,12 @@ app.listen(PORT, () => {
   oanda.loadCache();
   binance.loadCache();
   td.loadCache();
+  capital.loadCache();
 
   /* Start live feeds */
   binance.connect();  // Binance WS — always-on, free, no auth
   td.connect();       // TwelveData WS — auto-subs precache stocks on open
+  capital.connect();  // Capital.com stream integration
 
   /* OANDA MetaAPI — connect after 30s (MetaAPI SDK needs some warmup time) */
   if (METAAPI_TOKEN) {
