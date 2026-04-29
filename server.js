@@ -636,6 +636,10 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
     if (!hwm) oanda.fetchRecent(sym).catch(() => {});
     oanda.promoteBackfill(sym); // user viewed it → bump to front of backfill queue
   }
+  if (source === 'capital' && capital.isReady()) {
+    const hwm = store.highWaterMark('capital', sym, tf);
+    if (!hwm) capital.fetchRecent(sym).catch(() => {});
+  }
   if (source === 'td') {
     const hwm = store.highWaterMark('td', sym, tf);
     if (!hwm) { td.fetchHistory(sym).catch(() => {}); td.subscribe(sym); }
@@ -655,6 +659,12 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
   if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
 
   const source = req.query.source || getSymSource(sym);
+
+  if (source === 'capital') {
+    if (!endTime) return res.json({ candles: [] });
+    const out = store.readCandles('capital', sym, tf).filter(c => c.t < endTime);
+    return res.json({ candles: out.slice(-2000) });
+  }
 
   if (source === 'oanda') {
     if (!endTime) return res.json({ candles: [] });
@@ -840,7 +850,10 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
     const oandaMatches = _oandaCatalog.filter(o => {
       return o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
     });
-    return res.json({ data: oandaMatches });
+    const capitalMatches = capital.getSymbols().map(k => ({
+      symbol: k, instrument_name: k, instrument_type: 'CFD', exchange: 'Capital', source: 'capital'
+    })).filter(o => o.symbol.includes(q) || o.instrument_name.includes(q));
+    return res.json({ data: [...oandaMatches, ...capitalMatches] });
   }
 
   const params = new URLSearchParams({
@@ -2704,6 +2717,19 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
     <tbody id="td-table"></tbody>
   </table>
 </div>
+<div class="card" style="border-color:rgba(201,168,76,0.3)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <h2 style="color:rgba(201,168,76,0.85);margin:0">Capital.com Streaming Data</h2>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="capital-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
+      <span id="capital-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Fetching…</span>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody id="capital-table"></tbody>
+  </table>
+</div>
 <div class="card" style="border-color:rgba(22,163,74,0.3)">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
     <h2 style="color:rgba(74,222,128,0.85);margin:0">TwelveData Cache — Stocks + Forex + Commodities (WS live)</h2>
@@ -2821,6 +2847,7 @@ async function poll() {
     }
 
     renderTDTable(d.tdCrypto || {}, 'td-table',       '#60a5fa', d.tdCryptoRefreshing,  'td-stats',       'td-active-info');
+    renderTDTable(d.capitalData || {}, 'capital-table', '#c9a84c', d.capitalRefreshing, 'capital-stats', 'capital-active-info');
     renderTDTable(d.tdStocks || {}, 'td-forex-table', '#4ade80', d.tdStocksRefreshing,  'td-forex-stats', 'td-forex-active-info');
 
   } catch(e) { console.error(e); }
@@ -2971,6 +2998,7 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
   const oandaList   = buildSymList(oanda.getSymbols(),   'oanda',   TIMEFRAMES);
   const binanceList = buildSymList(binance.getSymbols(), 'binance', TIMEFRAMES);
   const tdStocksList = buildSymList(td.getSymbols(),     'td',      TIMEFRAMES);
+  const capitalList = buildSymList(capital.getSymbols(), 'capital', TIMEFRAMES);
 
   // Flatten to match admin HTML's expected field names
   const binanceTDShape = (list, total) => ({
@@ -2994,6 +3022,8 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
     tdCryptoRefreshing: false,
     tdStocks:          binanceTDShape(tdStocksList, td.getSymbols().length),
     tdStocksRefreshing: !!(tdStatus && tdStatus.backfillActive),
+    capitalData:       binanceTDShape(capitalList, capital.getSymbols().length),
+    capitalRefreshing: false,
     // Full data for future use
     oanda:   { ...oandaStatus, ...oandaList, total: oanda.getSymbols().length },
     binance: { ...binanceStatus, ...binanceList, total: binance.SYMBOLS.length },
