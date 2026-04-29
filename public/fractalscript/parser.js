@@ -295,6 +295,16 @@
                 var rb = eat(TT.RBRACKET); if (rb && rb.error) return rb;
                 var actualName = eat(TT.IDENT); if (actualName.error) return actualName;
                 name = actualName.value;
+            } else if (at(TT.OP) && cur().value === '<') {
+                var depth = 1;
+                pos++; // consume '<'
+                while (!at(TT.EOF) && depth > 0) {
+                    if (at(TT.OP) && cur().value === '<') depth++;
+                    else if (at(TT.OP) && cur().value === '>') depth--;
+                    pos++;
+                }
+                var actualName = eat(TT.IDENT); if (actualName.error) return actualName;
+                name = actualName.value;
             } else if (at(TT.IDENT)) {
                 var actualName = eat(TT.IDENT); if (actualName.error) return actualName;
                 name = actualName.value;
@@ -308,6 +318,78 @@
 
         function parseAssignmentOrExpr() {
             var l = loc();
+
+            // Peek for UDT / Type annotation assignments without 'var' keyword:
+            // Format 1: Type name = value
+            // Format 2: Type[] name = value
+            // Format 3: Type<Subtype> name = value
+            if (at(TT.IDENT)) {
+                var peekPos = pos + 1;
+                var isAnnotation = false;
+                
+                if (peekPos < tokens.length && tokens[peekPos].type === TT.IDENT) {
+                    // Format 1: Type name = value
+                    isAnnotation = true;
+                    peekPos++;
+                } else if (peekPos < tokens.length && tokens[peekPos].type === TT.OP && tokens[peekPos].value === '<') {
+                    // Format 3: Type<Subtype> name = value
+                    var depth = 1;
+                    peekPos++;
+                    while (peekPos < tokens.length && depth > 0) {
+                        if (tokens[peekPos].type === TT.OP && tokens[peekPos].value === '<') depth++;
+                        else if (tokens[peekPos].type === TT.OP && tokens[peekPos].value === '>') depth--;
+                        peekPos++;
+                    }
+                    if (peekPos < tokens.length && tokens[peekPos].type === TT.IDENT) {
+                        isAnnotation = true;
+                        peekPos++;
+                    }
+                } else if (peekPos < tokens.length && tokens[peekPos].type === TT.LBRACKET) {
+                    // Format 2: Type[] name = value
+                    if (peekPos + 1 < tokens.length && tokens[peekPos + 1].type === TT.RBRACKET) {
+                        peekPos += 2;
+                        if (peekPos < tokens.length && tokens[peekPos].type === TT.IDENT) {
+                            isAnnotation = true;
+                            peekPos++;
+                        }
+                    }
+                }
+                
+                if (isAnnotation) {
+                    var savedPos = peekPos;
+                    while (peekPos < tokens.length && tokens[peekPos].type === TT.NEWLINE) peekPos++;
+                    if (peekPos < tokens.length && (tokens[peekPos].type === TT.ASSIGN || tokens[peekPos].type === TT.REASSIGN || tokens[peekPos].type === TT.COMPOUND_ASSIGN)) {
+                        // Consuming type annotation tokens cleanly
+                        pos = savedPos - 1; // Move to the variable name token
+                        var nameToken = eat(TT.IDENT);
+                        
+                        if (at(TT.ASSIGN)) {
+                            pos++;
+                            var val = parseExpression();
+                            if (val && val.error) return val;
+                            return { type: 'VarDecl', name: nameToken.value, value: val, persistent: false, line: l.line, col: l.col };
+                        }
+                        if (at(TT.REASSIGN)) {
+                            pos++;
+                            var val2 = parseExpression();
+                            if (val2 && val2.error) return val2;
+                            return { type: 'Reassign', name: nameToken.value, value: val2, line: l.line, col: l.col };
+                        }
+                        if (at(TT.COMPOUND_ASSIGN)) {
+                            var compOp = cur().value[0];
+                            pos++;
+                            var val3 = parseExpression();
+                            if (val3 && val3.error) return val3;
+                            return {
+                                type: 'Reassign', name: nameToken.value,
+                                value: { type: 'BinaryExpr', op: compOp, left: { type: 'Identifier', name: nameToken.value, line: nameToken.line, col: nameToken.col }, right: val3, line: l.line, col: l.col },
+                                line: l.line, col: l.col
+                            };
+                        }
+                    }
+                }
+            }
+
             var expr = parseExpression();
             if (expr && expr.error) return expr;
 
