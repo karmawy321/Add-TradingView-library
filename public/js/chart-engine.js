@@ -1309,31 +1309,37 @@
               chartCtx.font = _bts + 'px "DM Sans", sans-serif';
               chartCtx.fillStyle = _BX.text_color || '#FFFFFF';
               
-              var _btLines = [];
-              var _rawLines = String(_BX.text).split('\n');
               var _maxW = _bw - 8;
               if (_maxW < 20) _maxW = 20;
               
-              for (var _r = 0; _r < _rawLines.length; _r++) {
-                var _line = _rawLines[_r];
-                if (chartCtx.measureText(_line).width <= _maxW) {
-                  _btLines.push(_line);
-                } else {
-                  var _words = _line.split(' ');
-                  var _currentLine = _words[0] || '';
-                  for (var _w = 1; _w < _words.length; _w++) {
-                    var _word = _words[_w];
-                    var _width = chartCtx.measureText(_currentLine + " " + _word).width;
-                    if (_width < _maxW) {
-                      _currentLine += " " + _word;
-                    } else {
-                      if (_currentLine) _btLines.push(_currentLine);
-                      _currentLine = _word;
+              if (!_BX._cachedLines || _BX._cachedMaxW !== _maxW) {
+                var _btLines = [];
+                var _rawLines = String(_BX.text).split('\n');
+                
+                for (var _r = 0; _r < _rawLines.length; _r++) {
+                  var _line = _rawLines[_r];
+                  if (chartCtx.measureText(_line).width <= _maxW) {
+                    _btLines.push(_line);
+                  } else {
+                    var _words = _line.split(' ');
+                    var _currentLine = _words[0] || '';
+                    for (var _w = 1; _w < _words.length; _w++) {
+                      var _word = _words[_w];
+                      var _width = chartCtx.measureText(_currentLine + " " + _word).width;
+                      if (_width < _maxW) {
+                        _currentLine += " " + _word;
+                      } else {
+                        if (_currentLine) _btLines.push(_currentLine);
+                        _currentLine = _word;
+                      }
                     }
+                    if (_currentLine) _btLines.push(_currentLine);
                   }
-                  if (_currentLine) _btLines.push(_currentLine);
                 }
+                _BX._cachedLines = _btLines;
+                _BX._cachedMaxW = _maxW;
               }
+              var _btLines = _BX._cachedLines;
 
               chartCtx.textBaseline = (_BX.text_valign === 'top') ? 'top' :
                 (_BX.text_valign === 'bottom') ? 'bottom' : 'middle';
