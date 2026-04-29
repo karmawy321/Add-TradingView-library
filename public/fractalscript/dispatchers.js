@@ -274,6 +274,10 @@
             case 'ta.lowestbars': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.lowestbars(s, Math.round(l), id); }
             case 'ta.vwma': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.vwma(s, Math.round(l), +ctx.curCandle.v || 0, id); }
             case 'ta.cmo': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.cmo(s, Math.round(l), id); }
+            case 'ta.dmi': { var diLen = e(0), adxSmooth = e(1); return FS.isNa(diLen) || FS.isNa(adxSmooth) ? [FS.NA, FS.NA, FS.NA] : ta.dmi(Math.round(diLen), Math.round(adxSmooth), +ctx.curCandle.h, +ctx.curCandle.l, ctx.prevCandle ? +ctx.prevCandle.c : FS.NA, id); }
+            case 'ta.supertrend': { var factor = e(0), atrPeriod = e(1); return FS.isNa(factor) || FS.isNa(atrPeriod) ? [FS.NA, FS.NA] : ta.supertrend(factor, Math.round(atrPeriod), +ctx.curCandle.h, +ctx.curCandle.l, +ctx.curCandle.c, ctx.prevCandle ? +ctx.prevCandle.c : FS.NA, id); }
+            case 'ta.cog': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.cog(s, Math.round(l), id); }
+            case 'ta.sar': { var start = e(0), inc = e(1), max = e(2); return FS.isNa(start) || FS.isNa(inc) || FS.isNa(max) ? FS.NA : ta.sar(start, inc, max, +ctx.curCandle.h, +ctx.curCandle.l, id); }
             case 'ta.crossover': { var a = e(0), b = e(1); return ta.crossover(a, b, id); }
             case 'ta.crossunder': { var a = e(0), b = e(1); return ta.crossunder(a, b, id); }
             case 'ta.cross': { var a = e(0), b = e(1); return ta.crossover(a, b, id + '_o') || ta.crossunder(a, b, id + '_u'); }

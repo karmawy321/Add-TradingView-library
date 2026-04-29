@@ -255,6 +255,135 @@
                 return total === 0 ? 0 : 100 * (c.sumG - c.sumL) / total;
             },
 
+            dmi: function (diLength, adxSmoothing, high, low, prevClose, id) {
+                var c = getCache(id, function () { return { prevH: FS.NA, prevL: FS.NA }; });
+                var up = FS.isNa(high) || FS.isNa(c.prevH) ? FS.NA : high - c.prevH;
+                var down = FS.isNa(low) || FS.isNa(c.prevL) ? FS.NA : -(low - c.prevL);
+                var plusDM = FS.isNa(up) ? FS.NA : (up > down && up > 0 ? up : 0);
+                var minusDM = FS.isNa(down) ? FS.NA : (down > up && down > 0 ? down : 0);
+                
+                c.prevH = high; c.prevL = low;
+                
+                var tr = this.tr(high, low, prevClose);
+                var trRma = this.rma(tr, diLength, id + '_tr');
+                var plusRma = this.rma(plusDM, diLength, id + '_plus');
+                var minusRma = this.rma(minusDM, diLength, id + '_minus');
+                
+                if (FS.isNa(trRma) || trRma === 0) return [FS.NA, FS.NA, FS.NA];
+                
+                var plusDI = 100 * plusRma / trRma;
+                var minusDI = 100 * minusRma / trRma;
+                var sum = plusDI + minusDI;
+                var dx = sum === 0 ? FS.NA : 100 * Math.abs(plusDI - minusDI) / sum;
+                var adx = this.rma(dx, adxSmoothing, id + '_adx');
+                
+                return [plusDI, minusDI, adx];
+            },
+
+            supertrend: function (factor, atrPeriod, high, low, close, prevClose, id) {
+                var c = getCache(id, function () { return { prevTrendUp: FS.NA, prevTrendDn: FS.NA, prevTrend: 1 }; });
+                var hl2 = (high + low) / 2;
+                var atr = this.atr(high, low, close, prevClose, atrPeriod, id + '_atr');
+                if (FS.isNa(atr)) return [FS.NA, FS.NA];
+                
+                var up = hl2 - (factor * atr);
+                var dn = hl2 + (factor * atr);
+                
+                var trendUp = FS.isNa(c.prevTrendUp) ? up : (prevClose > c.prevTrendUp ? Math.max(up, c.prevTrendUp) : up);
+                var trendDn = FS.isNa(c.prevTrendDn) ? dn : (prevClose < c.prevTrendDn ? Math.min(dn, c.prevTrendDn) : dn);
+                
+                var trend = c.prevTrend;
+                if (trend === -1 && close > c.prevTrendDn) trend = 1;
+                else if (trend === 1 && close < c.prevTrendUp) trend = -1;
+                
+                c.prevTrendUp = trendUp;
+                c.prevTrendDn = trendDn;
+                c.prevTrend = trend;
+                
+                var st = trend === 1 ? trendUp : trendDn;
+                return [st, trend];
+            },
+
+            cog: function (source, length, id) {
+                var c = getCache(id, function () { return { buf: [] }; });
+                if (FS.isNa(source)) return FS.NA;
+                c.buf.push(source);
+                if (c.buf.length > length) c.buf.shift();
+                if (c.buf.length < length) return FS.NA;
+                var num = 0, den = 0;
+                for (var i = 0; i < length; i++) {
+                    var val = c.buf[length - 1 - i];
+                    num += val * (i + 1);
+                    den += val;
+                }
+                if (den === 0) return FS.NA;
+                return -(num / den);
+            },
+
+            sar: function (start, inc, max, high, low, id) {
+                var c = getCache(id, function () { 
+                    return { 
+                        trend: FS.NA, sar: FS.NA, ep: FS.NA, af: start,
+                        prevH: FS.NA, prevL: FS.NA, prevPrevH: FS.NA, prevPrevL: FS.NA 
+                    }; 
+                });
+                if (FS.isNa(high) || FS.isNa(low)) return c.sar;
+                
+                if (FS.isNa(c.trend)) {
+                    if (FS.isNa(c.prevH)) {
+                        c.prevH = high; c.prevL = low;
+                        return FS.NA;
+                    }
+                    if (FS.isNa(c.prevPrevH)) {
+                        c.prevPrevH = c.prevH; c.prevPrevL = c.prevL;
+                        c.prevH = high; c.prevL = low;
+                        c.trend = high > c.prevPrevH ? 1 : -1;
+                        c.sar = c.trend === 1 ? c.prevPrevL : c.prevPrevH;
+                        c.ep = c.trend === 1 ? Math.max(high, c.prevH) : Math.min(low, c.prevL);
+                        c.af = start;
+                        return c.sar;
+                    }
+                }
+                
+                var prevSar = c.sar;
+                var nextSar = prevSar + c.af * (c.ep - prevSar);
+                
+                if (c.trend === 1) {
+                    nextSar = Math.min(nextSar, c.prevL, c.prevPrevL);
+                    if (low < nextSar) {
+                        c.trend = -1;
+                        c.sar = c.ep;
+                        c.ep = low;
+                        c.af = start;
+                    } else {
+                        c.sar = nextSar;
+                        if (high > c.ep) {
+                            c.ep = high;
+                            c.af = Math.min(c.af + inc, max);
+                        }
+                    }
+                } else {
+                    nextSar = Math.max(nextSar, c.prevH, c.prevPrevH);
+                    if (high > nextSar) {
+                        c.trend = 1;
+                        c.sar = c.ep;
+                        c.ep = high;
+                        c.af = start;
+                    } else {
+                        c.sar = nextSar;
+                        if (low < c.ep) {
+                            c.ep = low;
+                            c.af = Math.min(c.af + inc, max);
+                        }
+                    }
+                }
+                
+                c.prevPrevH = c.prevH; c.prevPrevL = c.prevL;
+                c.prevH = high; c.prevL = low;
+                
+                return c.sar;
+            },
+
             /* ════════ P5: Moving averages ════════ */
             hma: function (source, length, id) {
                 var c = getCache(id, function () { return { buf: [], rawBuf: [] }; });
