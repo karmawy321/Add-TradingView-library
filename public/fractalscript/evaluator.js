@@ -818,7 +818,7 @@
         function execPlot(node) {
             var args = node.args || [];
             var series = args.length > 0 ? execNode(args[0].type === 'NamedArg' ? args[0].value : args[0]) : FS.NA;
-            var label = '', color = '#2196F3', lineWidth = 1, dynamicColor = null;
+            var label = '', color = '#2196F3', lineWidth = 1, dynamicColor = null, style = 'plot.style_line';
 
             for (var i = 0; i < args.length; i++) {
                 var a = args[i];
@@ -830,6 +830,7 @@
                     }
                     if (a.name === 'linewidth') lineWidth = execNode(a.value) || 1;
                     if (a.name === 'series') series = execNode(a.value);
+                    if (a.name === 'style') style = execNode(a.value);
                 } else if (i === 1 && a.type !== 'NamedArg') {
                     var v = execNode(a);
                     if (typeof v === 'string') label = v;
@@ -838,7 +839,7 @@
 
             var pid = plotCounter++;
             if (!plotRegistry[pid]) {
-                plotRegistry[pid] = { label: label, values: new Array(N), colors: new Array(N), color: color, lineWidth: lineWidth };
+                plotRegistry[pid] = { label: label, values: new Array(N), colors: new Array(N), color: color, lineWidth: lineWidth, style: style };
             }
             plotRegistry[pid].values[barIndex] = series;
             plotRegistry[pid].colors[barIndex] = dynamicColor;

@@ -1138,38 +1138,45 @@
           chartCtx.beginPath();
           var _ppDrew = false;
           var _prevX = null, _prevY = null;
+          var _isCircles = _pp.style === 'plot.style_circles';
           for (var _pj = 0; _pj < n; _pj++) {
             var _pgi = startIdx + _pj;
             if (_pgi < 0 || _pgi >= _pp.values.length) { _prevX = _prevY = null; continue; }
             var _pv = _pp.values[_pgi];
             if (isNaN(_pv)) {
-              if (_ppDrew) { chartCtx.stroke(); _ppDrew = false; }
+              if (_ppDrew && !_isCircles) { chartCtx.stroke(); _ppDrew = false; }
               _prevX = _prevY = null;
               continue;
             }
             var _barColor = (_pp.colors && _pp.colors[_pgi]) ? _pp.colors[_pgi] : _pp.color;
             var _curX = px(_pj), _curY = _fsPy(_pv);
-            if (_barColor !== _activeColor) {
-              /* Stroke the prior colored path, then start a new segment that
-                 bridges from the previous point to maintain visual continuity. */
-              if (_ppDrew) chartCtx.stroke();
-              _activeColor = _barColor;
-              chartCtx.strokeStyle = _activeColor;
-              chartCtx.beginPath();
-              if (_prevX !== null) {
-                chartCtx.moveTo(_prevX, _prevY);
-                chartCtx.lineTo(_curX, _curY);
-              } else {
-                chartCtx.moveTo(_curX, _curY);
-              }
-              _ppDrew = true;
+            
+            if (_isCircles) {
+                chartCtx.fillStyle = _barColor;
+                chartCtx.beginPath();
+                chartCtx.arc(_curX, _curY, _pp.lineWidth ? _pp.lineWidth + 1 : 3, 0, 2 * Math.PI);
+                chartCtx.fill();
             } else {
-              if (!_ppDrew) { chartCtx.moveTo(_curX, _curY); _ppDrew = true; }
-              else { chartCtx.lineTo(_curX, _curY); }
+                if (_barColor !== _activeColor) {
+                  if (_ppDrew) chartCtx.stroke();
+                  _activeColor = _barColor;
+                  chartCtx.strokeStyle = _activeColor;
+                  chartCtx.beginPath();
+                  if (_prevX !== null) {
+                    chartCtx.moveTo(_prevX, _prevY);
+                    chartCtx.lineTo(_curX, _curY);
+                  } else {
+                    chartCtx.moveTo(_curX, _curY);
+                  }
+                  _ppDrew = true;
+                } else {
+                  if (!_ppDrew) { chartCtx.moveTo(_curX, _curY); _ppDrew = true; }
+                  else { chartCtx.lineTo(_curX, _curY); }
+                }
             }
             _prevX = _curX; _prevY = _curY;
           }
-          if (_ppDrew) chartCtx.stroke();
+          if (_ppDrew && !_isCircles) chartCtx.stroke();
 
           /* Right-axis current-value badge (last non-NaN bar) */
           var _lastV = null, _lastColor = _pp.color;
