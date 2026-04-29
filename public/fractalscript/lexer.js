@@ -139,7 +139,14 @@
                 var quote = advance(); // consume opening quote
                 var str = '';
                 while (i < len && source[i] !== quote && source[i] !== '\n') {
-                    if (source[i] === '\\' && i + 1 < len) { advance(); str += advance(); }
+                    if (source[i] === '\\' && i + 1 < len) { 
+                        advance(); 
+                        var escaped = advance();
+                        if (escaped === 'n') str += '\n';
+                        else if (escaped === 't') str += '\t';
+                        else if (escaped === 'r') str += '\r';
+                        else str += escaped;
+                    }
                     else { str += advance(); }
                 }
                 if (i < len && source[i] === quote) advance(); // consume closing quote
