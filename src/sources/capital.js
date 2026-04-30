@@ -45,7 +45,8 @@ const SYMBOL_MAP = {
   'DE40':   'DE40',  'UK100':  'UK100', 'JP225':  'JP225',
   
   // Commodities
-  'XAUUSD': 'GOLD', 'XAGUSD': 'SILVER',
+  'GOLD':   'GOLD',   'SILVER': 'SILVER',
+  'XAUUSD': 'GOLD',   'XAGUSD': 'SILVER', // Keep these for compatibility but prefer GOLD/SILVER
   'BRENT':  'BRENT', 'WTI':    'OIL', 'NATGAS': 'NATGAS',
   
   // Crypto
@@ -161,17 +162,25 @@ function connectWS() {
       }
     });
     
-    ws.on('open', () => {
+    ws.on('open', async () => {
       console.log('[Capital WS] Streaming connection opened');
-      for (const epic of Object.values(SYMBOL_MAP)) {
+      
+      // Get unique epics to subscribe to
+      const epics = Array.from(new Set(Object.values(SYMBOL_MAP)));
+      console.log(`[Capital WS] Subscribing to ${epics.length} epics...`);
+      
+      for (let i = 0; i < epics.length; i++) {
+        const epic = epics[i];
         const msg = JSON.stringify({
           destination: "marketData.subscribe",
-          correlationId: "fractal_" + Date.now(),
+          correlationId: "fractal_" + Date.now() + "_" + i,
           cst: cst,
           securityToken: securityToken,
           payload: { epics: [epic] }
         });
         ws.send(msg);
+        // Small delay between subscriptions to avoid flooding
+        await new Promise(r => setTimeout(r, 50));
       }
     });
 
@@ -180,17 +189,22 @@ function connectWS() {
         const msg = JSON.parse(data);
         if (msg.destination === 'quote' && msg.payload) {
           const epic = msg.payload.epic;
-          const internalSym = Object.keys(SYMBOL_MAP).find(key => SYMBOL_MAP[key] === epic);
-          if (!internalSym) return;
+          // Find ALL internal symbols that map to this epic (e.g. XAUUSD and GOLD)
+          const internalSyms = Object.keys(SYMBOL_MAP).filter(key => SYMBOL_MAP[key] === epic);
+          if (internalSyms.length === 0) return;
 
           const px = parseFloat(msg.payload.bid);
           const ts = Date.now();
 
           if (px) {
-            for (const tf of TIMEFRAMES) {
-              store.writeTick(SOURCE, internalSym, tf, TF_MS[tf], px, 0, ts);
+            for (const sym of internalSyms) {
+              for (const tf of TIMEFRAMES) {
+                store.writeTick(SOURCE, sym, tf, TF_MS[tf], px, 0, ts);
+              }
             }
           }
+        } else if (msg.status === 'ERROR' || msg.destination === 'marketData.subscribe') {
+          console.log('[Capital WS] System Message:', JSON.stringify(msg));
         }
       } catch (e) {
         // ignore parse errors

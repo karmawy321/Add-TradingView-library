@@ -46,8 +46,18 @@ function addClient(source, sym, res) {
     _enqueue(client, src, s, tf, candle);
   });
 
+  // Heartbeat to keep connection alive
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(':heartbeat\n\n');
+    } catch (e) {
+      clearInterval(heartbeat);
+    }
+  }, 15000);
+
   return () => {
     unsub();
+    clearInterval(heartbeat);
     if (_clients[k]) {
       _clients[k].delete(client);
       if (_clients[k].size === 0) delete _clients[k];

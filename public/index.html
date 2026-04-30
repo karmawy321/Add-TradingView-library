@@ -44,7 +44,7 @@
       }, true);
 
       // Auto-launch preset coin if provided by master layout
-      var initSym = new URLSearchParams(window.location.search).get('symbol') || 'XAUUSD';
+      var initSym = new URLSearchParams(window.location.search).get('symbol') || 'GOLD';
       if (initSym) {
         window.addEventListener('DOMContentLoaded', function () {
           if (typeof quickLoad === 'function') quickLoad(initSym);
@@ -614,8 +614,8 @@
                       </div>
                     </div>
                     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                      <button onclick="quickLoad('XAUUSD')"
-                        style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">XAU/USD</button>
+                      <button onclick="quickLoad('GOLD')"
+                        style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">GOLD</button>
                       <button onclick="quickLoad('BTCUSDT')"
                         style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BTC/USDT</button>
                       <button onclick="quickLoad('ETHUSDT')"

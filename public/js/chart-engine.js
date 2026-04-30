@@ -494,7 +494,7 @@
     /* Symbols served natively (OANDA or Binance) — no TwelveData fallback for these */
     var _OANDA_SYMBOLS = new Set([
       /* Metals / Commodities */
-      'XAUUSD', 'XAU/USD', 'XAGUSD', 'XAG/USD', 'OILWTI',
+      'GOLD', 'SILVER', 'XAUUSD', 'XAU/USD', 'XAGUSD', 'XAG/USD', 'OILWTI',
       /* Forex majors */
       'EURUSD', 'EUR/USD', 'GBPUSD', 'GBP/USD', 'USDJPY', 'USD/JPY', 'USDCHF', 'USD/CHF',
       'AUDUSD', 'AUD/USD', 'NZDUSD', 'NZD/USD', 'USDCAD', 'USD/CAD',
