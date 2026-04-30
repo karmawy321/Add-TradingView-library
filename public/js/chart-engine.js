@@ -1,6 +1,26 @@
 
     /* ══ INIT ══ */
 
+    /* ─── Sanitize candles: strip any bar with NaN/zero/negative OHLC
+         These cause the giant red spike rendering during replay ─── */
+    function sanitizeCandles(arr) {
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(function (c) {
+        if (!c || !c.t) return false;
+        var o = +c.o, h = +c.h, l = +c.l, cl = +c.c;
+        // All four prices must be finite positive numbers
+        if (!isFinite(o) || !isFinite(h) || !isFinite(l) || !isFinite(cl)) return false;
+        if (o <= 0 || h <= 0 || l <= 0 || cl <= 0) return false;
+        // High must be >= low (swap silently if flipped)
+        if (h < l) { var tmp = c.h; c.h = c.l; c.l = tmp; }
+        // High must be >= open and close, low must be <= open and close
+        c.h = Math.max(h, o, cl);
+        c.l = Math.min(l, o, cl);
+        return true;
+      });
+    }
+
+
     /* ══════════════════════════════════════════════════════════════
        BACKTEST MODE — Time Curtain
        Hides candles after a chosen cutoff so the AI can't see the future.
@@ -862,8 +882,12 @@
       var visible = candles.slice(startIdx, endIdx);
       if (!visible.length) return;
       var n = visible.length;
-      var mn = Math.min.apply(null, visible.map(function (c) { return c.l; }));
-      var mx = Math.max.apply(null, visible.map(function (c) { return c.h; }));
+      var mn = Infinity, mx = -Infinity;
+      visible.forEach(function (c) {
+        if (isFinite(c.l) && c.l > 0 && c.l < mn) mn = c.l;
+        if (isFinite(c.h) && c.h > 0 && c.h > mx) mx = c.h;
+      });
+      if (!isFinite(mn) || !isFinite(mx)) return; // nothing valid to draw
       var range = mx - mn || mn * 0.001 || 0.0001;
       mn -= range * 0.05; mx += range * 0.05; range = mx - mn;
       /* Apply Y-pan offset BEFORE yScale so compression doesn't shift the view */
@@ -3401,7 +3425,7 @@
             return;
           }
           if (d.candles && d.candles.length > 0) {
-            chartCandles = d.candles;
+            chartCandles = sanitizeCandles(d.candles);
             _initViewState(d.candles);
             renderChart();
             lwChartInstance = true;
@@ -3432,8 +3456,8 @@
           /* ── Full history on initial connect ── */
           if (data.candles) {
             if (!data.candles[currentInterval]) return;
-            if (typeof _btActive !== 'undefined' && _btActive) { _btAllCandles = data.candles[currentInterval]; return; }
-            chartCandles = data.candles[currentInterval];
+            if (typeof _btActive !== 'undefined' && _btActive) { _btAllCandles = sanitizeCandles(data.candles[currentInterval]); return; }
+            chartCandles = sanitizeCandles(data.candles[currentInterval]);
             renderChart();
             var last0 = chartCandles[chartCandles.length - 1];
             var prev0 = chartCandles.length > 1 ? chartCandles[chartCandles.length - 2].c : last0.o;
