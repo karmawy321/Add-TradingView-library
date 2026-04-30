@@ -2156,7 +2156,7 @@ app.get('/admin/crossovers', requireAdmin, (_req, res) => {
 <div class="cards" id="cards"></div>
 <div id="crossTable"></div>
 <script>
-const AK = '${process.env.ADMIN_KEY || 'mysecretkey123'}';
+const AK = '${process.env.ADMIN_SECRET || 'mysecretkey123'}';
 const H  = { 'x-admin-key': AK };
 
 async function loadStatus() {
@@ -2418,7 +2418,7 @@ app.post('/admin/cache-purge-all', requireAdmin, async (_req, res) => {
   try {
     const syms = capital.getSymbols();
     for (const sym of syms) {
-      store.purgeSymbol('capital', sym);
+      store.purge('capital', sym);
     }
     res.json({ ok: true, message: 'All Capital.com caches purged' });
   } catch (e) {
@@ -2428,7 +2428,7 @@ app.post('/admin/cache-purge-all', requireAdmin, async (_req, res) => {
 
 app.post('/admin/cache-purge/:symbol', requireAdmin, (req, res) => {
   const sym = req.params.symbol.toUpperCase();
-  store.purgeSymbol('capital', sym);
+  store.purge('capital', sym);
   res.json({ ok: true, message: `Cache purged for ${sym}` });
 });
 

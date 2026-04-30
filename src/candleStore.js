@@ -196,13 +196,20 @@ function subscribe(source, sym, cb) {
 }
 
 /**
- * Remove a symbol from memory and mark its disk entry for deletion.
- * Does NOT delete the file — caller handles that.
+ * Remove a symbol from memory and physically delete its disk cache file.
  */
 function purge(source, sym) {
   const k = _key(source, sym);
   delete _store[k];
   _dirty.delete(k);
+  
+  const f = _cacheFile(source, sym);
+  try {
+    if (fs.existsSync(f)) fs.unlinkSync(f);
+    _log('info', 'purge', { source, sym, msg: 'Memory and disk cache deleted' });
+  } catch (e) {
+    _log('error', 'purge failed to delete file', { source, sym, err: e.message });
+  }
 }
 
 /**

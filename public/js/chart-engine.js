@@ -4017,6 +4017,7 @@
       if (!sw) return;
       if (_OANDA_SYMBOLS.has(sym)) {
         sw.classList.add('show');
+        currentDataSource = 'oanda';
       } else {
         sw.classList.remove('show');
         currentDataSource = 'twelvedata';
