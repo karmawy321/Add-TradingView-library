@@ -61,6 +61,8 @@ let securityToken = '';
 let connected = false;
 let ws = null;
 
+console.log('[Capital] Initialized with symbols:', Object.keys(SYMBOL_MAP).join(', '));
+
 async function connect() {
   console.log(`[Capital] Starting connection initialization... API_KEY Present: ${!!API_KEY}`);
   if (!API_KEY || !IDENTIFIER || !PASSWORD) {
@@ -268,7 +270,7 @@ async function fetchHistory(internalSym, tf, endTime) {
     if (!epic) return resolve([]);
     
     const resolution = TF_MAP[tf] || 'MINUTE';
-    let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=1500`;
+    let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=1000`;
     if (endTime) {
       path += `&to=${new Date(endTime).toISOString().slice(0, 19)}`;
     }
@@ -314,16 +316,32 @@ async function fetchRecent(internalSym) {
   console.log(`[Capital] Fetching 1500-candle cache for ${internalSym}...`);
   for (const tf of TIMEFRAMES) {
     try {
-      const candles = await fetchHistory(internalSym, tf, null);
-      if (candles && candles.length > 0) {
-        candles.sort((a, b) => a.t - b.t);
-        store.writeCandles(SOURCE, internalSym, tf, candles);
+      let allCandles = await fetchHistory(internalSym, tf, null);
+      if (allCandles && allCandles.length >= 1000) {
+        // Capital usually returns max 1000. Fetch another block to reach 1500.
+        const oldest = allCandles[0].t;
+        const more = await fetchHistory(internalSym, tf, oldest - 1);
+        if (more && more.length > 0) {
+          allCandles = [...more, ...allCandles];
+        }
+      }
+      
+      if (allCandles && allCandles.length > 0) {
+        allCandles.sort((a, b) => a.t - b.t);
+        // Trim to 1500 as requested
+        if (allCandles.length > 1500) {
+          allCandles = allCandles.slice(allCandles.length - 1500);
+        }
+        store.writeCandles(SOURCE, internalSym, tf, allCandles);
+        console.log(`[Capital] Cached ${allCandles.length} candles for ${internalSym} ${tf}`);
+      } else {
+        console.warn(`[Capital] No candles returned for ${internalSym} ${tf}`);
       }
     } catch (e) {
       console.error(`[Capital] Error fetching recent for ${internalSym} ${tf}:`, e.message);
     }
     // Small delay to prevent rate limits
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 200));
   }
 }
 

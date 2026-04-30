@@ -628,7 +628,6 @@ app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
     cleanup();
     const n = (_sseConnCount.get(ip) || 1) - 1;
     if (n <= 0) _sseConnCount.delete(ip); else _sseConnCount.set(ip, n);
-    if (source === 'td' && sse.clientCount(source, sym) === 0) td.unsubscribe(sym);
   });
 });
 
@@ -1973,7 +1972,7 @@ setInterval(() => { loadStatus(); loadLive(); }, 60000);
    📈 SMA200/400 CROSSOVER SCANNER
    ═══════════════════════════════════════════════════ */
 
-const CROSSOVER_CANDLES = 1000;
+const CROSSOVER_CANDLES = 1500;
 let _crossoverRunning = false;
 let _crossoverLastRun = null;
 let _crossoverStats   = null;
@@ -2028,9 +2027,7 @@ async function runCrossoverScanner() {
   console.log('\n📈 [CrossoverScanner] Starting SMA200/400 scan...');
 
   const symbols = [
-    ...oanda.getSymbols(),
-    ...binance.getSymbols(),
-    ...td.getSymbols(),
+    ...capital.getSymbols(),
   ];
   let scanned = 0, saved = 0, skipped = 0, errors = 0;
 
@@ -2093,8 +2090,8 @@ app.get('/api/crossovers/live', requireAdmin, async (_req, res) => {
 
 /* ── Broker symbol diagnostic ── */
 app.get('/api/admin/broker-symbols', requireAdmin, async (_req, res) => {
-  const s = oanda.getStatus();
-  res.json({ symMap: s.symbolMap, brokerList: s.brokerList, unmapped: s.unmapped });
+  const s = capital.getStatus();
+  res.json({ symMap: s.symbols, brokerList: ['capital'], unmapped: [] });
 });
 
 /* ── Candle store stats ── */
@@ -2150,7 +2147,7 @@ app.get('/admin/crossovers', requireAdmin, (_req, res) => {
 </head>
 <body>
 <h1>SMA200/400 Crossover Dashboard</h1>
-<p class="sub">1m timeframe — 1000 candles — Capital.com</p>
+<p class="sub">1m timeframe — 1500 candles — Capital.com</p>
 <div class="status" id="status">Loading...</div>
 <div class="actions">
   <button onclick="runScan(this)">Run Scan Now</button>
@@ -2357,7 +2354,10 @@ async function poll() {
         cells +
         '<td>' + lastCandle + '</td>' +
         '<td>' + badge + '</td>' +
-        '<td><button onclick="purgeSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#ef4444;border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:bold;margin:0">Purge</button></td>' +
+        '<td>' +
+          '<button onclick="refreshSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#c9a84c;border:none;color:#0a0c12;border-radius:4px;font-size:10px;font-weight:bold;margin-right:4px">Refresh</button>' +
+          '<button onclick="purgeSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#ef4444;border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:bold">Purge</button>' +
+        '</td>' +
         '</tr>';
     }).join('') || '<tr><td colspan="12" style="text-align:center;padding:20px;color:rgba(255,255,255,0.2)">No Capital.com data found</td></tr>';
 
@@ -2383,7 +2383,12 @@ async function purgeAllCache() {
 
 async function purgeSym(sym) {
   if (!confirm(\`Delete cache for \${sym}?\`)) return;
-  await fetch(\`/admin/cache-purge/\${sym.replace('/', '')}\`, { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  await fetch(\`/admin/cache-purge/\${sym.replace('/', '')}?key=\` + ADMIN_KEY, { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  poll();
+}
+
+async function refreshSym(sym) {
+  await fetch(\`/admin/cache-refresh/\${sym.replace('/', '')}?key=\` + ADMIN_KEY, { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
   poll();
 }
 
@@ -2397,6 +2402,16 @@ setInterval(poll, 3000);
 app.post('/admin/cache-refresh', requireAdmin, (_req, res) => {
   capital.refreshAllCache().catch(e => console.error('[Cache] Manual refresh error:', e.message));
   res.json({ ok: true, message: 'Capital.com cache refresh started' });
+});
+
+app.post('/admin/cache-refresh/:symbol', requireAdmin, async (req, res) => {
+  const sym = req.params.symbol.toUpperCase();
+  try {
+    await capital.fetchRecent(sym);
+    res.json({ ok: true, message: `Refresh triggered for ${sym}` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/admin/cache-purge-all', requireAdmin, async (_req, res) => {
@@ -2970,3 +2985,7 @@ app.listen(PORT, () => {
   console.log('📊 Capital incremental refresh: Every 12 hours');
 
 });
+
+
+
+
