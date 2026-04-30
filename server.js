@@ -16,6 +16,11 @@ const crypto    = require('crypto');
 const store   = require('./src/candleStore');
 const sse     = require('./src/sse');
 const capital = require('./src/sources/capital');
+const TIMEFRAMES = capital.TIMEFRAMES;
+const TF_MS = {
+  '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000,
+  '1h': 3600000, '4h': 14400000, '1d': 86400000, '1w': 604800000
+};
 
 /* getSymSource — returns which source owns a given symbol */
 function getSymSource(sym) {
@@ -2144,16 +2149,13 @@ app.get('/admin/crossovers', requireAdmin, (_req, res) => {
   .pair{font-weight:700;color:#60a5fa}
   .status{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#aaa}
   .empty{padding:32px;text-align:center;color:#555}
-  .src-oanda{background:#1e3a5f;color:#93c5fd}
-  .src-td_forex{background:#1a3320;color:#86efac}
-  .src-td_crypto{background:#3b1f5e;color:#d8b4fe}
   .btn-danger{background:#7f1d1d;color:#fca5a5} .btn-danger:hover{background:#991b1b}
   @media(max-width:700px){.cards{flex-direction:column}}
 </style>
 </head>
 <body>
 <h1>SMA200/400 Crossover Dashboard</h1>
-<p class="sub">1m timeframe — 1000 candles — OANDA + TD Forex + TD Crypto</p>
+<p class="sub">1m timeframe — 1000 candles — Capital.com</p>
 <div class="status" id="status">Loading...</div>
 <div class="actions">
   <button onclick="runScan(this)">Run Scan Now</button>
@@ -2200,124 +2202,44 @@ async function loadCrosses() {
       return;
     }
     let html = '<div style="overflow-x:auto"><table><thead><tr>' +
-      '<th>Pair</th><th>Source</th><th>Direction</th><th>Cross Price</th><th>SMA200</th><th>SMA400</th><th>Cross Time</th>' +
+      '<th>Pair</th><th>Direction</th><th>Cross Price</th><th>SMA200</th><th>SMA400</th><th>Cross Time</th>' +
     '</tr></thead><tbody>';
     crosses.forEach(c => {
       const isGolden = c.direction === 'golden_cross';
-      const src = c.source || 'oanda';
-      const srcLabel = src === 'td_forex' ? 'TD Forex' : src === 'td_crypto' ? 'TD Crypto' : 'OANDA';
       html += '<tr>' +
         '<td class="pair">' + (c.pair||'—') + '</td>' +
-        '<td><span class="badge src-' + src + '">' + srcLabel + '</span></td>' +
-        '<td><span class="badge ' + (isGolden ? 'golden' : 'death') + '">' + (isGolden ? 'Golden Cross' : 'Death Cross') + '</span></td>' +
-        '<td>' + (c.cross_price||'—') + '</td>' +
-        '<td>' + (c.sma200||'—') + '</td>' +
-        '<td>' + (c.sma400||'—') + '</td>' +
-        '<td>' + (c.cross_time ? new Date(c.cross_time).toLocaleString() : '—') + '</td>' +
+        '<td><span class="badge ' + (isGolden ? 'golden' : 'death') + '">' + c.direction.replace('_', ' ') + '</span></td>' +
+        '<td>' + c.cross_price + '</td>' +
+        '<td>' + c.sma200 + '</td>' +
+        '<td>' + c.sma400 + '</td>' +
+        '<td>' + new Date(c.cross_time).toLocaleString() + '</td>' +
       '</tr>';
     });
     html += '</tbody></table></div>';
     document.getElementById('crossTable').innerHTML = html;
-  } catch(e) { document.getElementById('crossTable').innerHTML = '<div class="empty">Error: ' + e.message + '</div>'; }
+  } catch(e) { document.getElementById('crossTable').innerHTML = '<div class="empty">Error loading crossovers.</div>'; }
 }
 
 async function runScan(btn) {
-  btn.disabled = true; btn.textContent = 'Scanning...';
-  try {
-    await fetch('/api/crossovers/scan-now', { method: 'POST', headers: H });
-    await new Promise(r => setTimeout(r, 3000));
-    await loadStatus();
-    await loadCrosses();
-  } catch(e) { alert('Error: ' + e.message); }
-  btn.disabled = false; btn.textContent = 'Run Scan Now';
+  btn.disabled = true;
+  await fetch('/api/crossovers/scan-now?key=' + AK, { method: 'POST', headers: H });
+  setTimeout(() => { btn.disabled = false; loadStatus(); loadCrosses(); }, 2000);
 }
 
 async function purgeAll(btn) {
-  if (!confirm('Purge ALL crossover history? This cannot be undone.')) return;
-  if (!confirm('Are you sure? All records will be deleted.')) return;
-  btn.disabled = true; btn.textContent = 'Purging...';
-  try {
-    const r = await fetch('/api/crossovers/purge', { method: 'DELETE', headers: H });
-    const d = await r.json();
-    if (!d.success) throw new Error(d.error || 'Purge failed');
-    await loadCrosses();
-    alert('All crossover history purged.');
-  } catch(e) { alert('Error: ' + e.message); }
-  btn.disabled = false; btn.textContent = 'Purge All History';
+  if (!confirm('Permanently purge all crossover history?')) return;
+  btn.disabled = true;
+  await fetch('/api/crossovers/purge?key=' + AK, { method: 'DELETE', headers: H });
+  btn.disabled = false;
+  loadCrosses();
 }
 
 loadStatus();
 loadCrosses();
-setInterval(() => { loadStatus(); loadCrosses(); }, 60000);
+setInterval(() => { loadStatus(); loadCrosses(); }, 30000);
 </script>
 </body>
 </html>`);
-});
-
-/* ═══════════════════════════════════════════════════
-   🆕 PREDICTION TRACKING API ROUTES
-   ═══════════════════════════════════════════════════ */
-
-app.get('/api/predictions/stats', requireAdmin, async (req, res) => {
-  if (!sbAdmin) return res.status(500).json({ error: 'Database not configured' });
-  
-  try {
-    const { data: allPredictions, error } = await sbAdmin
-      .from('predictions')
-      .select('tool_name, asset, result, accuracy_percentage, price_direction_correct');
-
-    if (error) throw error;
-
-    const verified = allPredictions.filter(p => p.result !== 'pending');
-    const correct = verified.filter(p => p.result === 'correct').length;
-    const wrong = verified.filter(p => p.result === 'wrong').length;
-    const pending = allPredictions.filter(p => p.result === 'pending').length;
-
-    const overall = {
-      total: allPredictions.length,
-      correct: correct,
-      wrong: wrong,
-      pending: pending,
-      accuracy: verified.length > 0 ? ((correct / verified.length) * 100).toFixed(2) : '0.00'
-    };
-
-    const byTool = {};
-    allPredictions.forEach(p => {
-      const key = `${p.tool_name}|${p.asset}`;
-      if (!byTool[key]) {
-        byTool[key] = {
-          tool_name: p.tool_name,
-          asset: p.asset,
-          total_predictions: 0,
-          correct_count: 0,
-          wrong_count: 0,
-          pending_count: 0
-        };
-      }
-      byTool[key].total_predictions++;
-      if (p.result === 'correct') byTool[key].correct_count++;
-      if (p.result === 'wrong') byTool[key].wrong_count++;
-      if (p.result === 'pending') byTool[key].pending_count++;
-    });
-
-    const byToolArray = Object.values(byTool).map(stat => {
-      const verified = stat.correct_count + stat.wrong_count;
-      return {
-        ...stat,
-        accuracy_percentage: verified > 0 ? ((stat.correct_count / verified) * 100).toFixed(2) : '0.00'
-      };
-    });
-
-    res.json({
-      success: true,
-      overall,
-      byTool: byToolArray
-    });
-
-  } catch (error) {
-    console.error('[Prediction Stats] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
 });
 
 app.get('/admin/cache', requireAdmin, (_req, res) => {
@@ -2326,7 +2248,7 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>OANDA Cache Monitor</title>
+<title>Capital.com Cache Monitor</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:#0a0c12;color:#e0e0e0;font-family:monospace;padding:24px}
@@ -2354,84 +2276,41 @@ app.get('/admin/cache', requireAdmin, (_req, res) => {
   .badge-ok{background:rgba(34,197,94,0.15);color:#22c55e}
   .badge-empty{background:rgba(100,116,139,0.15);color:#64748b}
   h2{color:rgba(201,168,76,0.8);font-size:14px;margin-bottom:12px}
-  #refresh-btn{background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px}
-  #refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
-  #td-refresh-btn{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px}
-  #td-refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
-  #td-forex-refresh-btn{background:linear-gradient(135deg,#1a3d2e,#16a34a);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px}
-  #td-forex-refresh-btn:disabled{opacity:0.4;cursor:not-allowed}
+  button{padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;border:none;margin-bottom:16px;transition:opacity 0.2s}
+  button:disabled{opacity:0.4;cursor:not-allowed}
+  .btn-refresh{background:linear-gradient(135deg,#9a7a2e,#c9a84c);color:#0a0c12}
+  .btn-purge{background:linear-gradient(135deg,#991b1b,#ef4444);color:#fff;margin-left:8px}
 </style>
 </head>
 <body>
-<h1>OANDA Cache Monitor</h1>
+<h1>Capital.com Cache Monitor (Depth: 1500)</h1>
+
 <div class="card" style="margin-bottom:16px;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-  <span style="font-size:13px;color:rgba(255,255,255,0.4)">MetaAPI</span>
-  <span id="ma-dot" class="status-dot dot-idle"></span>
-  <span id="ma-status" style="font-size:13px;font-weight:700">—</span>
-  <span id="ma-lastseen" style="font-size:12px;color:rgba(255,255,255,0.35)"></span>
-  <span id="ma-retry" style="font-size:12px;color:#f87171"></span>
+  <span style="font-size:13px;color:rgba(255,255,255,0.4)">Capital API</span>
+  <span id="api-dot" class="status-dot dot-idle"></span>
+  <span id="api-status" style="font-size:13px;font-weight:700">—</span>
 </div>
-<button id="refresh-btn" onclick="triggerRefresh()">Force Full Refresh</button>
-<button id="purge-all-btn" onclick="purgeAllCache()" style="background:linear-gradient(135deg,#991b1b,#ef4444);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:16px;margin-left:8px">Force Purge All Cache</button>
+
+<button id="refresh-btn" class="btn-refresh" onclick="triggerRefresh()">Force Full Refresh</button>
+<button id="purge-all-btn" class="btn-purge" onclick="purgeAllCache()">Full Purge All Cache</button>
+
 <div class="card">
   <div class="row">
-    <div class="stat"><div class="val" id="pct">—</div><div class="lbl">Overall %</div></div>
-    <div class="stat"><div class="val" id="sym-done">—</div><div class="lbl">Symbols Done</div></div>
+    <div class="stat"><div class="val" id="sym-done">—</div><div class="lbl">Symbols Loaded</div></div>
     <div class="stat"><div class="val" id="sym-total">—</div><div class="lbl">Total Symbols</div></div>
-    <div class="stat"><div class="val" id="tf-done">—</div><div class="lbl">TFs Fetched</div></div>
-    <div class="stat"><div class="val" id="tf-total">—</div><div class="lbl">Total TFs</div></div>
+    <div class="stat"><div class="val" id="auto-refetch">12h</div><div class="lbl">Auto Refetch</div></div>
   </div>
-  <div class="bar-wrap"><div class="bar-fill" id="bar" style="width:0%">0%</div></div>
-  <div class="current" id="current-info">Idle</div>
-  <h2>Activity Log</h2>
-  <div class="log-box" id="log"></div>
+  <div class="current" id="current-info">System Online</div>
 </div>
+
 <div class="card">
-  <h2>OANDA Symbols Status</h2>
-  <table>
-    <thead><tr><th>Symbol</th><th>1m</th><th>5m</th><th>15m</th><th>30m</th><th>1h</th><th>4h</th><th>1d</th><th>1w</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
-    <tbody id="sym-table"></tbody>
-  </table>
-</div>
-<div class="card" style="border-color:rgba(37,99,235,0.3)">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <h2 style="color:rgba(96,165,250,0.85);margin:0">Binance Crypto Cache (WS live)</h2>
-    <div style="display:flex;align-items:center;gap:12px">
-      <span id="td-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
-      <span id="td-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Refreshing…</span>
-    </div>
-  </div>
-  <table>
-    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
-    <tbody id="td-table"></tbody>
-  </table>
-</div>
-<div class="card" style="border-color:rgba(201,168,76,0.3)">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <h2 style="color:rgba(201,168,76,0.85);margin:0">Capital.com Streaming Data</h2>
-    <div style="display:flex;align-items:center;gap:12px">
-      <span id="capital-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
-      <span id="capital-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Fetching…</span>
-    </div>
-  </div>
+  <h2>Capital.com Symbol Status</h2>
   <table>
     <thead><tr><th>Symbol</th><th>1m</th><th>5m</th><th>15m</th><th>30m</th><th>1h</th><th>4h</th><th>1d</th><th>1w</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
     <tbody id="capital-table"></tbody>
   </table>
 </div>
-<div class="card" style="border-color:rgba(22,163,74,0.3)">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <h2 style="color:rgba(74,222,128,0.85);margin:0">TwelveData Cache — Stocks + Forex + Commodities (WS live)</h2>
-    <div style="display:flex;align-items:center;gap:12px">
-      <span id="td-forex-stats" style="font-size:12px;color:rgba(255,255,255,0.4)">—</span>
-      <span id="td-forex-active-info" style="font-size:12px;color:#22c55e;display:none"><span class="status-dot dot-active" style="display:inline-block;vertical-align:middle"></span> Fetching…</span>
-    </div>
-  </div>
-  <table>
-    <thead><tr><th>Symbol</th><th>1m</th><th>1h</th><th>4h</th><th>1d</th><th>Last Candle</th><th>Status</th><th>Action</th></tr></thead>
-    <tbody id="td-forex-table"></tbody>
-  </table>
-</div>
+
 <script>
 const ADMIN_KEY = new URLSearchParams(location.search).get('key') || '';
 const TFS = ['1m','5m','15m','30m','1h','4h','1d','1w'];
@@ -2441,104 +2320,51 @@ async function poll() {
     const r = await fetch('/admin/cache-status?key=' + ADMIN_KEY, { headers: { 'x-admin-key': ADMIN_KEY } });
     if (!r.ok) { document.body.innerHTML = '<p style="color:red;padding:24px">Unauthorized — add ?key=YOUR_ADMIN_SECRET to URL</p>'; return; }
     const d = await r.json();
-    const p = d.progress;
 
-    /* MetaAPI status bar */
-    const ma = d.metaapi || {};
-    const maColors = { connected:'#22c55e', connecting:'#f59e0b', disconnected:'#ef4444', error:'#ef4444' };
-    const maColor = maColors[ma.status] || '#64748b';
-    document.getElementById('ma-dot').style.background = maColor;
-    document.getElementById('ma-dot').style.boxShadow  = ma.status === 'connected' ? '0 0 6px ' + maColor : 'none';
-    document.getElementById('ma-status').textContent   = ma.status || '—';
-    document.getElementById('ma-status').style.color   = maColor;
-    document.getElementById('ma-lastseen').textContent = ma.lastSeen ? 'Last seen: ' + new Date(ma.lastSeen).toLocaleTimeString() : '';
-    document.getElementById('ma-retry').textContent    = ma.retryCount > 0 ? 'Retry #' + ma.retryCount : '';
+    const cap = d.capitalData || { symbols: [], notStarted: [], loaded: 0, total: 0 };
+    document.getElementById('sym-done').textContent = cap.loaded;
+    document.getElementById('sym-total').textContent = cap.total;
 
-    document.getElementById('pct').textContent       = p.active ? p.pct + '%' : (d.loaded === d.total ? '100%' : Math.round(d.loaded/d.total*100)+'%');
-    document.getElementById('sym-done').textContent  = p.active ? p.symDone : d.loaded;
-    document.getElementById('sym-total').textContent = d.total;
-    document.getElementById('tf-done').textContent   = p.active ? p.tfDone : '—';
-    document.getElementById('tf-total').textContent  = p.active ? p.tfTotal : '—';
-
-    const fillPct = p.active ? p.pct : (d.loaded === d.total ? 100 : Math.round(d.loaded/d.total*100));
-    const bar = document.getElementById('bar');
-    bar.style.width = fillPct + '%';
-    bar.textContent = fillPct + '%';
-
-    const info = document.getElementById('current-info');
-    if (p.active && p.currentSym) {
-      info.innerHTML = '<span class="status-dot dot-active"></span>Fetching <b style="color:#c9a84c">' + p.currentSym + '</b>' + (p.currentTF ? ' &mdash; TF: <b>' + p.currentTF + '</b>' : '');
+    const dot = document.getElementById('api-dot');
+    const status = document.getElementById('api-status');
+    if (d.capitalRefreshing) {
+      dot.className = 'status-dot dot-active';
+      status.textContent = 'REFRESHING...';
+      status.style.color = '#22c55e';
     } else {
-      info.innerHTML = '<span class="status-dot dot-idle"></span>Idle' + (p.startedAt ? ' &mdash; Last run: ' + new Date(p.startedAt).toLocaleString() : '');
+      dot.className = 'status-dot dot-idle';
+      status.textContent = 'CONNECTED';
+      status.style.color = '#c9a84c';
     }
 
-    const log = document.getElementById('log');
-    log.innerHTML = (p.log || []).slice().reverse().map(e => {
-      const isErr = e.msg.startsWith('ERROR');
-      return '<div class="entry' + (isErr?' err':'') + '"><span class="ts">' + e.t.slice(11,19) + '</span>' + e.msg + '</div>';
-    }).join('') || '<div class="entry">No activity yet</div>';
-
-    const tbody = document.getElementById('sym-table');
-    const allSyms = [...d.symbols, ...d.notStarted.map(s => ({ sym: s, tfs: {} }))];
-    tbody.innerHTML = allSyms.map(entry => {
+    const tbody = document.getElementById('capital-table');
+    const allRows = [...(cap.symbols || []), ...(cap.notStarted || []).map(s => ({ sym: s, tfs: {} }))];
+    tbody.innerHTML = allRows.map(entry => {
       const sym = entry.sym || entry;
       const tfs = entry.tfs || {};
-      const isActive = p.active && p.currentSym === sym;
       const cells = TFS.map(tf => {
         const info = tfs[tf];
         if (!info || !info.candles) return '<td style="color:rgba(255,255,255,0.2)">—</td>';
         return '<td>' + info.candles.toLocaleString() + '</td>';
       }).join('');
+      
       const lastCandle = (() => {
         let latest = null;
-        TFS.forEach(tf => { if (tfs[tf]?.lastCandle) { const d = new Date(tfs[tf].lastCandle); if (!latest || d > latest) latest = d; } });
+        TFS.forEach(tf => { if (tfs[tf]?.lastCandle) { const dt = new Date(tfs[tf].lastCandle); if (!latest || dt > latest) latest = dt; } });
         return latest ? latest.toLocaleTimeString() : '—';
       })();
+
       const hasTfs = Object.keys(tfs).length > 0;
-      const badge = isActive
-        ? '<span class="badge" style="background:rgba(34,197,94,0.2);color:#22c55e">&#9654; fetching</span>'
-        : hasTfs ? '<span class="badge badge-ok">loaded</span>' : '<span class="badge badge-empty">pending</span>';
-      return '<tr' + (isActive?' style="background:rgba(201,168,76,0.05)"':'') + '><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td><td><button onclick="purgeSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#ef4444;border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:bold;">Purge</button></td></tr>';
-    }).join('');
-
-    document.getElementById('refresh-btn').disabled = p.active || d.refreshing;
-
-    /* Crypto (Binance) + Stocks (TD) sections */
-    const TD_TFS = ['1m','1h','4h','1d'];
-
-    function renderTDTable(section, tableId, accentColor, refreshingFlag, statsId, activeInfoId, tfList) {
-      const tfsToRender = tfList || TD_TFS;
-      const loaded = section.loaded || 0;
-      const total  = section.total  || 0;
-      document.getElementById(statsId).textContent = loaded + ' / ' + total + ' symbols loaded';
-      const activeEl = document.getElementById(activeInfoId);
-      if (refreshingFlag) { activeEl.style.display = 'inline-flex'; } else { activeEl.style.display = 'none'; }
-
-      const allRows = [...(section.symbols || []), ...(section.notStarted || []).map(s => ({ sym: s, tfs: {} }))];
-      document.getElementById(tableId).innerHTML = allRows.map(entry => {
-        const sym = entry.sym || entry;
-        const tfs = entry.tfs || {};
-        const cells = tfsToRender.map(tf => {
-          const info = tfs[tf];
-          if (!info || !info.candles) return '<td style="color:rgba(255,255,255,0.2)">—</td>';
-          return '<td>' + info.candles.toLocaleString() + '</td>';
-        }).join('');
-        const lastCandle = (() => {
-          let latest = null;
-          tfsToRender.forEach(tf => { if (tfs[tf]?.lastCandle) { const dt = new Date(tfs[tf].lastCandle); if (!latest || dt > latest) latest = dt; } });
-          return latest ? latest.toLocaleTimeString() : '—';
-        })();
-        const hasTfs = Object.keys(tfs).length > 0;
-        const badge = hasTfs
-          ? '<span class="badge" style="background:' + accentColor + '22;color:' + accentColor + '">loaded</span>'
-          : '<span class="badge badge-empty">pending</span>';
-        return '<tr><td><b>' + sym + '</b></td>' + cells + '<td>' + lastCandle + '</td><td>' + badge + '</td><td><button onclick="purgeSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#ef4444;border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:bold;">Purge</button></td></tr>';
-      }).join('') || '<tr><td colspan="' + (tfsToRender.length + 4) + '" style="color:rgba(255,255,255,0.3);text-align:center;padding:16px">No data yet</td></tr>';
-    }
-
-    renderTDTable(d.tdCrypto || {}, 'td-table',       '#60a5fa', d.tdCryptoRefreshing,  'td-stats',       'td-active-info');
-    renderTDTable(d.capitalData || {}, 'capital-table', '#c9a84c', d.capitalRefreshing, 'capital-stats', 'capital-active-info', TFS);
-    renderTDTable(d.tdStocks || {}, 'td-forex-table', '#4ade80', d.tdStocksRefreshing,  'td-forex-stats', 'td-forex-active-info');
+      const badge = hasTfs ? '<span class="badge badge-ok">loaded</span>' : '<span class="badge badge-empty">pending</span>';
+      
+      return '<tr>' +
+        '<td><b>' + sym + '</b></td>' +
+        cells +
+        '<td>' + lastCandle + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td><button onclick="purgeSym(\\'' + sym + '\\')" style="padding:2px 8px;cursor:pointer;background:#ef4444;border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:bold;margin:0">Purge</button></td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="12" style="text-align:center;padding:20px;color:rgba(255,255,255,0.2)">No Capital.com data found</td></tr>';
 
   } catch(e) { console.error(e); }
 }
@@ -2547,124 +2373,57 @@ async function triggerRefresh() {
   const btn = document.getElementById('refresh-btn');
   btn.disabled = true;
   await fetch('/admin/cache-refresh', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  setTimeout(() => btn.disabled = false, 5000);
   poll();
 }
 
 async function purgeAllCache() {
-  if (!confirm('Are you sure you want to permanently delete ALL cached symbols? They will rebuild on demand.')) return;
+  if (!confirm('Permanently delete ALL Capital.com cache?')) return;
   const btn = document.getElementById('purge-all-btn');
-  btn.disabled = true; btn.textContent = 'Purging...';
-  try {
-    await fetch('/admin/cache-purge-all', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
-  } finally {
-    btn.disabled = false; btn.textContent = 'Force Purge All Cash';
-    poll();
-  }
+  btn.disabled = true;
+  await fetch('/admin/cache-purge-all', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  setTimeout(() => btn.disabled = false, 2000);
+  poll();
 }
 
 async function purgeSym(sym) {
   if (!confirm(\`Delete cache for \${sym}?\`)) return;
-  try {
-    await fetch(\`/admin/cache-purge/\${sym.replace('/', '')}\`, { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
-    poll();
-  } catch(e) { alert('Error: ' + e.message); }
-}
-
-async function triggerTDRefresh() {
-  const btn = document.getElementById('td-refresh-btn');
-  btn.disabled = true;
-  await fetch('/admin/td-crypto-refresh', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
-  poll();
-}
-
-async function triggerTDForexRefresh() {
-  const btn = document.getElementById('td-forex-refresh-btn');
-  btn.disabled = true;
-  await fetch('/admin/td-forex-refresh', { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
+  await fetch(\`/admin/cache-purge/\${sym.replace('/', '')}\`, { method: 'POST', headers: { 'x-admin-key': ADMIN_KEY } });
   poll();
 }
 
 poll();
-setInterval(poll, 2000);
+setInterval(poll, 3000);
 </script>
 </body>
 </html>`);
 });
 
 app.post('/admin/cache-refresh', requireAdmin, (_req, res) => {
-  oanda.refreshAllCache().catch(e => console.error('[Cache] Manual refresh error:', e.message));
-  res.json({ ok: true, message: 'OANDA cache refresh started' });
+  capital.refreshAllCache().catch(e => console.error('[Cache] Manual refresh error:', e.message));
+  res.json({ ok: true, message: 'Capital.com cache refresh started' });
 });
 
 app.post('/admin/cache-purge-all', requireAdmin, async (_req, res) => {
   try {
-    // Clear every key from in-memory store
-    for (const k of store.listKeys()) {
-      const [source, ...rest] = k.split(':');
-      store.purge(source, rest.join(':'));
+    const syms = capital.getSymbols();
+    for (const sym of syms) {
+      store.purgeSymbol('capital', sym);
     }
-    // Delete disk files
-    const cacheDir = path.join(__dirname, 'candle_cache');
-    if (fs.existsSync(cacheDir)) fs.rmSync(cacheDir, { recursive: true, force: true });
-    for (const d of ['oanda_cache', 'td_cache', 'td_forex_cache']) {
-      const p = path.join(__dirname, d); if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
-    }
-    res.json({ ok: true, message: 'All caches purged.' });
+    res.json({ ok: true, message: 'All Capital.com caches purged' });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ error: e.message });
   }
 });
 
-app.post('/admin/cache-purge/:symbol', requireAdmin, async (req, res) => {
-  try {
-    const sym    = req.params.symbol.toUpperCase().replace('/', '');
-    const source = getSymSource(sym);
-    // Clear in-memory store first
-    store.purge(source, sym);
-    // Delete disk file
-    const f = path.join(__dirname, 'candle_cache', source, `${sym}.json`);
-    if (fs.existsSync(f)) fs.unlinkSync(f);
-    // Also try old cache dirs
-    for (const d of ['oanda_cache', 'td_cache', 'td_forex_cache']) {
-      const op = path.join(__dirname, d, `${sym}.json`); if (fs.existsSync(op)) fs.unlinkSync(op);
-    }
-
-    // Auto force-refresh for OANDA
-    if (source === 'oanda') {
-      try {
-        await oanda.fetchRecent(sym);
-      } catch (err) {
-        console.error(`[Cache Purge] Auto-refresh failed for ${sym}:`, err.message);
-      }
-    }
-
-    res.json({ ok: true, message: `Purged and auto-refreshed ${sym}` });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-app.post('/admin/td-crypto-refresh', requireAdmin, (_req, res) => {
-  binance.fetchAllHistory().catch(e => console.error('[Binance] Manual refresh error:', e.message));
-  res.json({ ok: true, message: 'Binance alt-crypto refresh started' });
-});
-
-app.post('/admin/td-forex-refresh', requireAdmin, (_req, res) => {
-  res.json({ ok: true, message: 'Forex data is served from OANDA — use cache-refresh instead.' });
-});
-
-app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
-  try {
-    await checkPredictions();
-    res.json({ success: true, message: 'Prediction check completed' });
-  } catch (error) {
-    console.error('[Manual Check] Error:', error);
-    res.status(500).json({ error: 'Check failed' });
-  }
+app.post('/admin/cache-purge/:symbol', requireAdmin, (req, res) => {
+  const sym = req.params.symbol.toUpperCase();
+  store.purgeSymbol('capital', sym);
+  res.json({ ok: true, message: `Cache purged for ${sym}` });
 });
 
 app.get('/admin/cache-status', requireAdmin, (_req, res) => {
-  const stats        = store.getStats();
+  const stats = store.getStats();
 
   const buildSymList = (syms, src, tfs) => {
     const done = [], empty = [];
@@ -2684,34 +2443,14 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
 
   const capitalList = buildSymList(capital.getSymbols(), 'capital', TIMEFRAMES);
 
-  // Flatten to match admin HTML's expected field names
-  const binanceTDShape = (list, total) => ({
-    symbols:    list.done,
-    notStarted: list.empty,
-    loaded:     list.done.length,
-    total,
-  });
-
   res.json({
-    // Top-level fields expected by admin HTML
-    progress:   null,
-    metaapi:    { status: 'disconnected', lastSeen: null, retryCount: 0 },
-    symbols:    [],
-    notStarted: [],
-    loaded:     0,
-    total:      0,
-    refreshing: false,
-    backfill:   {},
-    tdCrypto:          { symbols: [], notStarted: [], loaded: 0, total: 0 },
-    tdCryptoRefreshing: false,
-    tdStocks:          { symbols: [], notStarted: [], loaded: 0, total: 0 },
-    tdStocksRefreshing: false,
-    capitalData:       binanceTDShape(capitalList, capital.getSymbols().length),
-    capitalRefreshing: false,
-    // Full data for future use
-    oanda:   {},
-    binance: {},
-    td:      {},
+    capitalData: {
+      symbols: capitalList.done,
+      notStarted: capitalList.empty,
+      loaded: capitalList.done.length,
+      total: capital.getSymbols().length,
+    },
+    capitalRefreshing: false, // We could potentially track this in capital.js if needed
     storeStats: stats,
   });
 });
@@ -3204,14 +2943,19 @@ app.listen(PORT, () => {
   });
   /* Scanner — runs every 30 minutes */
   cron.schedule('*/30 * * * *', () => {
-    if (oanda.getSymbols().length > 0) {
+    if (capital.getSymbols().length > 0) {
       console.log('\n🔄 [Scheduled] Running sniper scanner...');
       runSniperScanner();
     }
   });
   /* SMA crossover scanner — runs every 10 minutes */
   cron.schedule('*/10 * * * *', () => {
-    if (oanda.getSymbols().length > 0) runCrossoverScanner();
+    if (capital.getSymbols().length > 0) runCrossoverScanner();
+  });
+  /* Capital.com incremental refresh every 12 hours */
+  cron.schedule('0 */12 * * *', () => {
+    console.log('\n📊 [Scheduled] Capital.com incremental refresh...');
+    capital.refreshAllCache().catch(e => console.error('[Capital] Cron error:', e.message));
   });
   /* Binance alt-crypto — incremental refresh every 12 hours */
   // cron.schedule('0 */12 * * *', () => {
@@ -3228,5 +2972,6 @@ app.listen(PORT, () => {
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
   console.log('🔄 Sniper scanner: Every 30 minutes');
   console.log('📈 SMA crossover scanner: Every 10 minutes');
+  console.log('📊 Capital incremental refresh: Every 12 hours');
 
 });

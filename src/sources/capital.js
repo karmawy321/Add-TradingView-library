@@ -268,7 +268,7 @@ async function fetchHistory(internalSym, tf, endTime) {
     if (!epic) return resolve([]);
     
     const resolution = TF_MAP[tf] || 'MINUTE';
-    let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=1000`;
+    let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=1500`;
     if (endTime) {
       path += `&to=${new Date(endTime).toISOString().slice(0, 19)}`;
     }
@@ -311,7 +311,7 @@ async function fetchHistory(internalSym, tf, endTime) {
 
 async function fetchRecent(internalSym) {
   if (!connected) return;
-  console.log(`[Capital] Fetching 1000-candle cache for ${internalSym}...`);
+  console.log(`[Capital] Fetching 1500-candle cache for ${internalSym}...`);
   for (const tf of TIMEFRAMES) {
     try {
       const candles = await fetchHistory(internalSym, tf, null);
@@ -329,7 +329,7 @@ async function fetchRecent(internalSym) {
 
 async function refreshAllCache() {
   const syms = Object.keys(SYMBOL_MAP);
-  console.log(`[Capital] Refreshing cache for ${syms.length} symbols (1000 candles each)...`);
+  console.log(`[Capital] Refreshing cache for ${syms.length} symbols (1500 candles each)...`);
   for (const sym of syms) {
     await fetchRecent(sym);
     await new Promise(r => setTimeout(r, 500));
