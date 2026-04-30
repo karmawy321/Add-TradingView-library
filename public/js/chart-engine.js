@@ -3664,6 +3664,11 @@
       _lastTf = newTf;
       currentInterval = newTf;
 
+      // Clear old candles immediately so new ticks don't append to the wrong TF
+      chartCandles = [];
+      showChartMsg('Loading ' + currentSymbol + ' ' + currentInterval + '…');
+      renderChart();
+
       _historyLoading = false; _historyDepleted = false;
       var _srcQ = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
       fetch(BACKEND_URL + '/candles/' + currentSymbol + '?tf=' + currentInterval + _srcQ)
