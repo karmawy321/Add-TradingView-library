@@ -4532,7 +4532,7 @@
     }
 
 /* -- CUSTOM TF DROPDOWN (TV STYLE) -- */
-.tf-dropdown { position: relative; display: inline-block; user-select: none; }
+.tf-dropdown { position: relative; display: inline-block; user-select: none; z-index: 1001; }
 .tf-current {
   font-family: " DM Mono\, monospace;
  font-size: 13px;
