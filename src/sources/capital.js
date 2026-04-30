@@ -18,9 +18,9 @@ const TF_MS = {
 };
 
 const TF_MAP = {
-  '1s': 'SECOND', '5s': 'SECOND_5', '10s': 'SECOND_10', '30s': 'SECOND_30',
-  '1m': 'MINUTE', '2m': 'MINUTE_2', '5m': 'MINUTE_5', '10m': 'MINUTE_10', '15m': 'MINUTE_15', '30m': 'MINUTE_30',
-  '1h': 'HOUR', '2h': 'HOUR_2', '4h': 'HOUR_4', '6h': 'HOUR_6',
+  '1s': 'SECOND', '5s': 'SECOND', '10s': 'SECOND', '30s': 'SECOND',
+  '1m': 'MINUTE', '2m': 'MINUTE', '5m': 'MINUTE_5', '10m': 'MINUTE_5', '15m': 'MINUTE_15', '30m': 'MINUTE_30',
+  '1h': 'HOUR', '2h': 'HOUR', '4h': 'HOUR_4', '6h': 'HOUR_4',
   '1d': 'DAY', '1w': 'WEEK', '1M': 'MONTH'
 };
 
@@ -319,6 +319,32 @@ async function fetchHistory(internalSym, tf, endTime) {
             c: parseFloat(p.closePrice.bid || p.closePrice.ask),
             v: parseFloat(p.lastTradedVolume || 0)
           }));
+
+          // AGGREGATION LOGIC: If the requested TF is not native, aggregate the base candles
+          const nativeTFs = ['1s','1m','5m','15m','30m','1h','4h','1d','1w','1M'];
+          if (nativeTFs.indexOf(tf) === -1) {
+            const timeframeMs = TF_MS[tf];
+            if (!timeframeMs) return resolve(mapped);
+            
+            const aggregated = [];
+            let currentBucket = null;
+            
+            for (const c of mapped) {
+              const bucketStart = Math.floor(c.t / timeframeMs) * timeframeMs;
+              if (!currentBucket || currentBucket.t !== bucketStart) {
+                if (currentBucket) aggregated.push(currentBucket);
+                currentBucket = { ...c, t: bucketStart };
+              } else {
+                currentBucket.h = Math.max(currentBucket.h, c.h);
+                currentBucket.l = Math.min(currentBucket.l, c.l);
+                currentBucket.c = c.c;
+                currentBucket.v += c.v;
+              }
+            }
+            if (currentBucket) aggregated.push(currentBucket);
+            return resolve(aggregated);
+          }
+
           resolve(mapped);
         } catch (e) {
           resolve([]);
