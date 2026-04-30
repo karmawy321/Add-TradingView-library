@@ -3823,7 +3823,7 @@
       'CRVUSDT', 'COMPUSDT', 'MKRUSDT', 'SNXUSDT', 'SUSHIUSDT', 'YFIUSDT',
       'QNTUSDT', 'FTMUSDT', 'ZILUSDT', 'ONEUSDT', 'IOSTUSDT',
       'BTCUSDC', 'ETHUSDC', 'SOLUSDC', 'XRPUSDC', 'BNBUSDC',
-      'ETHUSD', 'BTCUSD', 'XAUUSD', 'XAGUSD', 'EURUSD', 'GBPUSD', 'JPYUSD'
+      'ETHUSD', 'BTCUSD', 'GOLD', 'SILVER', 'EURUSD', 'GBPUSD', 'JPYUSD'
     ];
 
     function selectPair(sym) {
@@ -6407,11 +6407,11 @@
           nearestDrawing: _nearestDrawing
         };
 
-        /* ── Auto-load XAUUSD from OANDA on startup ── */
+        /* ── Auto-load GOLD from Capital on startup ── */
         var _pairInput = document.getElementById('pairIn');
-        if (_pairInput) _pairInput.value = 'XAU/USD';
+        if (_pairInput) _pairInput.value = 'GOLD';
         setTimeout(function () {
-          if (typeof selectPairWithSource === 'function') selectPairWithSource('XAUUSD', 'oanda');
+          if (typeof selectPairWithSource === 'function') selectPairWithSource('GOLD', 'oanda');
         }, 100);
       });
     })();

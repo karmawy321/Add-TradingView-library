@@ -244,13 +244,17 @@ async function searchMarkets(query) {
         try {
           const json = JSON.parse(data);
           if (!json.markets || !Array.isArray(json.markets)) return resolve([]);
-          resolve(json.markets.map(m => ({
-            symbol: m.epic, 
-            instrument_name: m.instrumentName,
-            instrument_type: 'CFD',
-            exchange: 'Capital',
-            source: 'capital'
-          })));
+          console.log(`[Capital] Search for "${query}" returned ${json.markets.length} results.`);
+          resolve(json.markets.map(m => {
+            if (m.epic === 'GOLD') console.log('[Capital] GOLD instrument details:', JSON.stringify(m));
+            return {
+              symbol: m.epic, 
+              instrument_name: m.instrumentName,
+              instrument_type: 'CFD',
+              exchange: 'Capital',
+              source: 'capital'
+            };
+          }));
         } catch (e) { resolve([]); }
       });
     }).on('error', () => resolve([]));
