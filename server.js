@@ -15,59 +15,12 @@ const crypto    = require('crypto');
    ═══════════════════════════════════════════════════ */
 const store   = require('./src/candleStore');
 const sse     = require('./src/sse');
-const oanda   = require('./src/sources/oanda');
-const binance = require('./src/sources/binance');
 const capital = require('./src/sources/capital');
-
-const _binanceSymSet = new Set(binance.SYMBOLS);
 
 /* getSymSource — returns which source owns a given symbol */
 function getSymSource(sym) {
-  if (capital.SYMBOL_MAP[sym]) return 'capital';
-  if (oanda.SYMBOL_MAP[sym]) return 'oanda';
-  if (_binanceSymSet.has(sym)) return 'binance';
-  return 'capital'; // Fallback for dynamic Capital searches
+  return 'capital';
 }
-
-/* ── Backward-compat shim: oandaCandles[sym][tf] → new store ─────────────────
-   Scanner + admin code reads oandaCandles without modification.            */
-const oandaCandles = new Proxy({}, {
-  get(_, sym) {
-    if (typeof sym !== 'string') return undefined;
-    const src = _binanceSymSet.has(sym) ? 'binance' : 'oanda';
-    return new Proxy({}, {
-      get(_, tf) {
-        if (typeof tf !== 'string') return [];
-        return store.readCandles(src, sym, tf);
-      },
-      has: () => true,
-      ownKeys: () => oanda.TIMEFRAMES,
-      getOwnPropertyDescriptor: (_, tf) => ({ enumerable: true, configurable: true, value: store.readCandles(oanda.SYMBOL_MAP[sym] ? 'oanda' : 'binance', sym, tf) }),
-    });
-  },
-  has: (_, sym) => !!(oanda.SYMBOL_MAP[sym] || _binanceSymSet.has(sym)),
-  ownKeys: () => [...oanda.getSymbols(), ...binance.getSymbols()],
-  getOwnPropertyDescriptor: (_, sym) => {
-    if (oanda.SYMBOL_MAP[sym] || _binanceSymSet.has(sym)) return { enumerable: true, configurable: true, writable: false, value: {} };
-    return undefined;
-  },
-  deleteProperty: () => true,
-  set: () => true,
-});
-
-/* ── Backward-compat shim: candles[sym][tf] → td store ── */
-const candles = new Proxy({}, {
-  get(_, sym) {
-    if (typeof sym !== 'string') return undefined;
-    return new Proxy({}, {
-      get(_, tf) { return typeof tf === 'string' ? store.readCandles('td', sym, tf) : []; },
-    });
-  },
-  deleteProperty: () => true,
-  set: () => true,
-  ownKeys: () => [],
-  getOwnPropertyDescriptor: () => undefined,
-});
 
 /* ═══════════════════════════════════════════════════
    SUPABASE
@@ -482,8 +435,8 @@ async function getUserProfile(token) {
    CANDLE BUILDER — replaced by src/ modules
    These constants are still used by scanner + admin code.
    ═══════════════════════════════════════════════════ */
-const TF_MS    = oanda.TF_MS;
-const TIMEFRAMES = oanda.TIMEFRAMES;
+const TF_MS    = { '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000, '1h': 3600000, '4h': 14400000, '1d': 86400000, '1w': 604800000 };
+const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'];
 
 /* ═══════════════════════════════════════════════════
    TWELVEDATA DATA SOURCE — replaced by src/sources/twelvedata.js
@@ -504,21 +457,9 @@ function tdTs(dt) {
   return new Date(s).getTime();
 }
 
-/* ═══════════════════════════════════════════════════
-   METAAPI (OANDA) — replaced by src/sources/oanda.js
-   Aliases kept for any remaining references.
-   ═══════════════════════════════════════════════════ */
-const METAAPI_TOKEN = process.env.METAAPI_TOKEN || '';
-
-/* Aliases for scanner code that reads _maSymMap */
-const _maSymMap = oanda.SYMBOL_MAP;
-const _maReady  = { get value() { return oanda.isReady(); } };
-
 /* getDataSource — used by scanner to tag DB records */
 function getDataSource(sym) {
-  if (_binanceSymSet.has(sym)) return 'binance';
-  if (oanda.SYMBOL_MAP[sym])   return 'oanda';
-  return 'td';
+  return 'capital';
 }
 
 const app = express();
@@ -630,23 +571,12 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
 
   const source = req.query.source || getSymSource(sym);
 
-  if (source === 'oanda' && oanda.isReady()) {
-    const hwm = store.highWaterMark('oanda', sym, tf);
-    if (!hwm) oanda.fetchRecent(sym).catch(() => {});
-    oanda.promoteBackfill(sym); // user viewed it → bump to front of backfill queue
-  }
   if (source === 'capital' && capital.isReady()) {
     const hwm = store.highWaterMark('capital', sym, tf);
     if (!hwm) capital.fetchRecent(sym).catch(() => {});
   }
-  if (source === 'td') {
-    const hwm = store.highWaterMark('td', sym, tf);
-    if (!hwm) { td.fetchHistory(sym).catch(() => {}); td.subscribe(sym); }
-  }
 
   let arr = store.readCandles(source, sym, tf);
-  if (source === 'oanda' && tf === '1d') arr = _mergeOandaSundayIntoMonday(arr);
-  if (!arr.length && source === 'oanda') return res.json({ candles: [], loading: true });
   res.json({ candles: arr });
 });
 
@@ -655,7 +585,7 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
   const sym     = req.params.symbol.toUpperCase().replace('-', '/');
   const tf      = req.query.tf || '4h';
   const endTime = parseInt(req.query.endTime, 10);
-  if (!validSymbol(sym)) return res.status(400).json({ candles: [] });
+  if (!validSymbol(sym)) return res.json({ candles: [] });
 
   const source = req.query.source || getSymSource(sym);
 
@@ -677,68 +607,7 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
       return res.json({ candles: out.slice(-2000) });
     }
   }
-
-  if (source === 'oanda') {
-    if (!endTime) return res.json({ candles: [] });
-    const existing = store.readCandles('oanda', sym, tf).filter(c => c.t < endTime);
-    if (existing.length < 50 && oanda.isReady()) {
-      const maSym = oanda.SYMBOL_MAP[sym];
-      const conn  = oanda.getRpcConn();
-      if (maSym && conn) {
-        try {
-          const raw = await conn.getHistoricalCandles(maSym, tf, new Date(endTime), 2000);
-          if (raw && raw.length) {
-            store.writeCandles('oanda', sym, tf,
-              raw.map(c => ({ t: new Date(c.time).getTime(), o: c.open, h: c.high, l: c.low, c: c.close, v: c.tickVolume || 0 }))
-                 .filter(c => c.t < endTime));
-          }
-        } catch(e) { console.error('[history] OANDA fetch:', e.message); }
-      }
-    }
-    let out = store.readCandles('oanda', sym, tf).filter(c => c.t < endTime);
-    if (tf === '1d') out = _mergeOandaSundayIntoMonday(out);
-    return res.json({ candles: out.slice(-2000) });
-  }
-
-  if (source === 'binance') {
-    if (!endTime) return res.json({ candles: [] });
-    const BN_INTERVALS = { '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' };
-    const bnInt = BN_INTERVALS[tf]; if (!bnInt) return res.json({ candles: [] });
-    try {
-      const bnPath = `/api/v3/klines?symbol=${sym}&interval=${bnInt}&endTime=${endTime}&limit=1000`;
-      const rows = await new Promise((resolve, reject) => {
-        https.get({ hostname: 'api.binance.com', path: bnPath, headers: { 'User-Agent': 'fractal/1.0' } }, r => {
-          let d = ''; r.on('data', c => d += c);
-          r.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve([]); } });
-        }).on('error', reject);
-      });
-      const out = (Array.isArray(rows) ? rows : []).map(k => ({
-        t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]), l: parseFloat(k[3]), c: parseFloat(k[4]), v: parseFloat(k[5]),
-      })).filter(c => c.t < endTime);
-      return res.json({ candles: out });
-    } catch(e) { return res.json({ candles: [] }); }
-  }
-
-  // TwelveData fallback
-  if (!TD_KEY) return res.status(500).json({ candles: [] });
-  const tdInterval = TD_TF[tf];
-  if (!tdInterval || !endTime) return res.status(400).json({ candles: [] });
-  const tdSym   = toTDSymbol(sym);
-  const endDate = new Date(endTime).toISOString().slice(0, 19);
-  const params  = new URLSearchParams({ symbol: tdSym, interval: tdInterval, outputsize: '5000', order: 'ASC', timezone: 'UTC', end_date: endDate, apikey: TD_KEY });
-  const treq = https.request({ hostname: 'api.twelvedata.com', path: `/time_series?${params.toString()}`, method: 'GET' }, tres => {
-    let data = '';
-    tres.on('data', c => { data += c; });
-    tres.on('end', () => {
-      try {
-        const json = JSON.parse(data);
-        if (json.status !== 'ok' || !Array.isArray(json.values)) return res.json({ candles: [] });
-        res.json({ candles: json.values.map(v => ({ t: tdTs(v.datetime), o: parseFloat(v.open), h: parseFloat(v.high), l: parseFloat(v.low), c: parseFloat(v.close), v: parseFloat(v.volume || 0) })) });
-      } catch(e) { res.json({ candles: [] }); }
-    });
-  });
-  treq.on('error', () => res.json({ candles: [] }));
-  treq.end();
+  return res.json({ candles: [] });
 });
 
 // Subscribe SSE — max 5 concurrent connections per IP
@@ -778,29 +647,7 @@ app.get('/search', rateLimit(60, 60000), async (req, res) => {
   const query = (req.query.q || '').trim();
   if (!query) return res.json({ data: [] });
 
-  /* Inject OANDA results — static catalog matching _maSymMap */
-  const _oandaCatalog = [
-    { symbol:'XAUUSD',  instrument_name:'Gold / US Dollar',            instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
-    { symbol:'XAGUSD',  instrument_name:'Silver / US Dollar',          instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
-    { symbol:'OILWTI',  instrument_name:'WTI Crude Oil',               instrument_type:'Commodity',         exchange:'OANDA', source:'oanda' },
-    { symbol:'EURUSD',  instrument_name:'Euro / US Dollar',            instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'GBPUSD',  instrument_name:'British Pound / US Dollar',   instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'USDJPY',  instrument_name:'US Dollar / Japanese Yen',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'USDCHF',  instrument_name:'US Dollar / Swiss Franc',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'AUDUSD',  instrument_name:'Australian Dollar / USD',     instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'NZDUSD',  instrument_name:'New Zealand Dollar / USD',    instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'USDCAD',  instrument_name:'US Dollar / Canadian Dollar', instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'EURJPY',  instrument_name:'Euro / Japanese Yen',         instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'GBPJPY',  instrument_name:'British Pound / Japanese Yen',instrument_type:'Physical Currency', exchange:'OANDA', source:'oanda' },
-    { symbol:'US500',   instrument_name:'S&P 500',                     instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
-    { symbol:'US30',    instrument_name:'Dow Jones 30',                instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
-    { symbol:'US100',   instrument_name:'NASDAQ 100',                  instrument_type:'Index',             exchange:'OANDA', source:'oanda' },
-  ];
-
   const q = query.toUpperCase().replace('/','');
-  const oandaMatches = _oandaCatalog.filter(o => {
-    return o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
-  });
 
   // Dynamic Capital Search
   let capitalMatches = [];
@@ -813,7 +660,7 @@ app.get('/search', rateLimit(60, 60000), async (req, res) => {
     console.error('Search error', e);
   }
 
-  res.json({ data: [...oandaMatches, ...capitalMatches] });
+  res.json({ data: capitalMatches });
 });
 
 /* ═══════════════════════════════════════════════════
@@ -1866,8 +1713,6 @@ async function runSniperScanner() {
 
   const symbols = [
     ...capital.getSymbols(),
-    ...oanda.getSymbols(),
-    ...binance.getSymbols(),
   ];
   let scanned = 0, saved = 0, skipped = 0, errors = 0;
 
@@ -2819,8 +2664,6 @@ app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
 });
 
 app.get('/admin/cache-status', requireAdmin, (_req, res) => {
-  const oandaStatus  = oanda.getStatus();
-  const binanceStatus = binance.getStatus();
   const stats        = store.getStats();
 
   const buildSymList = (syms, src, tfs) => {
@@ -2839,8 +2682,6 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
     return { done, empty };
   };
 
-  const oandaList   = buildSymList(oanda.getSymbols(),   'oanda',   TIMEFRAMES);
-  const binanceList = buildSymList(binance.getSymbols(), 'binance', TIMEFRAMES);
   const capitalList = buildSymList(capital.getSymbols(), 'capital', TIMEFRAMES);
 
   // Flatten to match admin HTML's expected field names
@@ -2853,23 +2694,23 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
 
   res.json({
     // Top-level fields expected by admin HTML
-    progress:   oandaStatus.progress,
-    metaapi:    { status: oandaStatus.status, lastSeen: oandaStatus.lastSeen, retryCount: oandaStatus.retryCount },
-    symbols:    oandaList.done,
-    notStarted: oandaList.empty,
-    loaded:     oandaList.done.length,
-    total:      oanda.getSymbols().length,
-    refreshing: oandaStatus.progress && oandaStatus.progress.active,
-    backfill:   oanda.getBackfillStatus(),
-    tdCrypto:          binanceTDShape(binanceList, binance.SYMBOLS.length),
+    progress:   null,
+    metaapi:    { status: 'disconnected', lastSeen: null, retryCount: 0 },
+    symbols:    [],
+    notStarted: [],
+    loaded:     0,
+    total:      0,
+    refreshing: false,
+    backfill:   {},
+    tdCrypto:          { symbols: [], notStarted: [], loaded: 0, total: 0 },
     tdCryptoRefreshing: false,
     tdStocks:          { symbols: [], notStarted: [], loaded: 0, total: 0 },
     tdStocksRefreshing: false,
     capitalData:       binanceTDShape(capitalList, capital.getSymbols().length),
     capitalRefreshing: false,
     // Full data for future use
-    oanda:   { ...oandaStatus, ...oandaList, total: oanda.getSymbols().length },
-    binance: { ...binanceStatus, ...binanceList, total: binance.SYMBOLS.length },
+    oanda:   {},
+    binance: {},
     td:      {},
     storeStats: stats,
   });
@@ -3341,26 +3182,12 @@ app.listen(PORT, () => {
   refreshConditionWeights();
 
   /* Load all disk caches immediately */
-  oanda.loadCache();
-  binance.loadCache();
   capital.loadCache();
 
   /* Start live feeds */
-  binance.connect();  // Binance WS — always-on, free, no auth
   capital.connect();  // Capital.com stream integration
 
-  /* OANDA MetaAPI — connect after 30s (MetaAPI SDK needs some warmup time) */
-  if (METAAPI_TOKEN) {
-    setTimeout(() => {
-      console.log('[OANDA] Initializing MetaAPI connection...');
-      oanda.connect().then(() => {
-        if (oanda.isReady()) {
-          oanda.refreshAllCache();
-          setInterval(() => oanda.refreshAllCache(), 12 * 3600 * 1000);
-        }
-      }).catch(e => console.error('[OANDA] Connect error:', e.message));
-    }, 30000);
-  }
+
 
   /* Binance alt-crypto history — fetch 5s after start */
   // setTimeout(() => binance.fetchAllHistory().catch(e => console.error('[Binance] History error:', e.message)), 5000);
@@ -3401,6 +3228,5 @@ app.listen(PORT, () => {
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
   console.log('🔄 Sniper scanner: Every 30 minutes');
   console.log('📈 SMA crossover scanner: Every 10 minutes');
-  console.log('📊 Binance alt-crypto cache: Every 12 hours');
-  console.log('📊 OANDA incremental refresh: Every 12 hours (offset 30m)');
+
 });
