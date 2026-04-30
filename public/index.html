@@ -394,7 +394,7 @@
           <!-- FractalScript Label & Logo (Beside Expand btn) -->
           <div style="display:flex;align-items:center;gap:15px;margin-left:auto;margin-right:15px;">
             <span id="fsLabelText"
-              style="font-family:'Cinzel',serif;font-size:12px;font-weight:700;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:0.15em;pointer-events:none;user-select:none;transition:all 0.3s;text-shadow:0 0 8px rgba(201,168,76,0)">FractalScript</span>
+              style="font-family:'Cinzel',serif;font-size:14px;font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.18em;pointer-events:none;user-select:none;transition:all 0.3s;">FractalScript</span>
             <div id="fractalScriptBtn" onclick="_toggleFractalScript()"
               style="width:68px;height:68px;cursor:pointer;position:relative;border-radius:12px;transition:all 0.2s;background:#000;box-shadow:0 4px 20px rgba(0,0,0,0.6);"
               onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
@@ -417,22 +417,22 @@
               <div style="position:relative;display:inline-block">
                 <input type="text" id="pairIn" placeholder="Search symbol… (/)" autocomplete="off" readonly
                   onclick="openSearchModal()"
-                  style="font-family:'DM Mono',monospace;font-size:11px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#f0f4fa;padding:5px 10px;width:130px;outline:none;letter-spacing:.04em;cursor:pointer">
+                  style="font-family:'DM Mono',monospace;font-size:13px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 12px;width:150px;outline:none;letter-spacing:.04em;cursor:pointer">
               </div>
               <select id="tfIn" onchange="onTfChange()"
-                style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
-                <option value="4h" selected>H4</option>
-                <option value="1m">M1</option>
-                <option value="5m">M5</option>
-                <option value="15m">M15</option>
-                <option value="30m">M30</option>
-                <option value="1h">H1</option>
-                <option value="1d">D1</option>
-                <option value="1w">W1</option>
+                style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
+                <option value="4h" selected>4h</option>
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="30m">30m</option>
+                <option value="1h">1h</option>
+                <option value="1d">1d</option>
+                <option value="1w">1w</option>
               </select>
               <select id="tzSelect"
                 onchange="chartTzOffsetHours=parseFloat(this.value);localStorage.setItem('chartTzOffset',this.value);renderChart()"
-                style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
+                style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
                 <option value="-12">UTC-12</option>
                 <option value="-11">UTC-11</option>
                 <option value="-10">UTC-10 Hawaii</option>
@@ -464,7 +464,7 @@
               <!-- SMA indicators loaded silently in background -->
               <!-- Chart type selector -->
               <select id="chartTypeIn" onchange="chartType=this.value;renderChart()"
-                style="font-family:'DM Mono',monospace;font-size:10px;background:#0d1018;border:1px solid rgba(201,168,76,.2);color:#c9a84c;padding:5px 8px;outline:none">
+                style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
                 <option value="candles">Candles</option>
                 <option value="hollow">Hollow</option>
                 <option value="bars">Bars</option>
@@ -473,18 +473,14 @@
               </select>
 
               <button id="smaCrossZoneBtn" onclick="toggleSmaCrossZone()"
-                style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA
-                CROSS</button>
+                style="font-family:'DM Mono',monospace;font-size:11px;padding:6px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;opacity:0.6">SMA CROSS</button>
 
               <button id="sma200Btn" onclick="toggleSMA(200)"
-                style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA
-                200</button>
+                style="font-family:'DM Mono',monospace;font-size:11px;padding:6px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;opacity:0.6">SMA 200</button>
               <button id="sma400Btn" onclick="toggleSMA(400)"
-                style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA
-                400</button>
+                style="font-family:'DM Mono',monospace;font-size:11px;padding:6px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;opacity:0.6">SMA 400</button>
               <button id="sma900Btn" onclick="toggleSMA(900)"
-                style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">SMA
-                900</button>
+                style="font-family:'DM Mono',monospace;font-size:11px;padding:6px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;opacity:0.6">SMA 900</button>
 
               <button id="fmBtn" onclick="toggleFM()"
                 style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">F·M</button>
@@ -705,24 +701,24 @@
 
           <!-- BOTTOM STRIP: AI tools — horizontal row below canvas -->
           <div id="aiToolsPanel">
-            <div id="aiCtrlRow">
-              <select id="focusIn">
+            <div id="aiCtrlRow" style="gap:12px;padding:12px 16px">
+              <select id="focusIn" style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
                 <option value="fractal">Fractal</option>
                 <option value="fibonacci">Fibonacci</option>
                 <option value="wave">Elliott waves</option>
                 <option value="full">Full analysis</option>
               </select>
-              <select id="matchIn">
+              <select id="matchIn" style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
                 <option value="2">2 matches</option>
                 <option value="3" selected>3 matches</option>
                 <option value="4">4 matches</option>
               </select>
-              <button id="snapBtn" onclick="takeSnapshot()">
+              <button id="snapBtn" onclick="takeSnapshot()" style="font-family:'DM Mono',monospace;font-size:11px;padding:7px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;display:flex;align-items:center;gap:6px">
                 <span>📷</span><span id="snapTxt">Capture</span>
               </button>
-              <button id="btModeBtn" onclick="toggleBacktestMode()"
+              <button id="btModeBtn" onclick="toggleBacktestMode()" style="font-family:'DM Mono',monospace;font-size:11px;padding:7px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em"
                 title="Replay mode — step through historical candles bar by bar">⏪ Replay</button>
-              <button class="az-btn" id="azBtn" disabled>
+              <button class="az-btn" id="azBtn" disabled style="font-family:'Cinzel',serif;font-size:12px;letter-spacing:.08em;padding:8px 20px">
                 <div class="az-spin" id="azSpin"></div>
                 <span id="azTxt">Fractal · Bar · Weierstrass</span>
                 <span class="cost-badge" id="main-cost-badge">15 cr</span>

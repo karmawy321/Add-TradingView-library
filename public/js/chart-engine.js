@@ -4536,7 +4536,7 @@
             function showFly() {
               clearTimeout(_flyTimer);
               var rect = wrap.getBoundingClientRect();
-              var flyH = g.items.length * 32 + 8;
+              var flyH = g.items.length * 36 + 8;
               var topPos = Math.min(rect.top, window.innerHeight - flyH - 8);
               /* Calculate left based on toolbar's actual screen position */
               var tbRect = document.getElementById('drawToolbar').getBoundingClientRect();
@@ -6222,7 +6222,7 @@
         var btn = document.createElement('button');
         btn.id = 'fsBtn';
         btn.title = 'Fullscreen / Expand';
-        btn.style.cssText = 'margin-left:auto;background:transparent;border:1px solid rgba(201,168,76,.2);color:rgba(201,168,76,.6);cursor:pointer;padding:4px 8px;font-size:11px;border-radius:2px;letter-spacing:.04em;font-family:DM Mono,monospace;white-space:nowrap';
+        btn.style.cssText = 'margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;padding:6px 12px;font-size:12px;border-radius:2px;letter-spacing:.04em;font-family:DM Mono,monospace;white-space:nowrap';
         var isMobile = function () { return window.innerWidth <= 900; };
 
         function safeResize() {
@@ -6389,7 +6389,7 @@
             var el = document.getElementById(id);
             if (el && el.parentElement !== root) root.appendChild(el);
           });
-          if (!isFs) { btn.innerHTML = '⛶ EXPAND'; btn.style.color = 'rgba(201,168,76,.6)'; }
+          if (!isFs) { btn.innerHTML = '⛶ EXPAND'; btn.style.color = '#f0f4fa'; }
           setTimeout(safeResize, 100);
         });
 
@@ -6402,7 +6402,7 @@
         var themeBtn = document.createElement('button');
         themeBtn.id = 'themeToggleBtn';
         themeBtn.title = 'Switch Light/Dark Mode';
-        themeBtn.style.cssText = 'margin-left:8px;background:transparent;border:1px solid rgba(201,168,76,.2);color:rgba(201,168,76,.6);cursor:pointer;padding:4px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:2px;flex-shrink:0';
+        themeBtn.style.cssText = 'margin-left:8px;background:transparent;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;padding:6px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:2px;flex-shrink:0';
         themeBtn.onclick = function() {
           setTheme(_chartTheme === 'dark' ? 'light' : 'dark');
         };
