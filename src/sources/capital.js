@@ -198,9 +198,62 @@ function connectWS() {
   }
 }
 
+async function searchMarkets(query) {
+  return new Promise((resolve) => {
+    if (!connected) return resolve([]);
+    const opts = {
+      hostname: BASE_URL,
+      path: `/api/v1/markets?searchTerm=${encodeURIComponent(query)}`,
+      method: 'GET',
+      headers: {
+        'X-CAP-API-KEY': API_KEY,
+        'CST': cst,
+        'X-SECURITY-TOKEN': securityToken
+      }
+    };
+    https.get(opts, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (!json.markets || !Array.isArray(json.markets)) return resolve([]);
+          resolve(json.markets.map(m => ({
+            symbol: m.epic, 
+            instrument_name: m.instrumentName,
+            instrument_type: 'CFD',
+            exchange: 'Capital',
+            source: 'capital'
+          })));
+        } catch (e) { resolve([]); }
+      });
+    }).on('error', () => resolve([]));
+  });
+}
+
+async function subscribe(internalSym) {
+  if (!connected || !ws || ws.readyState !== WebSocket.OPEN) return;
+  // If not in SYMBOL_MAP, add it (assuming internalSym is the epic for new ones)
+  if (!SYMBOL_MAP[internalSym]) {
+    SYMBOL_MAP[internalSym] = internalSym;
+  }
+  const epic = SYMBOL_MAP[internalSym];
+  const msg = JSON.stringify({
+    destination: "marketData.subscribe",
+    correlationId: "fractal_" + Date.now(),
+    cst: cst,
+    securityToken: securityToken,
+    payload: { epics: [epic] }
+  });
+  ws.send(msg);
+}
+
 async function fetchHistory(internalSym, tf, endTime) {
   return new Promise((resolve) => {
     if (!connected) return resolve([]);
+    // Ensure it's in the map
+    if (!SYMBOL_MAP[internalSym]) SYMBOL_MAP[internalSym] = internalSym;
+    
     const epic = SYMBOL_MAP[internalSym];
     if (!epic) return resolve([]);
     
@@ -262,6 +315,8 @@ module.exports = {
   loadCache,
   fetchRecent,
   fetchHistory,
+  searchMarkets,
+  subscribe,
   refreshAllCache,
   getStatus,
   getSymbols,

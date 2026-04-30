@@ -26,6 +26,7 @@ const _binanceSymSet = new Set(binance.SYMBOLS);
 function getSymSource(sym) {
   if (oanda.SYMBOL_MAP[sym])  return 'oanda';
   if (_binanceSymSet.has(sym)) return 'binance';
+  // Check capital map (which grows dynamically now)
   if (capital.SYMBOL_MAP[sym]) return 'capital';
   return 'td';
 }
@@ -753,6 +754,7 @@ app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
 
   const source = req.query.source || getSymSource(sym);
   if (source === 'td') { td.subscribe(sym); td.fetchHistory(sym).catch(() => {}); }
+  if (source === 'capital') { capital.subscribe(sym); }
 
   _sseConnCount.set(ip, cur + 1);
   const cleanup = sse.addClient(source, sym, res);
@@ -775,7 +777,7 @@ app.get('/price/:symbol', rateLimit(30, 60000), (req, res) => {
 });
 
 // Symbol Search endpoint proxying TwelveData
-app.get('/search', rateLimit(60, 60000), (req, res) => {
+app.get('/search', rateLimit(60, 60000), async (req, res) => {
   const query = (req.query.q || '').trim();
   if (!query) return res.json({ data: [] });
 
@@ -863,9 +865,13 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
     const oandaMatches = _oandaCatalog.filter(o => {
       return o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
     });
-    const capitalMatches = capital.getSymbols().map(k => ({
+    
+    // Dynamic Capital Search
+    const capResults = await capital.searchMarkets(query);
+    const capitalMatches = capResults.length > 0 ? capResults : capital.getSymbols().map(k => ({
       symbol: k, instrument_name: k, instrument_type: 'CFD', exchange: 'Capital', source: 'capital'
     })).filter(o => o.symbol.includes(q) || o.instrument_name.includes(q));
+
     return res.json({ data: [...oandaMatches, ...capitalMatches] });
   }
 
@@ -975,9 +981,13 @@ app.get('/search', rateLimit(60, 60000), (req, res) => {
         const oandaMatches = _oandaCatalog.filter(o => {
           return o.symbol.includes(q) || o.instrument_name.toUpperCase().includes(q);
         });
-        const capitalMatches = capital.getSymbols().map(k => ({
+
+        // Dynamic Capital Search
+        const capResults = await capital.searchMarkets(query);
+        const capitalMatches = capResults.length > 0 ? capResults : capital.getSymbols().map(k => ({
           symbol: k, instrument_name: k, instrument_type: 'CFD', exchange: 'Capital', source: 'capital'
         })).filter(o => o.symbol.includes(q) || o.instrument_name.includes(q));
+
         res.json({ data: [...oandaMatches, ...capitalMatches, ...filtered] });
       } catch (e) {
         res.json({ data: [] });
