@@ -419,52 +419,34 @@
                   onclick="openSearchModal()"
                   style="font-family:'DM Mono',monospace;font-size:13px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 12px;width:150px;outline:none;letter-spacing:.04em;cursor:pointer">
               </div>
-              <div class="tf-dropdown" id="tfDropdown">
-                <button class="tf-current" id="tfCurrent" onclick="toggleTfMenu(event)">4h <span class="tf-arr"></span></button>
-                <div class="tf-menu" id="tfMenu">
-                  <!-- Seconds -->
-                  <div class="tf-group">
-                    <div class="tf-group-hdr" onclick="toggleTfGroup(event)">SECONDS <span class="tf-garr"></span></div>
-                    <div class="tf-group-list">
-                      <button onclick="selectTf('1s')">1s</button>
-                      <button onclick="selectTf('5s')">5s</button>
-                      <button onclick="selectTf('10s')">10s</button>
-                      <button onclick="selectTf('30s')">30s</button>
-                    </div>
-                  </div>
-                  <!-- Minutes -->
-                  <div class="tf-group">
-                    <div class="tf-group-hdr" onclick="toggleTfGroup(event)">MINUTES <span class="tf-garr"></span></div>
-                    <div class="tf-group-list">
-                      <button onclick="selectTf('1m')">1m</button>
-                      <button onclick="selectTf('2m')">2m</button>
-                      <button onclick="selectTf('5m')">5m</button>
-                      <button onclick="selectTf('10m')">10m</button>
-                      <button onclick="selectTf('15m')">15m</button>
-                      <button onclick="selectTf('30m')">30m</button>
-                    </div>
-                  </div>
-                  <!-- Hours -->
-                  <div class="tf-group">
-                    <div class="tf-group-hdr" onclick="toggleTfGroup(event)">HOURS <span class="tf-garr"></span></div>
-                    <div class="tf-group-list">
-                      <button onclick="selectTf('1h')">1h</button>
-                      <button onclick="selectTf('2h')">2h</button>
-                      <button onclick="selectTf('4h')">4h</button>
-                      <button onclick="selectTf('6h')">6h</button>
-                    </div>
-                  </div>
-                  <!-- Days -->
-                  <div class="tf-group">
-                    <div class="tf-group-hdr" onclick="toggleTfGroup(event)">DAYS <span class="tf-garr"></span></div>
-                    <div class="tf-group-list">
-                      <button onclick="selectTf('1d')">1d</button>
-                      <button onclick="selectTf('1w')">1w</button>
-                      <button onclick="selectTf('1M')">1M</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <select id="tfIn" onchange="onTfChange()"
+                style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
+                <optgroup label="SECONDS">
+                  <option value="1s">1s</option>
+                  <option value="5s">5s</option>
+                  <option value="10s">10s</option>
+                  <option value="30s">30s</option>
+                </optgroup>
+                <optgroup label="MINUTES">
+                  <option value="1m">1m</option>
+                  <option value="2m">2m</option>
+                  <option value="5m">5m</option>
+                  <option value="10m">10m</option>
+                  <option value="15m">15m</option>
+                  <option value="30m">30m</option>
+                </optgroup>
+                <optgroup label="HOURS">
+                  <option value="1h">1h</option>
+                  <option value="2h">2h</option>
+                  <option value="4h" selected>4h</option>
+                  <option value="6h">6h</option>
+                </optgroup>
+                <optgroup label="DAYS">
+                  <option value="1d">1d</option>
+                  <option value="1w">1w</option>
+                  <option value="1M">1M</option>
+                </optgroup>
+              </select>
               <select id="tzSelect"
                 onchange="chartTzOffsetHours=parseFloat(this.value);localStorage.setItem('chartTzOffset',this.value);renderChart()"
                 style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">

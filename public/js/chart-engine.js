@@ -3645,33 +3645,10 @@
       console.warn('[fetchBinanceFallback] called for', sym, tf, '— skipped, using TwelveData');
     }
 
-    /* ── Timeframe Dropdown Logic ── */
-    window.toggleTfMenu = function(e) {
-      e.stopPropagation();
-      var m = document.getElementById('tfMenu');
-      if (m) m.classList.toggle('open');
-    };
-    window.toggleTfGroup = function(e) {
-      e.stopPropagation();
-      e.currentTarget.parentElement.classList.toggle('collapsed');
-    };
-    window.selectTf = function(val) {
-      var btn = document.getElementById('tfCurrent');
-      if (btn) btn.innerHTML = val + ' <span class="tf-arr"></span>';
-      var m = document.getElementById('tfMenu');
-      if (m) m.classList.remove('open');
-      currentInterval = val;
-      onTfChange();
-    };
-    document.addEventListener('click', function() {
-      var m = document.getElementById('tfMenu');
-      if (m) m.classList.remove('open');
-    });
-
-
     function onTfChange() {
-      if (!currentInterval || !currentSymbol) return;
-
+      var tf = document.getElementById('tfIn');
+      if (!tf || !currentSymbol) return;
+      currentInterval = tf.value;
       _historyLoading = false; _historyDepleted = false;
       var _srcQ = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
       fetch(BACKEND_URL + '/candles/' + currentSymbol + '?tf=' + currentInterval + _srcQ)
