@@ -166,7 +166,7 @@ function connectWS() {
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data);
-        if (msg.destination === 'marketData.update' && msg.payload) {
+        if (msg.destination === 'quote' && msg.payload) {
           const epic = msg.payload.epic;
           const internalSym = Object.keys(SYMBOL_MAP).find(key => SYMBOL_MAP[key] === epic);
           if (!internalSym) return;
@@ -199,13 +199,19 @@ function connectWS() {
   }
 }
 
-async function _fetchRawCandles(epic, tf, limit) {
+async function _fetchSingle(epic, tf, extraParams = {}) {
   return new Promise((resolve) => {
     if (!connected) return resolve([]);
     const resolution = TF_MAP[tf] || 'MINUTE';
+    let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}`;
+    
+    for (const [k, v] of Object.entries(extraParams)) {
+      path += `&${k}=${encodeURIComponent(v)}`;
+    }
+
     const opts = {
       hostname: BASE_URL,
-      path: `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=${limit}`,
+      path: path,
       method: 'GET',
       headers: {
         'X-CAP-API-KEY': API_KEY,
@@ -223,7 +229,7 @@ async function _fetchRawCandles(epic, tf, limit) {
           if (!json.prices || !Array.isArray(json.prices)) return resolve([]);
           
           const mapped = json.prices.map(p => ({
-            t: new Date(p.snapshotTimeUTC).getTime(),
+            t: new Date(p.snapshotTimeUTC + 'Z').getTime(),
             o: parseFloat(p.openPrice.bid || p.openPrice.ask),
             h: parseFloat(p.highPrice.bid || p.highPrice.ask),
             l: parseFloat(p.lowPrice.bid || p.lowPrice.ask),
@@ -239,22 +245,64 @@ async function _fetchRawCandles(epic, tf, limit) {
   });
 }
 
+async function _fetchPaginated(epic, tf, target) {
+  const PAGE = 1000;
+  let collected = [];
+  let toDate = null;
+
+  while (collected.length < target) {
+    const need = target - collected.length;
+    const extra = { max: String(Math.min(PAGE, need)) };
+    if (toDate) extra.to = toDate;
+
+    const batch = await _fetchSingle(epic, tf, extra);
+    if (!batch || !batch.length) break;
+
+    collected = [...batch, ...collected];
+    
+    // Deduplicate and sort ascending
+    collected = Array.from(new Map(collected.map(c => [c.t, c])).values());
+    collected.sort((a, b) => a.t - b.t);
+
+    // Next iteration fetches older candles
+    const oldestTs = collected[0].t;
+    toDate = new Date(oldestTs - 1000).toISOString().slice(0, 19);
+
+    if (batch.length < Math.min(PAGE, need)) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return collected;
+}
+
 async function fetchRecent(internalSym) {
   if (!connected) return;
   const epic = SYMBOL_MAP[internalSym];
   if (!epic) return;
+  
   try {
-    console.log(`[Capital] Fetching history for ${internalSym}...`);
-    for (const tf of TIMEFRAMES) {
-      const batch = await _fetchRawCandles(epic, tf, 200);
+    console.log(`[Capital] Fetching paginated deep history for ${internalSym}...`);
+    
+    const configs = [
+      ['1m', 11000],
+      ['5m', 3000],
+      ['15m', 3000],
+      ['30m', 3000],
+      ['1h', 17000],
+      ['4h', 5000],
+      ['1d', 5000],
+      ['1w', 1000]
+    ];
+
+    for (const [tf, target] of configs) {
+      const batch = await _fetchPaginated(epic, tf, target);
       if (batch.length) {
-        console.log(`[Capital] ${internalSym} ${tf}: ${batch.length} candles`);
+        console.log(`[Capital] ${internalSym} ${tf}: ${batch.length} candles cached.`);
         for (const c of batch) store.replaceBar(SOURCE, internalSym, tf, c);
       }
     }
     store.saveToDisk(SOURCE, internalSym);
   } catch (e) {
-    console.error(`[Capital] fetchRecent error for ${internalSym}:`, e.message);
+    console.error(`[Capital] deep backfill error for ${internalSym}:`, e.message);
   }
 }
 
