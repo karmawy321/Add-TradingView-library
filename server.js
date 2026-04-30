@@ -16,11 +16,6 @@ const crypto    = require('crypto');
 const store   = require('./src/candleStore');
 const sse     = require('./src/sse');
 const capital = require('./src/sources/capital');
-const TIMEFRAMES = capital.TIMEFRAMES;
-const TF_MS = {
-  '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000,
-  '1h': 3600000, '4h': 14400000, '1d': 86400000, '1w': 604800000
-};
 
 /* getSymSource — returns which source owns a given symbol */
 function getSymSource(sym) {
