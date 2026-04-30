@@ -2821,7 +2821,6 @@ app.post('/api/predictions/check-now', requireAdmin, async (req, res) => {
 app.get('/admin/cache-status', requireAdmin, (_req, res) => {
   const oandaStatus  = oanda.getStatus();
   const binanceStatus = binance.getStatus();
-  const tdStatus     = td.getStatus();
   const stats        = store.getStats();
 
   const buildSymList = (syms, src, tfs) => {
@@ -2842,7 +2841,6 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
 
   const oandaList   = buildSymList(oanda.getSymbols(),   'oanda',   TIMEFRAMES);
   const binanceList = buildSymList(binance.getSymbols(), 'binance', TIMEFRAMES);
-  const tdStocksList = buildSymList(td.getSymbols(),     'td',      TIMEFRAMES);
   const capitalList = buildSymList(capital.getSymbols(), 'capital', TIMEFRAMES);
 
   // Flatten to match admin HTML's expected field names
@@ -2865,14 +2863,14 @@ app.get('/admin/cache-status', requireAdmin, (_req, res) => {
     backfill:   oanda.getBackfillStatus(),
     tdCrypto:          binanceTDShape(binanceList, binance.SYMBOLS.length),
     tdCryptoRefreshing: false,
-    tdStocks:          binanceTDShape(tdStocksList, td.getSymbols().length),
-    tdStocksRefreshing: !!(tdStatus && tdStatus.backfillActive),
+    tdStocks:          { symbols: [], notStarted: [], loaded: 0, total: 0 },
+    tdStocksRefreshing: false,
     capitalData:       binanceTDShape(capitalList, capital.getSymbols().length),
     capitalRefreshing: false,
     // Full data for future use
     oanda:   { ...oandaStatus, ...oandaList, total: oanda.getSymbols().length },
     binance: { ...binanceStatus, ...binanceList, total: binance.SYMBOLS.length },
-    td:      tdStatus,
+    td:      {},
     storeStats: stats,
   });
 });
