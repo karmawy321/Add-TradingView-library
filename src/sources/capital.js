@@ -51,6 +51,20 @@ let securityToken = '';
 let connected = false;
 let ws = null;
 
+const _tickBuffer = {};
+setInterval(() => {
+  if (!connected) return;
+  for (const [sym, data] of Object.entries(_tickBuffer)) {
+    for (const tf of TIMEFRAMES) {
+      store.writeTick(SOURCE, sym, tf, TF_MS[tf], data.px, 0, data.ts);
+    }
+  }
+  // Clear buffer to prevent duplicate volume/writes if no ticks come
+  for (const key of Object.keys(_tickBuffer)) {
+    delete _tickBuffer[key];
+  }
+}, 500);
+
 async function connect() {
   console.log(`[Capital] Starting connection initialization... API_KEY Present: ${!!API_KEY}`);
   if (!API_KEY || !IDENTIFIER || !PASSWORD) {
@@ -175,10 +189,7 @@ function connectWS() {
           const ts = Date.now();
 
           if (px) {
-            console.log(`[Capital WS] Live tick for ${internalSym}: ${px}`);
-            for (const tf of TIMEFRAMES) {
-              store.writeTick(SOURCE, internalSym, tf, TF_MS[tf], px, 0, ts);
-            }
+            _tickBuffer[internalSym] = { px, ts };
           }
         }
       } catch (e) {
