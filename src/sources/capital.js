@@ -142,7 +142,12 @@ function keepAlive() {
 function connectWS() {
   if (!connected) return;
   try {
-    ws = new WebSocket('wss://api-streaming-capital.backend-capital.com/connect');
+    ws = new WebSocket('wss://api-streaming-capital.backend-capital.com/connect', {
+      headers: {
+        'CST': cst,
+        'X-SECURITY-TOKEN': securityToken
+      }
+    });
     
     ws.on('open', () => {
       console.log('[Capital WS] Streaming connection opened');
