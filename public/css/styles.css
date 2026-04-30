@@ -4564,7 +4564,7 @@
  border: 1px solid #2a2e39;
  border-radius: 4px;
  box-shadow: 0 8px 24px rgba(0,0,0,.5);
- z-index: 1000;
+ z-index: 99999;
  min-width: 160px;
  display: none;
  flex-direction: column;
