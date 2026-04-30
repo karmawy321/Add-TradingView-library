@@ -278,80 +278,87 @@ async function subscribe(internalSym) {
 }
 
 async function fetchHistory(internalSym, tf, endTime) {
-  return new Promise((resolve) => {
-    if (!connected) return resolve([]);
-    // Ensure it's in the map
-    if (!SYMBOL_MAP[internalSym]) SYMBOL_MAP[internalSym] = internalSym;
-    
-    const epic = SYMBOL_MAP[internalSym];
-    if (!epic) return resolve([]);
-    
+  if (!connected) return [];
+  if (!SYMBOL_MAP[internalSym]) SYMBOL_MAP[internalSym] = internalSym;
+  const epic = SYMBOL_MAP[internalSym];
+  if (!epic) return [];
+
+  const isSecondBased = ['1s', '5s', '10s', '30s'].indexOf(tf) !== -1;
+  const maxBlocks = isSecondBased ? 5 : 1; // Fetch more for seconds to have decent history
+  
+  let allRaw = [];
+  let currentEnd = endTime;
+
+  for (let i = 0; i < maxBlocks; i++) {
     const resolution = TF_MAP[tf] || 'MINUTE';
-    let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=1000`;
-    if (endTime) {
-      path += `&to=${new Date(endTime).toISOString().slice(0, 19)}`;
-    }
+    const batch = await new Promise((resolve) => {
+      let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=1000`;
+      if (currentEnd) path += `&to=${new Date(currentEnd).toISOString().slice(0, 19)}`;
 
-    const opts = {
-      hostname: BASE_URL,
-      path: path,
-      method: 'GET',
-      headers: {
-        'X-CAP-API-KEY': API_KEY,
-        'CST': cst,
-        'X-SECURITY-TOKEN': securityToken
+      const opts = {
+        hostname: BASE_URL,
+        path: path,
+        method: 'GET',
+        headers: { 'X-CAP-API-KEY': API_KEY, 'CST': cst, 'X-SECURITY-TOKEN': securityToken }
+      };
+
+      https.get(opts, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (!json.prices || !Array.isArray(json.prices)) return resolve([]);
+            resolve(json.prices.map(p => ({
+              t: new Date(p.snapshotTimeUTC + 'Z').getTime(),
+              o: parseFloat(p.openPrice.bid || p.openPrice.ask),
+              h: parseFloat(p.highPrice.bid || p.highPrice.ask),
+              l: parseFloat(p.lowPrice.bid || p.lowPrice.ask),
+              c: parseFloat(p.closePrice.bid || p.closePrice.ask),
+              v: parseFloat(p.lastTradedVolume || 0)
+            })));
+          } catch (e) { resolve([]); }
+        });
+      }).on('error', () => resolve([]));
+    });
+
+    if (!batch || batch.length === 0) break;
+    allRaw = batch.concat(allRaw);
+    currentEnd = batch[0].t - 1;
+    if (batch.length < 1000) break;
+  }
+
+  if (allRaw.length === 0) return [];
+
+  // Sort by time ascending
+  allRaw.sort((a, b) => a.t - b.t);
+
+  // AGGREGATION LOGIC: If the requested TF is not native, aggregate the base candles
+  const nativeTFs = ['1s', '1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'];
+  if (nativeTFs.indexOf(tf) === -1) {
+    const timeframeMs = TF_MS[tf];
+    if (!timeframeMs) return allRaw;
+
+    const aggregated = [];
+    let currentBucket = null;
+
+    for (const c of allRaw) {
+      const bucketStart = Math.floor(c.t / timeframeMs) * timeframeMs;
+      if (!currentBucket || currentBucket.t !== bucketStart) {
+        if (currentBucket) aggregated.push(currentBucket);
+        currentBucket = { ...c, t: bucketStart };
+      } else {
+        currentBucket.h = Math.max(currentBucket.h, c.h);
+        currentBucket.l = Math.min(currentBucket.l, c.l);
+        currentBucket.c = c.c;
+        currentBucket.v += c.v;
       }
-    };
+    }
+    if (currentBucket) aggregated.push(currentBucket);
+    return aggregated;
+  }
 
-    https.get(opts, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (!json.prices || !Array.isArray(json.prices)) return resolve([]);
-          
-          const mapped = json.prices.map(p => ({
-            t: new Date(p.snapshotTimeUTC + 'Z').getTime(),
-            o: parseFloat(p.openPrice.bid || p.openPrice.ask),
-            h: parseFloat(p.highPrice.bid || p.highPrice.ask),
-            l: parseFloat(p.lowPrice.bid || p.lowPrice.ask),
-            c: parseFloat(p.closePrice.bid || p.closePrice.ask),
-            v: parseFloat(p.lastTradedVolume || 0)
-          }));
-
-          // AGGREGATION LOGIC: If the requested TF is not native, aggregate the base candles
-          const nativeTFs = ['1s','1m','5m','15m','30m','1h','4h','1d','1w','1M'];
-          if (nativeTFs.indexOf(tf) === -1) {
-            const timeframeMs = TF_MS[tf];
-            if (!timeframeMs) return resolve(mapped);
-            
-            const aggregated = [];
-            let currentBucket = null;
-            
-            for (const c of mapped) {
-              const bucketStart = Math.floor(c.t / timeframeMs) * timeframeMs;
-              if (!currentBucket || currentBucket.t !== bucketStart) {
-                if (currentBucket) aggregated.push(currentBucket);
-                currentBucket = { ...c, t: bucketStart };
-              } else {
-                currentBucket.h = Math.max(currentBucket.h, c.h);
-                currentBucket.l = Math.min(currentBucket.l, c.l);
-                currentBucket.c = c.c;
-                currentBucket.v += c.v;
-              }
-            }
-            if (currentBucket) aggregated.push(currentBucket);
-            return resolve(aggregated);
-          }
-
-          resolve(mapped);
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    }).on('error', () => resolve([]));
-  });
+  return allRaw;
 }
 
 async function fetchRecent(internalSym) {
