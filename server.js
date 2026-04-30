@@ -24,11 +24,8 @@ const _binanceSymSet = new Set(binance.SYMBOLS);
 
 /* getSymSource — returns which source owns a given symbol */
 function getSymSource(sym) {
-  if (oanda.SYMBOL_MAP[sym])  return 'oanda';
-  if (_binanceSymSet.has(sym)) return 'binance';
-  // Check capital map (which grows dynamically now)
-  if (capital.SYMBOL_MAP[sym]) return 'capital';
-  return 'td';
+  // Hard-coded to Capital for testing
+  return 'capital';
 }
 
 /* ── Backward-compat shim: oandaCandles[sym][tf] → new store ─────────────────
@@ -3525,17 +3522,18 @@ app.listen(PORT, () => {
   refreshConditionWeights();
 
   /* Load all disk caches immediately */
-  oanda.loadCache();
-  binance.loadCache();
-  td.loadCache();
+  // oanda.loadCache();
+  // binance.loadCache();
+  // td.loadCache();
   capital.loadCache();
 
   /* Start live feeds */
-  binance.connect();  // Binance WS — always-on, free, no auth
-  td.connect();       // TwelveData WS — auto-subs precache stocks on open
+  // binance.connect();  // Binance WS — always-on, free, no auth
+  // td.connect();       // TwelveData WS — auto-subs precache stocks on open
   capital.connect();  // Capital.com stream integration
 
   /* OANDA MetaAPI — connect after 30s (MetaAPI SDK needs some warmup time) */
+  /*
   if (METAAPI_TOKEN) {
     setTimeout(() => {
       console.log('[OANDA] Initializing MetaAPI connection...');
@@ -3547,14 +3545,15 @@ app.listen(PORT, () => {
       }).catch(e => console.error('[OANDA] Connect error:', e.message));
     }, 30000);
   }
+  */
 
   /* Binance alt-crypto history — fetch 5s after start */
-  setTimeout(() => binance.fetchAllHistory().catch(e => console.error('[Binance] History error:', e.message)), 5000);
+  // setTimeout(() => binance.fetchAllHistory().catch(e => console.error('[Binance] History error:', e.message)), 5000);
 
   /* TwelveData precache stocks — fetch 10s after start (offset from Binance to avoid burst) */
-  setTimeout(() => td.fetchAllHistory().catch(e => console.error('[TD] History error:', e.message)), 10000);
+  // setTimeout(() => td.fetchAllHistory().catch(e => console.error('[TD] History error:', e.message)), 10000);
   /* Refresh TD stocks every 12h in sync with other sources */
-  setInterval(() => td.fetchAllHistory().catch(() => {}), 12 * 3600 * 1000);
+  // setInterval(() => td.fetchAllHistory().catch(() => {}), 12 * 3600 * 1000);
 
   cron.schedule('0 2 * * *', () => {
     console.log('\n⏰ [Scheduled] Running daily prediction check...');
@@ -3578,15 +3577,15 @@ app.listen(PORT, () => {
     if (oanda.getSymbols().length > 0) runCrossoverScanner();
   });
   /* Binance alt-crypto — incremental refresh every 12 hours */
-  cron.schedule('0 */12 * * *', () => {
-    console.log('\n📊 [Scheduled] Refreshing Binance alt-crypto cache...');
-    binance.fetchAllHistory().catch(e => console.error('[Binance] Cron error:', e.message));
-  });
+  // cron.schedule('0 */12 * * *', () => {
+  //   console.log('\n📊 [Scheduled] Refreshing Binance alt-crypto cache...');
+  //   binance.fetchAllHistory().catch(e => console.error('[Binance] Cron error:', e.message));
+  // });
   /* OANDA incremental refresh every 12 hours (offset 30min) */
-  cron.schedule('30 */12 * * *', () => {
-    console.log('\n📊 [Scheduled] OANDA incremental refresh...');
-    oanda.refreshAllCache().catch(e => console.error('[OANDA] Cron error:', e.message));
-  });
+  // cron.schedule('30 */12 * * *', () => {
+  //   console.log('\n📊 [Scheduled] OANDA incremental refresh...');
+  //   oanda.refreshAllCache().catch(e => console.error('[OANDA] Cron error:', e.message));
+  // });
 
   console.log('✅ Prediction tracking: Daily check scheduled (2:00 AM)');
   console.log('🎯 Sniper outcome tracker: Every 6 hours');
