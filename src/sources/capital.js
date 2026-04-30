@@ -11,22 +11,21 @@ const PASSWORD = process.env.CAPITAL_PASSWORD || '';
 const BASE_URL = 'api-capital.backend-capital.com';
 
 const TF_MS = {
-  '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000,
-  '1h': 3600000, '4h': 14400000, '1d': 86400000, '1w': 604800000,
+  '1s': 1000, '5s': 5000, '10s': 10000, '30s': 30000,
+  '1m': 60000, '2m': 120000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000,
+  '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000,
+  '1d': 86400000, '1w': 604800000, '1M': 2592000000
 };
 
 const TF_MAP = {
-  '1m': 'MINUTE',
-  '5m': 'MINUTE_5',
-  '15m': 'MINUTE_15',
-  '30m': 'MINUTE_30',
-  '1h': 'HOUR',
-  '4h': 'HOUR_4',
-  '1d': 'DAY',
-  '1w': 'WEEK'
+  '1s': 'SECOND', '5s': 'SECOND_5', '10s': 'SECOND_10', '30s': 'SECOND_30',
+  '1m': 'MINUTE', '2m': 'MINUTE_2', '5m': 'MINUTE_5', '10m': 'MINUTE_10', '15m': 'MINUTE_15', '30m': 'MINUTE_30',
+  '1h': 'HOUR', '2h': 'HOUR_2', '4h': 'HOUR_4', '6h': 'HOUR_6',
+  '1d': 'DAY', '1w': 'WEEK', '1M': 'MONTH'
 };
 
-const TIMEFRAMES = Object.keys(TF_MAP);
+const ALL_TIMEFRAMES = Object.keys(TF_MAP);
+const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w']; /* Cached ones */
 
 const SYMBOL_MAP = {
   // Forex Majors & Minors
@@ -198,7 +197,7 @@ function connectWS() {
 
           if (px) {
             for (const sym of internalSyms) {
-              for (const tf of TIMEFRAMES) {
+              for (const tf of ALL_TIMEFRAMES) {
                 store.writeTick(SOURCE, sym, tf, TF_MS[tf], px, 0, ts);
               }
             }
