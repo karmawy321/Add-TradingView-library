@@ -3463,7 +3463,11 @@
       startPricePolling(sym);
 
       var _srcParam = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
-      fetch(BACKEND_URL + '/candles/' + sym + '?tf=' + currentInterval + _srcParam)
+      var headers = {};
+      var token = localStorage.getItem('fractal_token');
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+
+      fetch(BACKEND_URL + '/candles/' + sym + '?tf=' + currentInterval + _srcParam, { headers: headers })
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d.loading) {
@@ -3594,7 +3598,11 @@
       var retryTimer = setInterval(function () {
         attempts++;
         var _srcP = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
-        fetch(BACKEND_URL + '/candles/' + sym + '?tf=' + tf + _srcP)
+        var headers = {};
+        var token = localStorage.getItem('fractal_token');
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+
+        fetch(BACKEND_URL + '/candles/' + sym + '?tf=' + tf + _srcP, { headers: headers })
           .then(function (r) { return r.json(); })
           .then(function (d) {
             if (d.candles && d.candles.length > 0) {
@@ -3671,7 +3679,11 @@
 
       _historyLoading = false; _historyDepleted = false;
       var _srcQ = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
-      fetch(BACKEND_URL + '/candles/' + currentSymbol + '?tf=' + currentInterval + _srcQ)
+      var headers = {};
+      var token = localStorage.getItem('fractal_token');
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+
+      fetch(BACKEND_URL + '/candles/' + currentSymbol + '?tf=' + currentInterval + _srcQ, { headers: headers })
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d.candles && d.candles.length > 0) {
@@ -3713,7 +3725,11 @@
       renderChart && renderChart(); /* show loading indicator immediately */
       var endTime = chartCandles[0].t - 1;
       var _hSrcQ = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
-      fetch(BACKEND_URL + '/history/' + currentSymbol + '?tf=' + currentInterval + '&endTime=' + endTime + _hSrcQ)
+      var headers = {};
+      var token = localStorage.getItem('fractal_token');
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+
+      fetch(BACKEND_URL + '/history/' + currentSymbol + '?tf=' + currentInterval + '&endTime=' + endTime + _hSrcQ, { headers: headers })
         .then(function (r) { return r.json(); })
         .then(function (d) {
           _historyLoading = false;
