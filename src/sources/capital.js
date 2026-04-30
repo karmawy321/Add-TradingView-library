@@ -175,6 +175,7 @@ function connectWS() {
           const ts = Date.now();
 
           if (px) {
+            console.log(`[Capital WS] Live tick for ${internalSym}: ${px}`);
             for (const tf of TIMEFRAMES) {
               store.writeTick(SOURCE, internalSym, tf, TF_MS[tf], px, 0, ts);
             }
@@ -243,15 +244,17 @@ async function fetchRecent(internalSym) {
   const epic = SYMBOL_MAP[internalSym];
   if (!epic) return;
   try {
+    console.log(`[Capital] Fetching history for ${internalSym}...`);
     for (const tf of TIMEFRAMES) {
       const batch = await _fetchRawCandles(epic, tf, 200);
       if (batch.length) {
+        console.log(`[Capital] ${internalSym} ${tf}: ${batch.length} candles`);
         for (const c of batch) store.replaceBar(SOURCE, internalSym, tf, c);
       }
     }
     store.saveToDisk(SOURCE, internalSym);
   } catch (e) {
-    console.error('[Capital] fetchRecent error:', e.message);
+    console.error(`[Capital] fetchRecent error for ${internalSym}:`, e.message);
   }
 }
 
