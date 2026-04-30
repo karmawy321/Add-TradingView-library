@@ -77,6 +77,18 @@
         if (cv) { dataUrl = cv.toDataURL('image/png'); }
       }
     }
+    /* Deep-copy a candle array so live tick mutations on _btAllCandles
+       cannot bleed into the replay chartCandles slice */
+    function _deepSlice(arr, end) {
+      var out = [];
+      for (var _di = 0; _di < end && _di < arr.length; _di++) {
+        var s = arr[_di];
+        out.push({ t: s.t, o: s.o, h: s.h, l: s.l, c: s.c, v: s.v });
+      }
+      return out;
+    }
+
+
 
     function startReplayAt(idx) {
       _replayIndex = Math.max(10, Math.min(_btAllCandles.length - 1, idx));
@@ -86,7 +98,7 @@
       document.getElementById('rpPlayControls').style.display = 'flex';
       document.getElementById('rpPlayIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
 
-      chartCandles = _btAllCandles.slice(0, _replayIndex);
+      chartCandles = _deepSlice(_btAllCandles, _replayIndex);
       renderChart();
     }
 
@@ -107,7 +119,7 @@
             return;
           }
           _replayIndex++;
-          chartCandles = _btAllCandles.slice(0, _replayIndex);
+          chartCandles = _deepSlice(_btAllCandles, _replayIndex);
           renderChart();
         }, speed);
       }
@@ -119,7 +131,7 @@
       if (_replayIndex >= _btAllCandles.length - 1) return;
 
       _replayIndex++;
-      chartCandles = _btAllCandles.slice(0, _replayIndex);
+      chartCandles = _deepSlice(_btAllCandles, _replayIndex);
       renderChart();
     }
 
@@ -3469,8 +3481,11 @@
 
             /* 4h/1d/1w receive no streaming ticks (broker-offset issue — see oanda.js TICK_TFS).
                Extract the live price from the most granular tick available and apply it directly
-               to the current higher-TF candle so the chart and price bar stay live. */
+               to the current higher-TF candle so the chart and price bar stay live.
+               *** MUST check _btActive first — during replay this path has no other guard *** */
             if (!tc) {
+              /* Replay guard — never touch chartCandles while replaying */
+              if (typeof _btActive !== 'undefined' && _btActive) return;
               var _stfs = ['1m', '5m', '15m', '30m', '1h'];
               var _lp = null;
               for (var _si = 0; _si < _stfs.length; _si++) {
