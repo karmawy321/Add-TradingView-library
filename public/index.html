@@ -42,15 +42,21 @@
           window.parent.postMessage({ type: 'focus', paneId: embedId, symbol: sym }, '*');
         }
       }, true);
-
-      // Auto-launch preset coin if provided by master layout
-      var initSym = new URLSearchParams(window.location.search).get('symbol') || 'GOLD';
-      if (initSym) {
-        window.addEventListener('DOMContentLoaded', function () {
-          if (typeof quickLoad === 'function') quickLoad(initSym);
-        });
-      }
     }
+
+    // Auto-launch preset symbol if provided or default to GOLD
+    var initSym = new URLSearchParams(window.location.search).get('symbol') || 'GOLD';
+    window.addEventListener('load', function () {
+      if (typeof quickLoad === 'function') {
+        quickLoad(initSym);
+      } else {
+        // Fallback if chart-engine is still loading
+        var _check = setInterval(function() {
+           if (typeof quickLoad === 'function') { clearInterval(_check); quickLoad(initSym); }
+        }, 100);
+        setTimeout(function() { clearInterval(_check); }, 5000);
+      }
+    });
 
   </script>
 
