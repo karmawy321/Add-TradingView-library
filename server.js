@@ -885,7 +885,7 @@ app.get('/search', rateLimit(60, 60000), async (req, res) => {
   const sReq = https.request({ hostname: 'api.twelvedata.com', path: reqUrl, method: 'GET' }, sRes => {
     let data = '';
     sRes.on('data', c => { data += c; });
-    sRes.on('end', () => {
+    sRes.on('end', async () => {
       try {
         const json = JSON.parse(data);
         if (json.status !== 'ok') {
