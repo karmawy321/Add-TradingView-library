@@ -3645,10 +3645,25 @@
       console.warn('[fetchBinanceFallback] called for', sym, tf, '— skipped, using TwelveData');
     }
 
+    var _lastTf = '4h';
     function onTfChange() {
-      var tf = document.getElementById('tfIn');
-      if (!tf || !currentSymbol) return;
-      currentInterval = tf.value;
+      var tfEl = document.getElementById('tfIn');
+      if (!tfEl || !currentSymbol) return;
+      var newTf = tfEl.value;
+
+      // Gating for Seconds Timeframes
+      var isSecond = ['1s', '5s', '10s', '30s'].includes(newTf);
+      if (isSecond) {
+        if (!window._featureStatus || !window._featureStatus.seconds_tf) {
+          tfEl.value = _lastTf; // Revert
+          if (window.showFeatureModal) window.showFeatureModal('seconds_tf');
+          return;
+        }
+      }
+
+      _lastTf = newTf;
+      currentInterval = newTf;
+
       _historyLoading = false; _historyDepleted = false;
       var _srcQ = (currentDataSource === 'oanda' || currentDataSource === 'capital') ? '&source=' + currentDataSource : '';
       fetch(BACKEND_URL + '/candles/' + currentSymbol + '?tf=' + currentInterval + _srcQ)
@@ -6521,7 +6536,7 @@
     }
 
     /* ── Feature status ── */
-    window._featureStatus = { fib_spiral: false, fractal_spiral: false, fractal_geometry: false };
+    window._featureStatus = { fib_spiral: false, fractal_spiral: false, fractal_geometry: false, seconds_tf: false };
 
     async function loadFeatureStatus() {
       var token = localStorage.getItem('fractal_token');
@@ -6538,6 +6553,7 @@
       fib_spiral:       { name: 'Fibonacci Spiral',     price: '$15/mo', desc: 'Logarithmic spiral overlay for detecting fractal turning points on price.' },
       fractal_spiral:   { name: 'Fractal Spiral Model', price: '$25/mo', desc: 'Multi-level spiral pattern engine that projects nested fractal cycles.' },
       fractal_geometry: { name: 'Fractal Geometry',     price: '$15/mo', desc: 'Alternating MA-cross bridge levels revealing machine-learning support/resistance zones.' },
+      seconds_tf:       { name: 'Seconds Timeframes',  price: '$25/mo', desc: 'Unlock high-frequency 1s, 5s, 10s, and 30s charting for scalping and precision entry.' },
     };
 
     window.showFeatureModal = function (feature) {

@@ -106,6 +106,20 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+async function checkFeatureAccess(token, feature) {
+  if (!token || !sbAdmin) return false;
+  try {
+    const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+    if (error || !user) return false;
+    const { data } = await sbAdmin.from('feature_subscriptions')
+      .select('feature')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .eq('feature', feature);
+    return data && data.length > 0;
+  } catch (e) { return false; }
+}
+
 function requireAdmin(req, res, next) {
   if (!ADMIN_SECRET) {
     return res.status(503).send('Admin access not configured. Set ADMIN_SECRET env var.');
@@ -572,9 +586,31 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   let source = req.query.source || getSymSource(sym);
   if (source === 'oanda') source = 'capital';
 
+  // Security Check: Seconds Timeframe (Premium)
+  const isSecond = ['1s', '5s', '10s', '30s'].includes(tf);
+  if (isSecond && source === 'capital') {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const hasAccess = await checkFeatureAccess(token, 'seconds_tf');
+    if (!hasAccess) return res.status(403).json({ error: 'Seconds timeframe requires subscription', locked: true });
+  }
+
   if (source === 'capital' && capital.isReady()) {
-    const hwm = store.highWaterMark('capital', sym, tf);
-    if (!hwm) capital.fetchRecent(sym).catch(() => {});
+    const candles = store.readCandles('capital', sym, tf);
+    if (candles.length === 0) {
+      try {
+        console.log(`[on-demand] Fetching uncached timeframe ${tf} for ${sym}...`);
+        const fetched = await capital.fetchHistory(sym, tf, null);
+        if (fetched && fetched.length > 0) {
+          store.writeCandles('capital', sym, tf, fetched);
+          return res.json({ candles: fetched });
+        }
+      } catch (e) {
+        console.error(`[on-demand] Fetch failed for ${sym} ${tf}:`, e.message);
+      }
+    } else {
+      const hwm = store.highWaterMark('capital', sym, tf);
+      if (!hwm) capital.fetchRecent(sym).catch(() => {});
+    }
   }
 
   let arr = store.readCandles(source, sym, tf);
@@ -589,6 +625,14 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
   if (!validSymbol(sym)) return res.json({ candles: [] });
 
   const source = req.query.source || getSymSource(sym);
+
+  // Security Check: Seconds Timeframe (Premium)
+  const isSecond = ['1s', '5s', '10s', '30s'].includes(tf);
+  if (isSecond && source === 'capital') {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const hasAccess = await checkFeatureAccess(token, 'seconds_tf');
+    if (!hasAccess) return res.status(403).json({ error: 'Seconds timeframe requires subscription', locked: true });
+  }
 
   if (source === 'capital') {
     if (!endTime) return res.json({ candles: [] });
@@ -2851,6 +2895,7 @@ app.get('/feature-status', rateLimit(30, 60000), async (req, res) => {
       fib_spiral:       active.has('fib_spiral'),
       fractal_spiral:   active.has('fractal_spiral'),
       fractal_geometry: active.has('fractal_geometry'),
+      seconds_tf:       active.has('seconds_tf'),
     });
   } catch (e) { res.json(def); }
 });
