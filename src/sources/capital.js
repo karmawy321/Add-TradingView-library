@@ -29,21 +29,31 @@ const TF_MAP = {
 const TIMEFRAMES = Object.keys(TF_MAP);
 
 const SYMBOL_MAP = {
-  'EURUSD': 'EURUSD',
-  'GBPUSD': 'GBPUSD',
-  'USDJPY': 'USDJPY',
-  'AUDUSD': 'AUDUSD',
-  'USDCHF': 'USDCHF',
-  'USDCAD': 'USDCAD',
-  'NZDUSD': 'NZDUSD',
-  'EURJPY': 'EURJPY',
-  'GBPJPY': 'GBPJPY',
-  'XAUUSD': 'GOLD',
-  'XAGUSD': 'SILVER',
-  'US500':  'US500',
-  'US30':   'US30',
-  'US100':  'US100',
-  'BTCUSD': 'BTCUSD',
+  // Forex Majors & Minors
+  'EURUSD': 'EURUSD', 'GBPUSD': 'GBPUSD', 'USDJPY': 'USDJPY',
+  'AUDUSD': 'AUDUSD', 'USDCHF': 'USDCHF', 'USDCAD': 'USDCAD',
+  'NZDUSD': 'NZDUSD', 'EURJPY': 'EURJPY', 'GBPJPY': 'GBPJPY',
+  'EURGBP': 'EURGBP', 'EURAUD': 'EURAUD', 'EURCAD': 'EURCAD',
+  'AUDJPY': 'AUDJPY', 'CADJPY': 'CADJPY', 'CHFJPY': 'CHFJPY',
+  'EURNZD': 'EURNZD', 'GBPAUD': 'GBPAUD', 'GBPCAD': 'GBPCAD',
+  'GBPCHF': 'GBPCHF', 'GBPNZD': 'GBPNZD', 'AUDCAD': 'AUDCAD',
+  'AUDCHF': 'AUDCHF', 'AUDNZD': 'AUDNZD', 'CADCHF': 'CADCHF',
+  'NZDJPY': 'NZDJPY',
+  
+  // Indices
+  'US500':  'US500', 'US30':   'US30',  'US100':  'US100',
+  'DE40':   'DE40',  'UK100':  'UK100', 'JP225':  'JP225',
+  
+  // Commodities
+  'XAUUSD': 'GOLD', 'XAGUSD': 'SILVER',
+  'BRENT':  'BRENT', 'WTI':    'OIL', 'NATGAS': 'NATGAS',
+  
+  // Crypto
+  'BTCUSD': 'BTCUSD', 'ETHUSD': 'ETHUSD', 'XRPUSD': 'XRPUSD',
+  'ADAUSD': 'ADAUSD', 'SOLUSD': 'SOLUSD',
+  
+  // Equities
+  'AAPL': 'AAPL', 'TSLA': 'TSLA', 'NVDA': 'NVDA', 'MSFT': 'MSFT'
 };
 
 let cst = '';
@@ -299,9 +309,45 @@ async function fetchHistory(internalSym, tf, endTime) {
   });
 }
 
-async function fetchRecent(internalSym) { return Promise.resolve(); }
-async function refreshAllCache() { return Promise.resolve(); }
-function loadCache() {}
+async function fetchRecent(internalSym) {
+  if (!connected) return;
+  console.log(`[Capital] Fetching 1000-candle cache for ${internalSym}...`);
+  for (const tf of TIMEFRAMES) {
+    try {
+      const candles = await fetchHistory(internalSym, tf, null);
+      if (candles && candles.length > 0) {
+        candles.sort((a, b) => a.t - b.t);
+        store.writeCandles(SOURCE, internalSym, tf, candles);
+      }
+    } catch (e) {
+      console.error(`[Capital] Error fetching recent for ${internalSym} ${tf}:`, e.message);
+    }
+    // Small delay to prevent rate limits
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
+
+async function refreshAllCache() {
+  const syms = Object.keys(SYMBOL_MAP);
+  console.log(`[Capital] Refreshing cache for ${syms.length} symbols (1000 candles each)...`);
+  for (const sym of syms) {
+    await fetchRecent(sym);
+    await new Promise(r => setTimeout(r, 500));
+  }
+  console.log('[Capital] Cache refresh complete.');
+}
+
+function loadCache() {
+  let count = 0;
+  for (const sym of Object.keys(SYMBOL_MAP)) {
+    store.loadFromDisk(SOURCE, sym);
+    for (const tf of TIMEFRAMES) {
+      const c = store.readCandles(SOURCE, sym, tf);
+      if (c && c.length > 0) count++;
+    }
+  }
+  console.log(`[Capital] Loaded ${count} timeframe caches from disk`);
+}
 
 function getStatus() { return { status: connected ? 'connected' : 'disconnected', symbols: Object.keys(SYMBOL_MAP) }; }
 function getSymbols() { return Object.keys(SYMBOL_MAP); }
