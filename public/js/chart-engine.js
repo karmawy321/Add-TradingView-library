@@ -4017,7 +4017,7 @@
       if (!sw) return;
       if (_OANDA_SYMBOLS.has(sym)) {
         sw.classList.add('show');
-        currentDataSource = 'oanda';
+        currentDataSource = 'capital';
       } else {
         sw.classList.remove('show');
         currentDataSource = 'twelvedata';
@@ -4030,7 +4030,7 @@
       if (currentDataSource === src) return;
       currentDataSource = src;
       document.getElementById('srcBtnTD').classList.toggle('active', src === 'twelvedata');
-      document.getElementById('srcBtnOanda').classList.toggle('active', src === 'oanda');
+      document.getElementById('srcBtnOanda').classList.toggle('active', src === 'capital' || src === 'oanda');
       /* Reload chart with new source */
       if (currentSymbol) loadChart(currentSymbol, currentInterval);
     }
@@ -6411,7 +6411,7 @@
         var _pairInput = document.getElementById('pairIn');
         if (_pairInput) _pairInput.value = 'GOLD';
         setTimeout(function () {
-          if (typeof selectPairWithSource === 'function') selectPairWithSource('GOLD', 'oanda');
+          if (typeof selectPairWithSource === 'function') selectPairWithSource('GOLD', 'capital');
         }, 100);
       });
     })();

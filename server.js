@@ -569,7 +569,8 @@ app.get('/candles/:symbol', rateLimit(60, 60000), async (req, res) => {
   const tf  = req.query.tf || '1h';
   if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
 
-  const source = req.query.source || getSymSource(sym);
+  let source = req.query.source || getSymSource(sym);
+  if (source === 'oanda') source = 'capital';
 
   if (source === 'capital' && capital.isReady()) {
     const hwm = store.highWaterMark('capital', sym, tf);
@@ -619,7 +620,8 @@ app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
   const sym = req.params.symbol.toUpperCase().replace('-', '/');
   if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
 
-  const source = req.query.source || getSymSource(sym);
+  let source = req.query.source || getSymSource(sym);
+  if (source === 'oanda') source = 'capital';
   if (source === 'capital') { capital.subscribe(sym); }
 
   _sseConnCount.set(ip, cur + 1);
