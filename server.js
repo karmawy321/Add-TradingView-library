@@ -1302,12 +1302,19 @@ async function checkSniperOutcomes() {
       const sigTime = new Date(sig.created_at).getTime();
       const ageDays = (Date.now() - sigTime) / (24 * 3600 * 1000);
 
-      // Try to find candle data from OANDA cache
+      // Try to find candle data from the unified store
       let afterCandles = null;
       const tfKey = sig.timeframe || '1h';
+      
+      // Determine the source (default to capital, but check scanner prefix)
+      let src = 'capital';
+      if (sig.source && sig.source.startsWith('scanner_')) {
+        src = sig.source.replace('scanner_', '');
+      }
+
       // Try exact timeframe, then fallback to 1h, then 15m
       for (const tryTf of [tfKey, '1h', '15m', '5m']) {
-        const cached = oandaCandles[sym] && oandaCandles[sym][tryTf];
+        const cached = store.readCandles(src, sym, tryTf);
         if (cached && cached.length > 0) {
           afterCandles = cached.filter(c => c.t > sigTime);
           if (afterCandles.length > 0) break;
