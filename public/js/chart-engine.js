@@ -565,7 +565,48 @@
     var allCandleData = {}; /* cache disabled — kept as empty object to avoid reference errors */
     var lwChartInstance = null; /* truthy flag for compatibility */
     var chartView = { offset: 0, zoom: 1.0, rightPad: 0, yScale: 1 };
-    var C = { up: '#26a69a', dn: '#ef5350', bg: '#06080d', grid: 'rgba(201,168,76,0.05)', sma50: '#c9a84c', sma200: '#26a69a', sma400: '#3498db', sma900: '#9b8fe8', crosshair: 'rgba(201,168,76,0.4)' };
+    var C = { 
+      up: '#26a69a', 
+      dn: '#ef5350', 
+      bg: '#06080d', 
+      grid: 'rgba(255,255,255,0.06)', 
+      text: 'rgba(220,232,255,1)',
+      mutedText: 'rgba(180,200,230,0.7)',
+      sma50: '#c9a84c', 
+      sma200: '#26a69a', 
+      sma400: '#3498db', 
+      sma900: '#9b8fe8', 
+      crosshair: 'rgba(201,168,76,0.4)' 
+    };
+
+    var _chartTheme = localStorage.getItem('chartTheme') || 'dark';
+    function setTheme(mode) {
+      _chartTheme = mode;
+      if (mode === 'light') {
+        C.bg = '#ffffff';
+        C.grid = 'rgba(0,0,0,0.08)';
+        C.text = '#1a1d23';
+        C.mutedText = 'rgba(0,0,0,0.5)';
+      } else {
+        C.bg = '#06080d';
+        C.grid = 'rgba(255,255,255,0.06)';
+        C.text = 'rgba(220,232,255,1)';
+        C.mutedText = 'rgba(180,200,230,0.7)';
+      }
+      localStorage.setItem('chartTheme', mode);
+      var themeBtn = document.getElementById('themeToggleBtn');
+      if (themeBtn) {
+        themeBtn.innerHTML = mode === 'light' ? 
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>' : 
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+      }
+      var area = document.getElementById('chartArea');
+      if (area) area.style.background = C.bg;
+      if (typeof renderChart === 'function') renderChart();
+    }
+    /* Init theme */
+    setTimeout(function() { setTheme(_chartTheme); }, 50);
+
 
     /* ═══════════════════════════════════════════════════
        WORLD-SPACE VIEWPORT  (Phase 1 — new coordinate system)
@@ -843,7 +884,7 @@
         prevD = d;
 
         /* Tick */
-        chartCtx.strokeStyle = isB ? 'rgba(201,168,76,.4)' : 'rgba(255,255,255,.1)';
+        chartCtx.strokeStyle = isB ? 'rgba(201,168,76,.4)' : (_chartTheme === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)');
         chartCtx.lineWidth = isB ? 1 : 0.5;
         chartCtx.setLineDash([]);
         chartCtx.beginPath();
@@ -853,7 +894,7 @@
 
         /* Label */
         var clampedX = Math.max(PAD.l + 24, Math.min(W - PAD.r - 24, x));
-        chartCtx.fillStyle = isB ? 'rgba(201,168,76,.9)' : 'rgba(180,200,230,0.7)';
+        chartCtx.fillStyle = isB ? 'rgba(201,168,76,.9)' : C.mutedText;
         chartCtx.fillText(label, clampedX, H - PAD.b + 17);
       });
     }
@@ -920,10 +961,10 @@
       for (var gi = 0; gi <= 6; gi++) {
         var gy = PAD.t + (gi / 6) * CH;
         var price = mx - (gi / 6) * range;
-        chartCtx.strokeStyle = 'rgba(255,255,255,0.06)'; chartCtx.lineWidth = 0.5;
+        chartCtx.strokeStyle = C.grid; chartCtx.lineWidth = 0.5;
         chartCtx.beginPath(); chartCtx.moveTo(PAD.l, gy); chartCtx.lineTo(W - PAD.r, gy); chartCtx.stroke();
         /* Price labels — bright, bold, bigger */
-        chartCtx.fillStyle = 'rgba(220,232,255,1)'; chartCtx.font = 'bold 11px "DM Mono","Courier New",monospace'; chartCtx.textAlign = 'left';
+        chartCtx.fillStyle = C.text; chartCtx.font = 'bold 11px "DM Mono","Courier New",monospace'; chartCtx.textAlign = 'left';
         chartCtx.fillText(formatPrice(price), W - PAD.r + 5, Math.round(gy) + 4);
       }
 
@@ -6357,7 +6398,21 @@
           if (e.key === 'Escape' && _expanded) expandMobile();
         });
 
+        /* ── Theme Toggle ── */
+        var themeBtn = document.createElement('button');
+        themeBtn.id = 'themeToggleBtn';
+        themeBtn.title = 'Switch Light/Dark Mode';
+        themeBtn.style.cssText = 'margin-left:8px;background:transparent;border:1px solid rgba(201,168,76,.2);color:rgba(201,168,76,.6);cursor:pointer;padding:4px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:2px;flex-shrink:0';
+        themeBtn.onclick = function() {
+          setTheme(_chartTheme === 'dark' ? 'light' : 'dark');
+        };
+        // Set initial icon
+        themeBtn.innerHTML = _chartTheme === 'light' ? 
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>' : 
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+
         toolbar.appendChild(btn);
+        toolbar.appendChild(themeBtn);
       }
 
       /* ── Nearest drawing helper — shared by keyboard shortcuts and context menu ── */
