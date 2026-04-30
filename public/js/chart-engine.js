@@ -11,11 +11,6 @@
         // All four prices must be finite positive numbers
         if (!isFinite(o) || !isFinite(h) || !isFinite(l) || !isFinite(cl)) return false;
         if (o <= 0 || h <= 0 || l <= 0 || cl <= 0) return false;
-        // High must be >= low (swap silently if flipped)
-        if (h < l) { var tmp = c.h; c.h = c.l; c.l = tmp; }
-        // High must be >= open and close, low must be <= open and close
-        c.h = Math.max(h, o, cl);
-        c.l = Math.min(l, o, cl);
         return true;
       });
     }
@@ -3648,7 +3643,7 @@
         .then(function (d) {
           _historyLoading = false;
           if (!d.candles || d.candles.length < 2) { _historyDepleted = true; renderChart && renderChart(); return; }
-          var batch = d.candles.filter(function (c) { return c.t < chartCandles[0].t; });
+          var batch = sanitizeCandles(d.candles.filter(function (c) { return c.t < chartCandles[0].t; }));
           if (!batch.length) { _historyDepleted = true; renderChart && renderChart(); return; }
           /* Prepend batch — shift viewState.offsetX so existing bars stay in place (no jump) */
           Array.prototype.unshift.apply(chartCandles, batch);
