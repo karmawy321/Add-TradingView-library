@@ -198,14 +198,16 @@ function connectWS() {
   }
 }
 
-async function _fetchSingle(epic, tf, extraParams = {}) {
+async function fetchHistory(internalSym, tf, endTime) {
   return new Promise((resolve) => {
     if (!connected) return resolve([]);
-    const resolution = TF_MAP[tf] || 'MINUTE';
-    let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}`;
+    const epic = SYMBOL_MAP[internalSym];
+    if (!epic) return resolve([]);
     
-    for (const [k, v] of Object.entries(extraParams)) {
-      path += `&${k}=${encodeURIComponent(v)}`;
+    const resolution = TF_MAP[tf] || 'MINUTE';
+    let path = `/api/v1/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=1000`;
+    if (endTime) {
+      path += `&to=${new Date(endTime).toISOString().slice(0, 19)}`;
     }
 
     const opts = {
@@ -244,80 +246,9 @@ async function _fetchSingle(epic, tf, extraParams = {}) {
   });
 }
 
-async function _fetchPaginated(epic, tf, target) {
-  const PAGE = 1000;
-  let collected = [];
-  let toDate = null;
-
-  while (collected.length < target) {
-    const need = target - collected.length;
-    const extra = { max: String(Math.min(PAGE, need)) };
-    if (toDate) extra.to = toDate;
-
-    const batch = await _fetchSingle(epic, tf, extra);
-    if (!batch || !batch.length) break;
-
-    collected = [...batch, ...collected];
-    
-    // Deduplicate and sort ascending
-    collected = Array.from(new Map(collected.map(c => [c.t, c])).values());
-    collected.sort((a, b) => a.t - b.t);
-
-    // Next iteration fetches older candles
-    const oldestTs = collected[0].t;
-    toDate = new Date(oldestTs - 1000).toISOString().slice(0, 19);
-
-    if (batch.length < Math.min(PAGE, need)) break;
-    await new Promise(r => setTimeout(r, 500));
-  }
-  return collected;
-}
-
-async function fetchRecent(internalSym) {
-  if (!connected) return;
-  const epic = SYMBOL_MAP[internalSym];
-  if (!epic) return;
-  
-  try {
-    console.log(`[Capital] Fetching paginated deep history for ${internalSym}...`);
-    
-    const configs = [
-      ['1m', 11000],
-      ['5m', 3000],
-      ['15m', 3000],
-      ['30m', 3000],
-      ['1h', 17000],
-      ['4h', 5000],
-      ['1d', 5000],
-      ['1w', 1000]
-    ];
-
-    for (const [tf, target] of configs) {
-      const batch = await _fetchPaginated(epic, tf, target);
-      if (batch.length) {
-        console.log(`[Capital] ${internalSym} ${tf}: ${batch.length} candles cached.`);
-        for (const c of batch) store.replaceBar(SOURCE, internalSym, tf, c);
-      }
-    }
-    store.saveToDisk(SOURCE, internalSym);
-  } catch (e) {
-    console.error(`[Capital] deep backfill error for ${internalSym}:`, e.message);
-  }
-}
-
-async function refreshAllCache() {
-  for (const sym of Object.keys(SYMBOL_MAP)) {
-    await fetchRecent(sym);
-  }
-}
-
-function loadCache() {
-  let n = 0;
-  for (const sym of Object.keys(SYMBOL_MAP)) {
-    try { store.loadFromDisk(SOURCE, sym); n++; } catch(e) {}
-  }
-  console.log(`[Capital] Loaded ${n} symbols from disk`);
-}
+async function fetchRecent(internalSym) { return Promise.resolve(); }
+async function refreshAllCache() { return Promise.resolve(); }
+function loadCache() {}
 
 function getStatus() { return { status: connected ? 'connected' : 'disconnected', symbols: Object.keys(SYMBOL_MAP) }; }
 function getSymbols() { return Object.keys(SYMBOL_MAP); }
@@ -330,6 +261,7 @@ module.exports = {
   connect,
   loadCache,
   fetchRecent,
+  fetchHistory,
   refreshAllCache,
   getStatus,
   getSymbols,

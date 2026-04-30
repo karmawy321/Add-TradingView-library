@@ -662,8 +662,21 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
 
   if (source === 'capital') {
     if (!endTime) return res.json({ candles: [] });
-    const out = store.readCandles('capital', sym, tf).filter(c => c.t < endTime);
-    return res.json({ candles: out.slice(-2000) });
+    try {
+      const raw = await capital.fetchHistory(sym, tf, endTime);
+      const live = store.readCandles('capital', sym, tf).filter(c => c.t < endTime);
+      
+      const merged = new Map();
+      raw.forEach(c => merged.set(c.t, c));
+      live.forEach(c => merged.set(c.t, c));
+      
+      const out = Array.from(merged.values()).sort((a, b) => a.t - b.t);
+      return res.json({ candles: out.slice(-2000) });
+    } catch (e) {
+      console.error('[history] Capital fetch:', e.message);
+      const out = store.readCandles('capital', sym, tf).filter(c => c.t < endTime);
+      return res.json({ candles: out.slice(-2000) });
+    }
   }
 
   if (source === 'oanda') {
