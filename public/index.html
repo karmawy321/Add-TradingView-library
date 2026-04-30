@@ -721,7 +721,7 @@
                 <span>📷</span><span id="snapTxt">Capture</span>
               </button>
               <button id="btModeBtn" onclick="toggleBacktestMode()"
-                title="Backtest mode — hide future candles and test AI predictions on past data">⏪ Backtest</button>
+                title="Replay mode — step through historical candles bar by bar">⏪ Replay</button>
               <button class="az-btn" id="azBtn" disabled>
                 <div class="az-spin" id="azSpin"></div>
                 <span id="azTxt">Fractal · Bar · Weierstrass</span>
@@ -777,7 +777,7 @@
               <!-- BACKTEST TIME CURTAIN BAR -->
               <div id="btBar">
                 <span style="color:#e74c3c;font-size:10px">⏪</span>
-                <span style="color:rgba(240,244,250,.7)">BACKTEST</span>
+                <span style="color:rgba(240,244,250,.7)">REPLAY</span>
                 <span style="color:rgba(240,244,250,.4)">·</span>
                 <span id="btDateLbl">—</span>
                 <input id="btSlider" type="range" min="0" max="100" value="70" oninput="onBtSlider(this.value)">
