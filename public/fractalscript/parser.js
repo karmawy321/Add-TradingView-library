@@ -235,13 +235,15 @@
             var l = loc(); pos++; // consume '['
             var elems = [];
             skipNewlines();
-            while (!at(TT.RBRACKET)) {
+            while (!at(TT.EOF) && !at(TT.RBRACKET)) {
                 var elem = parseExpression();
                 if (elem && elem.error) return elem;
                 elems.push(elem);
                 skipNewlines();
-                if (!tryEat(TT.COMMA)) break;
-                skipNewlines();
+                if (at(TT.COMMA)) {
+                    pos++;
+                    skipNewlines();
+                } else break;
             }
             var rb = eat(TT.RBRACKET); if (rb && rb.error) return rb;
 
@@ -558,7 +560,10 @@
                     args.push(val);
                 }
                 skipNewlines();
-                if (!tryEat(TT.COMMA)) break;
+                if (at(TT.COMMA)) {
+                    pos++;
+                    skipNewlines();
+                } else break;
             }
             return args;
         }
@@ -747,13 +752,15 @@
                 var llt = loc(); pos++;
                 var lelems = [];
                 skipNewlines();
-                while (!at(TT.RBRACKET)) {
+                while (!at(TT.EOF) && !at(TT.RBRACKET)) {
                     var lel = parseExpression();
                     if (lel && lel.error) return lel;
                     lelems.push(lel);
                     skipNewlines();
-                    if (!tryEat(TT.COMMA)) break;
-                    skipNewlines();
+                    if (at(TT.COMMA)) {
+                        pos++;
+                        skipNewlines();
+                    } else break;
                 }
                 var lrb = eat(TT.RBRACKET); if (lrb && lrb.error) return lrb;
                 return { type: 'TupleLiteral', elems: lelems, line: llt.line, col: llt.col };
