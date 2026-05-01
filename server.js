@@ -2882,7 +2882,7 @@ app.get('/feature-status', rateLimit(30, 60000), async (req, res) => {
     const { data: { user }, error } = await sbAdmin.auth.getUser(token);
     if (error || !user) return res.json(def);
     const { data: profile } = await sbAdmin.from('profiles')
-      .select('feat_fib_spiral, feat_fractal_spiral, feat_fractal_geometry, feat_seconds_tf')
+      .select('feat_fib_spiral, feat_fractal_spiral, feat_fractal_geometry, feat_seconds_tf, feat_gann_down, feat_gann_up')
       .eq('id', user.id)
       .single();
     res.json({
@@ -2890,6 +2890,8 @@ app.get('/feature-status', rateLimit(30, 60000), async (req, res) => {
       fractal_spiral:   profile?.feat_fractal_spiral === true,
       fractal_geometry: profile?.feat_fractal_geometry === true,
       seconds_tf:       profile?.feat_seconds_tf === true,
+      gann_down:        profile?.feat_gann_down === true,
+      gann_up:          profile?.feat_gann_up === true,
     });
   } catch (e) { res.json(def); }
 });
