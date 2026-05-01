@@ -508,6 +508,9 @@ app.use('/stripe-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+/* FractalScript AI Assistant routes */
+require('./fractalscript-ai')(app);
+
 /* ═══════════════════════════════════════════════════
    SERVE HTML PAGES (from public/ folder)
    ═══════════════════════════════════════════════════ */
