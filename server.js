@@ -112,11 +112,10 @@ async function checkFeatureAccess(token, feature) {
     const { data: { user }, error } = await sbAdmin.auth.getUser(token);
     if (error || !user) return false;
     const { data: profile } = await sbAdmin.from('profiles')
-      .select('unlocked_features')
+      .select(`feat_${feature}`)
       .eq('id', user.id)
       .single();
-    if (!profile || !profile.unlocked_features) return false;
-    return profile.unlocked_features.includes(feature);
+    return profile ? profile[`feat_${feature}`] === true : false;
   } catch (e) { return false; }
 }
 
@@ -2899,13 +2898,15 @@ app.get('/feature-status', rateLimit(30, 60000), async (req, res) => {
   try {
     const { data: { user }, error } = await sbAdmin.auth.getUser(token);
     if (error || !user) return res.json(def);
-    const { data: profile } = await sbAdmin.from('profiles').select('unlocked_features').eq('id', user.id).single();
-    const active = new Set(profile?.unlocked_features || []);
+    const { data: profile } = await sbAdmin.from('profiles')
+      .select('feat_fib_spiral, feat_fractal_spiral, feat_fractal_geometry, feat_seconds_tf')
+      .eq('id', user.id)
+      .single();
     res.json({
-      fib_spiral:       active.has('fib_spiral'),
-      fractal_spiral:   active.has('fractal_spiral'),
-      fractal_geometry: active.has('fractal_geometry'),
-      seconds_tf:       active.has('seconds_tf'),
+      fib_spiral:       profile?.feat_fib_spiral === true,
+      fractal_spiral:   profile?.feat_fractal_spiral === true,
+      fractal_geometry: profile?.feat_fractal_geometry === true,
+      seconds_tf:       profile?.feat_seconds_tf === true,
     });
   } catch (e) { res.json(def); }
 });
@@ -2928,15 +2929,10 @@ app.post('/stripe-webhook', async (req, res) => {
 
     if (feature && sbAdmin && userId) {
       /* Feature subscription (fib_spiral / fractal_spiral / fractal_geometry) */
-      const { data: prof } = await sbAdmin.from('profiles').select('unlocked_features').eq('id', userId).single();
-      const currentFeatures = prof?.unlocked_features || [];
-      if (!currentFeatures.includes(feature)) {
-        currentFeatures.push(feature);
-        await sbAdmin.from('profiles').update({ 
-          unlocked_features: currentFeatures, 
-          stripe_customer_id: custId 
-        }).eq('id', userId);
-      }
+      const updateData = { stripe_customer_id: custId };
+      updateData[`feat_${feature}`] = true;
+      
+      await sbAdmin.from('profiles').update(updateData).eq('id', userId);
       console.log(`[Stripe] Feature activated: ${feature} → user ${userId}`);
     } else if (plan) {
       /* Plan subscription */
