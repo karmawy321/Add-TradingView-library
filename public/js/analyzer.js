@@ -82,7 +82,7 @@
       var clrBtn = document.getElementById('clearUploadBtn');
       var uplLbl = document.getElementById('uploadLabel');
       if (clrBtn) clrBtn.style.display = 'none';
-      if (uplLbl) uplLbl.style.display = '';
+      if (uplLbl) uplLbl.style.display = 'none';
       if (fileIn) fileIn.value = '';
       var ab = document.getElementById('azBtn');
       if (ab) ab.disabled = true;
@@ -108,7 +108,7 @@
       var clrBtn = document.getElementById('clearUploadBtn');
       var uplLbl = document.getElementById('uploadLabel');
       if (clrBtn) clrBtn.style.display = 'none';
-      if (uplLbl) uplLbl.style.display = '';
+      if (uplLbl) uplLbl.style.display = 'none';
       if (fileIn) fileIn.value = '';
       if (typeof drawings !== 'undefined') window.drawings = []; drawings = window.drawings;
       var ab = document.getElementById('azBtn');
