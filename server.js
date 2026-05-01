@@ -111,12 +111,12 @@ async function checkFeatureAccess(token, feature) {
   try {
     const { data: { user }, error } = await sbAdmin.auth.getUser(token);
     if (error || !user) return false;
-    const { data } = await sbAdmin.from('feature_subscriptions')
-      .select('feature')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .eq('feature', feature);
-    return data && data.length > 0;
+    const { data: profile } = await sbAdmin.from('profiles')
+      .select('unlocked_features')
+      .eq('id', user.id)
+      .single();
+    if (!profile || !profile.unlocked_features) return false;
+    return profile.unlocked_features.includes(feature);
   } catch (e) { return false; }
 }
 
@@ -2859,10 +2859,10 @@ app.post('/manage-billing', rateLimit(5, 60000), async (req, res) => {
   const profile = await getUserProfile(token);
   if (!profile) return res.status(401).json({ error: 'Not authenticated' });
   if (!sbAdmin) return res.status(500).json({ error: 'Database not configured' });
-  const { data: sub } = await sbAdmin.from('subscriptions').select('stripe_customer_id').eq('user_id', profile.userId).single();
-  if (!sub || !sub.stripe_customer_id) return res.status(404).json({ error: 'No active subscription found' });
+  const { data: profileData } = await sbAdmin.from('profiles').select('stripe_customer_id').eq('id', profile.userId).single();
+  if (!profileData || !profileData.stripe_customer_id) return res.status(404).json({ error: 'No active subscription found' });
   try {
-    const portal = await stripe.billingPortal.sessions.create({ customer: sub.stripe_customer_id, return_url: `${SITE_URL}/profile` });
+    const portal = await stripe.billingPortal.sessions.create({ customer: profileData.stripe_customer_id, return_url: `${SITE_URL}/profile` });
     res.json({ url: portal.url });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2899,8 +2899,8 @@ app.get('/feature-status', rateLimit(30, 60000), async (req, res) => {
   try {
     const { data: { user }, error } = await sbAdmin.auth.getUser(token);
     if (error || !user) return res.json(def);
-    const { data } = await sbAdmin.from('feature_subscriptions').select('feature').eq('user_id', user.id).eq('status', 'active');
-    const active = new Set((data || []).map(r => r.feature));
+    const { data: profile } = await sbAdmin.from('profiles').select('unlocked_features').eq('id', user.id).single();
+    const active = new Set(profile?.unlocked_features || []);
     res.json({
       fib_spiral:       active.has('fib_spiral'),
       fractal_spiral:   active.has('fractal_spiral'),
@@ -2928,17 +2928,26 @@ app.post('/stripe-webhook', async (req, res) => {
 
     if (feature && sbAdmin && userId) {
       /* Feature subscription (fib_spiral / fractal_spiral / fractal_geometry) */
-      await sbAdmin.from('feature_subscriptions').upsert({
-        user_id: userId, feature, stripe_sub_id: data.subscription,
-        stripe_customer_id: custId, status: 'active', updated_at: new Date().toISOString()
-      }, { onConflict: 'user_id,feature' });
+      const { data: prof } = await sbAdmin.from('profiles').select('unlocked_features').eq('id', userId).single();
+      const currentFeatures = prof?.unlocked_features || [];
+      if (!currentFeatures.includes(feature)) {
+        currentFeatures.push(feature);
+        await sbAdmin.from('profiles').update({ 
+          unlocked_features: currentFeatures, 
+          stripe_customer_id: custId 
+        }).eq('id', userId);
+      }
       console.log(`[Stripe] Feature activated: ${feature} → user ${userId}`);
     } else if (plan) {
       /* Plan subscription */
       const credits = PLANS[plan] ? PLANS[plan].credits : 0;
       if (sbAdmin && userId && credits) {
-        await sbAdmin.from('profiles').update({ credits, plan }).eq('id', userId);
-        await sbAdmin.from('subscriptions').upsert({ user_id: userId, plan, stripe_customer_id: custId, stripe_sub_id: data.subscription, status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        await sbAdmin.from('profiles').update({ 
+          credits, plan, 
+          stripe_customer_id: custId, 
+          stripe_sub_id: data.subscription, 
+          plan_status: 'active' 
+        }).eq('id', userId);
         console.log(`[Stripe] Plan activated: ${plan} → user ${userId} → ${credits} cr`);
       }
     }
@@ -2947,29 +2956,25 @@ app.post('/stripe-webhook', async (req, res) => {
   if (event.type === 'invoice.paid') {
     const subId = data.subscription;
     if (!subId || !sbAdmin) return res.json({ received: true });
-    const { data: sub } = await sbAdmin.from('subscriptions').select('user_id, plan').eq('stripe_sub_id', subId).single();
+    const { data: sub } = await sbAdmin.from('profiles').select('id, plan').eq('stripe_sub_id', subId).single();
     if (sub && PLANS[sub.plan]) {
       const credits = PLANS[sub.plan].credits;
-      await sbAdmin.from('profiles').update({ credits }).eq('id', sub.user_id);
-      console.log(`[Stripe] Renewal: ${sub.plan} → user ${sub.user_id} → ${credits} cr reset`);
+      await sbAdmin.from('profiles').update({ credits }).eq('id', sub.id);
+      console.log(`[Stripe] Renewal: ${sub.plan} → user ${sub.id} → ${credits} cr reset`);
     }
   }
 
   if (event.type === 'customer.subscription.deleted') {
     if (!sbAdmin) return res.json({ received: true });
     /* Check plan subscriptions */
-    const { data: sub } = await sbAdmin.from('subscriptions').select('user_id').eq('stripe_sub_id', data.id).single();
+    const { data: sub } = await sbAdmin.from('profiles').select('id').eq('stripe_sub_id', data.id).single();
     if (sub) {
-      await sbAdmin.from('profiles').update({ plan: 'free', credits: 0 }).eq('id', sub.user_id);
-      await sbAdmin.from('subscriptions').update({ status: 'cancelled' }).eq('stripe_sub_id', data.id);
+      await sbAdmin.from('profiles').update({ plan: 'free', credits: 0, plan_status: 'cancelled' }).eq('id', sub.id);
       console.log(`[Stripe] Plan cancelled: sub ${data.id}`);
     }
-    /* Check feature subscriptions */
-    const { data: fsub } = await sbAdmin.from('feature_subscriptions').select('user_id, feature').eq('stripe_sub_id', data.id).single();
-    if (fsub) {
-      await sbAdmin.from('feature_subscriptions').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('stripe_sub_id', data.id);
-      console.log(`[Stripe] Feature cancelled: ${fsub.feature} → user ${fsub.user_id}`);
-    }
+    
+    /* Feature subscription cancellations are ignored in this simplified model.
+       If users cancel a feature, they keep it unless manually removed by admin. */
   }
 
   res.json({ received: true });
