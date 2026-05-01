@@ -215,11 +215,22 @@
                 tsArgs.push(execFn(ta2.type === 'NamedArg' ? ta2.value : ta2));
             }
             var tsIdx = 0;
-            if (tsArgs.length > 0 && typeof tsArgs[0] === 'string') tsIdx = 1;
+            var tzOffset = 0; 
+            if (tsArgs.length > 0 && typeof tsArgs[0] === 'string') {
+                var tzStr = tsArgs[0];
+                if (tzStr === 'UTC') tzOffset = 0;
+                else if (tzStr.indexOf('GMT') === 0) {
+                    var sign = tzStr.indexOf('-') > 0 ? -1 : 1;
+                    var parts = tzStr.split(/[+-]/);
+                    if (parts.length > 1) tzOffset = sign * parseInt(parts[1]) * 60;
+                }
+                tsIdx = 1;
+            }
             var _y = tsArgs[tsIdx], _mo = tsArgs[tsIdx + 1], _d = tsArgs[tsIdx + 2];
             var _h = tsArgs[tsIdx + 3], _mi = tsArgs[tsIdx + 4], _s = tsArgs[tsIdx + 5];
             if (FS.isNa(_y) || FS.isNa(_mo) || FS.isNa(_d)) return FS.NA;
-            return Date.UTC(_y, _mo - 1, _d, FS.isNa(_h) ? 0 : _h, FS.isNa(_mi) ? 0 : _mi, FS.isNa(_s) ? 0 : _s);
+            var utcTs = Date.UTC(_y, _mo - 1, _d, FS.isNa(_h) ? 0 : _h, FS.isNa(_mi) ? 0 : _mi, FS.isNa(_s) ? 0 : _s);
+            return utcTs - (tzOffset * 60000);
         }
 
         /* fill() - fills area between two plot lines */

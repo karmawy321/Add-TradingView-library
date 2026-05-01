@@ -694,6 +694,7 @@
             if (expr && (expr.type === 'Switch' || expr.type === 'If')) return expr;
 
             while (true) {
+                skipNewlines();
                 if (at(TT.LBRACKET)) {
                     var l = loc(); pos++;
                     var index = parseExpression(); if (index && index.error) return index;
@@ -721,7 +722,7 @@
                     pos++;
                     continue;
                 }
-                if (at(TT.LPAREN) && (expr.type === 'MemberAccess' || expr.type === 'Identifier')) {
+                if (at(TT.LPAREN)) { // Removed type check to allow calling any expression result
                     var l3 = loc();
                     var isFuncDecl = false;
                     var depth = 0;

@@ -582,24 +582,36 @@
     var _chartTheme = localStorage.getItem('chartTheme') || 'dark';
     function setTheme(mode) {
       _chartTheme = mode;
-      if (mode === 'light') {
-        C.bg = '#ffffff';
+      
+      var isHex = mode.indexOf('#') === 0;
+      var isLight = mode === 'light';
+      var bg = '#06080d';
+      
+      if (isHex) {
+        bg = mode;
+        // Simple brightness check to determine text color
+        var r = parseInt(bg.slice(1, 3), 16);
+        var g = parseInt(bg.slice(3, 5), 16);
+        var b = parseInt(bg.slice(5, 7), 16);
+        var l = (0.299 * r + 0.587 * g + 0.114 * b);
+        isLight = l > 150;
+      } else if (mode === 'light') {
+        bg = '#ffffff';
+        isLight = true;
+      }
+
+      C.bg = bg;
+      if (isLight) {
         C.grid = 'rgba(0,0,0,0.08)';
         C.text = '#1a1d23';
         C.mutedText = 'rgba(0,0,0,0.5)';
       } else {
-        C.bg = '#06080d';
         C.grid = 'rgba(255,255,255,0.06)';
         C.text = 'rgba(220,232,255,1)';
         C.mutedText = 'rgba(180,200,230,0.7)';
       }
+
       localStorage.setItem('chartTheme', mode);
-      var themeBtn = document.getElementById('themeToggleBtn');
-      if (themeBtn) {
-        themeBtn.innerHTML = mode === 'light' ? 
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>' : 
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-      }
       var area = document.getElementById('chartArea');
       if (area) area.style.background = C.bg;
       if (typeof renderChart === 'function') renderChart();
@@ -6433,18 +6445,53 @@
           if (e.key === 'Escape' && _expanded) expandMobile();
         });
 
-        /* ── Theme Toggle ── */
+        /* ── Background Color Picker ── */
         var themeBtn = document.createElement('button');
         themeBtn.id = 'themeToggleBtn';
-        themeBtn.title = 'Switch Light/Dark Mode';
+        themeBtn.title = 'Change Chart Background Color';
         themeBtn.style.cssText = 'margin-left:8px;background:transparent;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;padding:6px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:2px;flex-shrink:0';
-        themeBtn.onclick = function() {
-          setTheme(_chartTheme === 'dark' ? 'light' : 'dark');
+        themeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>';
+        
+        themeBtn.onclick = function(e) {
+          e.stopPropagation();
+          var existing = document.getElementById('chartBgPicker');
+          if (existing) { existing.remove(); return; }
+          
+          var picker = document.createElement('div');
+          picker.id = 'chartBgPicker';
+          picker.style.cssText = 'position:absolute;top:45px;right:0;background:#1a1d23;border:1px solid rgba(255,255,255,0.1);padding:12px;display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;z-index:10000;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,0.5)';
+          
+          var colors = [
+            { c: '#06080d', n: 'Fractal Night' },
+            { c: '#131722', n: 'TV Dark' },
+            { c: '#1e1e1e', n: 'Charcoal' },
+            { c: '#0a1a12', n: 'Deep Forest' },
+            { c: '#0a0e1a', n: 'Royal Navy' },
+            { c: '#2c3e50', n: 'Midnight Blue' },
+            { c: '#34495e', n: 'Wet Asphalt' },
+            { c: '#ffffff', n: 'Pure White' },
+            { c: '#f3f4f6', n: 'Light Grey' },
+            { c: '#fff9e6', n: 'Parchment' },
+            { c: '#e6f3ff', n: 'Sky Mist' },
+            { c: '#f0f0f0', n: 'Silver' }
+          ];
+          
+          colors.forEach(function(item) {
+            var sw = document.createElement('button');
+            sw.style.cssText = 'width:24px;height:24px;border-radius:2px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;background:' + item.c;
+            sw.title = item.n;
+            sw.onclick = function() {
+              setTheme(item.c);
+              picker.remove();
+            };
+            picker.appendChild(sw);
+          });
+          
+          themeBtn.parentElement.appendChild(picker);
+          
+          var closePicker = function() { picker.remove(); document.removeEventListener('click', closePicker); };
+          setTimeout(function() { document.addEventListener('click', closePicker); }, 10);
         };
-        // Set initial icon
-        themeBtn.innerHTML = _chartTheme === 'light' ? 
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>' : 
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
 
         toolbar.appendChild(btn);
         toolbar.appendChild(themeBtn);
