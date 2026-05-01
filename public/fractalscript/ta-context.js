@@ -280,27 +280,27 @@
                 return [plusDI, minusDI, adx];
             },
 
-            supertrend: function (factor, atrPeriod, high, low, close, prevClose, id) {
-                var c = getCache(id, function () { return { prevTrendUp: FS.NA, prevTrendDn: FS.NA, prevTrend: 1 }; });
-                var hl2 = (high + low) / 2;
-                var atr = this.atr(high, low, close, prevClose, atrPeriod, id + '_atr');
+            supertrend: function (multiplier, period, high, low, close, prevClose, id) {
+                var c = getCache(id, function () { return { prevUpper: FS.NA, prevLower: FS.NA, prevTrend: 1 }; });
+                var atr = this.atr(high, low, close, prevClose, period, id + '_stAtr');
                 if (FS.isNa(atr)) return [FS.NA, FS.NA];
-                
-                var up = hl2 - (factor * atr);
-                var dn = hl2 + (factor * atr);
-                
-                var trendUp = FS.isNa(c.prevTrendUp) ? up : (prevClose > c.prevTrendUp ? Math.max(up, c.prevTrendUp) : up);
-                var trendDn = FS.isNa(c.prevTrendDn) ? dn : (prevClose < c.prevTrendDn ? Math.min(dn, c.prevTrendDn) : dn);
-                
+
+                var src = (high + low) / 2;
+                var upper = src + multiplier * atr;
+                var lower = src - multiplier * atr;
+
+                var finalUpper = (prevClose > c.prevUpper || FS.isNa(c.prevUpper)) ? Math.min(upper, c.prevUpper || Infinity) : upper;
+                var finalLower = (prevClose < c.prevLower || FS.isNa(c.prevLower)) ? Math.max(lower, c.prevLower || -Infinity) : lower;
+
                 var trend = c.prevTrend;
-                if (trend === -1 && close > c.prevTrendDn) trend = 1;
-                else if (trend === 1 && close < c.prevTrendUp) trend = -1;
-                
-                c.prevTrendUp = trendUp;
-                c.prevTrendDn = trendDn;
+                if (trend === -1 && close > (c.prevUpper || Infinity)) trend = 1;
+                else if (trend === 1 && close < (c.prevLower || -Infinity)) trend = -1;
+
+                c.prevUpper = finalUpper;
+                c.prevLower = finalLower;
                 c.prevTrend = trend;
-                
-                var st = trend === 1 ? trendUp : trendDn;
+
+                var st = (trend === 1) ? finalLower : finalUpper;
                 return [st, trend];
             },
 
@@ -711,29 +711,6 @@
                 return cand;
             },
 
-            supertrend: function (high, low, close, prevClose, factor, atrPeriod, id) {
-                var c = getCache(id, function () { return { prevUp: FS.NA, prevDn: FS.NA, prevTrend: -1, prevClose: FS.NA }; });
-                var atr = this.atr(high, low, close, prevClose, atrPeriod, id + '_stAtr');
-                if (FS.isNa(atr)) { c.prevClose = close; return [FS.NA, FS.NA]; }
-                var src = (high + low) / 2;
-                var up = src - factor * atr;
-                var dn = src + factor * atr;
-                var upF = !FS.isNa(c.prevUp) && !FS.isNa(c.prevClose) && c.prevClose > c.prevUp ? Math.max(up, c.prevUp) : up;
-                var dnF = !FS.isNa(c.prevDn) && !FS.isNa(c.prevClose) && c.prevClose < c.prevDn ? Math.min(dn, c.prevDn) : dn;
-                var trend;
-                if (FS.isNa(c.prevUp) || FS.isNa(c.prevDn)) {
-                    trend = -1;
-                } else if (c.prevTrend === 1 && close > c.prevDn) {
-                    trend = -1;
-                } else if (c.prevTrend === -1 && close < c.prevUp) {
-                    trend = 1;
-                } else {
-                    trend = c.prevTrend;
-                }
-                var value = trend === -1 ? upF : dnF;
-                c.prevUp = upF; c.prevDn = dnF; c.prevTrend = trend; c.prevClose = close;
-                return [value, trend];
-            },
 
             valuewhen: function (cond, source, occurrence, id) {
                 var c = getCache(id, function () { return { hist: [] }; });

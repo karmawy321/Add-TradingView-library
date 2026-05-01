@@ -358,12 +358,6 @@
                 if (FS.isNa(lb) || FS.isNa(rb)) return FS.NA;
                 return ta.pivotlow(s, Math.round(lb), Math.round(rb), id);
             }
-            case 'ta.supertrend': {
-                var f = e(0), p = e(1);
-                if (FS.isNa(f) || FS.isNa(p)) return [FS.NA, FS.NA];
-                var pc = ctx.prevCandle ? +ctx.prevCandle.c : FS.NA;
-                return ta.supertrend(+ctx.curCandle.h, +ctx.curCandle.l, +ctx.curCandle.c, pc, f, Math.round(p), id);
-            }
             case 'ta.valuewhen': { var cnd = e(0), s = e(1), occ = e(2); return ta.valuewhen(!!cnd, s, FS.isNa(occ) ? 0 : Math.round(occ), id); }
             case 'ta.barssince': { var cnd = e(0); return ta.barssince(!!cnd, id); }
             /* P5: Change / aggregate */
