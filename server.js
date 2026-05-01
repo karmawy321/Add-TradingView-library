@@ -2760,31 +2760,14 @@ const VALID_TOOLS = new Set(['analyze','fib','smc','vol','mtf','age','liq','proj
 
 app.post('/save-analysis', rateLimit(30, 60000), async (req, res) => {
   if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
-  const { tool, pair, timeframe, result, credits, chart_data, _token } = req.body;
+  const { tool, pair, timeframe, result, credits, _token } = req.body;
   if (!_token) return res.status(401).json({ error: 'Not authenticated' });
   const { data: { user }, error } = await sbAdmin.auth.getUser(_token);
   if (error || !user) return res.status(401).json({ error: 'Unauthorized' });
   if (!VALID_TOOLS.has(tool)) return res.status(400).json({ error: 'Invalid tool' });
 
-  // Upload chart image server-side using admin key (no RLS needed)
-  let chart_url = null;
-  console.log('[save-analysis] chart_data type:', typeof chart_data, 'length:', chart_data ? String(chart_data).length : 0);
-  if (typeof chart_data === 'string' && chart_data.startsWith('data:image/')) {
-    try {
-      const base64 = chart_data.split(',')[1];
-      const buf    = Buffer.from(base64, 'base64');
-      const fname  = `${user.id}/${tool}_${Date.now()}.webp`;
-      const { data: upData, error: upErr } = await sbAdmin.storage
-        .from('charts')
-        .upload(fname, buf, { contentType: 'image/webp', upsert: false });
-      if (upErr) { console.warn('[save-analysis] storage upload error:', upErr.message); }
-      else if (upData) {
-        const { data: pub } = sbAdmin.storage.from('charts').getPublicUrl(upData.path);
-        chart_url = pub?.publicUrl || null;
-        console.log('[save-analysis] chart uploaded:', chart_url);
-      }
-    } catch (upEx) { console.warn('[save-analysis] storage upload exception:', upEx.message); }
-  }
+  // Chart image uploading has been disabled to save database storage.
+  const chart_url = null;
 
   const { error: insertErr } = await sbAdmin.from('analyses').insert({
     user_id:   user.id,
