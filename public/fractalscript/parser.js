@@ -667,7 +667,7 @@
                 if (nextT.type === TT.NEWLINE) {
                     var p2 = pos + 1;
                     while(p2 < tokens.length && tokens[p2].type === TT.NEWLINE) p2++;
-                    if (p2 < tokens.length && (tokens[p2].type === TT.DOT || tokens[p2].type === TT.LBRACKET || tokens[p2].type === TT.LPAREN)) {
+                    if (p2 < tokens.length && (tokens[p2].type === TT.DOT || tokens[p2].type === TT.LPAREN)) {
                         pos = p2;
                     } else break;
                 }
