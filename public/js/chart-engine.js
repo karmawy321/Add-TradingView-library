@@ -4361,9 +4361,63 @@
       /* ── Gann Box Scripts ── */
       var GANN_DOWN_SCRIPT = `//@version=5\nindicator("Gann box fractal indicates - Down Only", overlay=true, max_lines_count=500, max_labels_count=500)\ndarkcolor = input(color.white, "Dark Mood")\nma200  = ta.sma(close, 200)\nma400  = ta.sma(close, 400)\nma900  = ta.sma(close, 900)\nma1500 = ta.sma(close, 1500)\nma2500 = ta.sma(close, 2500)\ncross_start = ta.crossover(ma400, ma200) and (close > ma1500)\ncross_025   = ta.crossunder(ma400, ma900)\ncross_038   = ta.crossunder(ma400, ma1500)\ncross_end   = ta.crossover(ma2500, ma900)\nplotshape(cross_start, style=shape.labelup, location=location.bottom, color=color.new(color.white, 100), textcolor=darkcolor, text="start", size=size.normal)\nplotshape(cross_025,   style=shape.labelup, location=location.bottom, color=color.new(color.orange, 100), textcolor=color.orange, text="0.25", size=size.normal)\nplotshape(cross_038,   style=shape.labelup, location=location.bottom, color=color.new(color.green, 100),  textcolor=color.green,  text="0.38 fibo", size=size.normal)\nplotshape(cross_end,   style=shape.labelup, location=location.bottom, color=color.new(color.silver, 100), textcolor=color.red, text="end", size=size.normal)\nif cross_start \n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=darkcolor, width=2, style=line.style_solid)\n    line.new(bar_index - 500 , ma400, bar_index + 500, ma400, extend=extend.none, color=darkcolor, width=2, style=line.style_solid)\nif cross_025\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.orange, width=2, style=line.style_solid)\nif cross_038\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.green, width=2, style=line.style_solid)\n    line.new(bar_index - 500 , ma400, bar_index + 500, ma400, extend=extend.none, color=darkcolor, width=2, style=line.style_solid)\nif cross_end\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.red, width=2, style=line.style_solid)`;
       var GANN_UP_SCRIPT = `//@version=5\nindicator("Gann box fractal indicates - Up Only", overlay=true, max_lines_count=500, max_labels_count=500)\ndarkcolor = input(color.white, "Dark Mood")\nma200  = ta.sma(close, 200)\nma400  = ta.sma(close, 400)\nma900  = ta.sma(close, 900)\nma1500 = ta.sma(close, 1500)\nma2500 = ta.sma(close, 2500)\ncross_start = ta.crossunder(ma400, ma200) and (close < ma1500)\ncross_025   = ta.crossover(ma400, ma900)\ncross_038   = ta.crossover(ma400, ma1500)\ncross_end   = ta.crossunder(ma2500, ma900)\nplotshape(cross_start, style=shape.labelup, location=location.bottom, color=color.new(color.white, 100), textcolor=darkcolor, text="start", size=size.normal)\nplotshape(cross_025,   style=shape.labelup, location=location.bottom, color=color.new(color.orange, 100), textcolor=color.orange, text="0.25", size=size.normal)\nplotshape(cross_038,   style=shape.labelup, location=location.bottom, color=color.new(color.green, 100),  textcolor=color.green,  text="0.38 fibo", size=size.normal)\nplotshape(cross_end,   style=shape.labelup, location=location.bottom, color=color.new(color.silver, 100), textcolor=color.red, text="end", size=size.normal)\nif cross_start \n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=darkcolor, width=2, style=line.style_dashed)\n    line.new(bar_index - 500 , ma400, bar_index + 500, ma400, extend=extend.none, color=darkcolor, width=2, style=line.style_dashed)\nif cross_025\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.orange, width=2, style=line.style_dashed)\nif cross_038\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.green, width=2, style=line.style_dashed)\n    line.new(bar_index - 500 , ma400, bar_index + 500, ma400, extend=extend.none, color=darkcolor, width=2, style=line.style_dashed)\nif cross_end\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.red, width=2, style=line.style_dashed)`;
-      
+      var GANN_BOTH_SCRIPT = `//@version=5\nindicator("Gann box fractal indicates - Both", overlay=true, max_lines_count=1000, max_labels_count=1000)\ndarkcolor = input(color.white, "Dark Mood")\nma200  = ta.sma(close, 200)\nma400  = ta.sma(close, 400)\nma900  = ta.sma(close, 900)\nma1500 = ta.sma(close, 1500)\nma2500 = ta.sma(close, 2500)\n\ncross_start_dn = ta.crossover(ma400, ma200) and (close > ma1500)\ncross_025_dn   = ta.crossunder(ma400, ma900)\ncross_038_dn   = ta.crossunder(ma400, ma1500)\ncross_end_dn   = ta.crossover(ma2500, ma900)\nplotshape(cross_start_dn, style=shape.labelup, location=location.bottom, color=color.new(color.white, 100), textcolor=darkcolor, text="start", size=size.normal)\nplotshape(cross_025_dn,   style=shape.labelup, location=location.bottom, color=color.new(color.orange, 100), textcolor=color.orange, text="0.25", size=size.normal)\nplotshape(cross_038_dn,   style=shape.labelup, location=location.bottom, color=color.new(color.green, 100),  textcolor=color.green,  text="0.38 fibo", size=size.normal)\nplotshape(cross_end_dn,   style=shape.labelup, location=location.bottom, color=color.new(color.silver, 100), textcolor=color.red, text="end", size=size.normal)\nif cross_start_dn \n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=darkcolor, width=2, style=line.style_solid)\n    line.new(bar_index - 500 , ma400, bar_index + 500, ma400, extend=extend.none, color=darkcolor, width=2, style=line.style_solid)\nif cross_025_dn\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.orange, width=2, style=line.style_solid)\nif cross_038_dn\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.green, width=2, style=line.style_solid)\n    line.new(bar_index - 500 , ma400, bar_index + 500, ma400, extend=extend.none, color=darkcolor, width=2, style=line.style_solid)\nif cross_end_dn\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.red, width=2, style=line.style_solid)\n\ncross_start_up = ta.crossunder(ma400, ma200) and (close < ma1500)\ncross_025_up   = ta.crossover(ma400, ma900)\ncross_038_up   = ta.crossover(ma400, ma1500)\ncross_end_up   = ta.crossunder(ma2500, ma900)\nplotshape(cross_start_up, style=shape.labelup, location=location.bottom, color=color.new(color.white, 100), textcolor=darkcolor, text="start", size=size.normal)\nplotshape(cross_025_up,   style=shape.labelup, location=location.bottom, color=color.new(color.orange, 100), textcolor=color.orange, text="0.25", size=size.normal)\nplotshape(cross_038_up,   style=shape.labelup, location=location.bottom, color=color.new(color.green, 100),  textcolor=color.green,  text="0.38 fibo", size=size.normal)\nplotshape(cross_end_up,   style=shape.labelup, location=location.bottom, color=color.new(color.silver, 100), textcolor=color.red, text="end", size=size.normal)\nif cross_start_up \n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=darkcolor, width=2, style=line.style_dashed)\n    line.new(bar_index - 500 , ma400, bar_index + 500, ma400, extend=extend.none, color=darkcolor, width=2, style=line.style_dashed)\nif cross_025_up\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.orange, width=2, style=line.style_dashed)\nif cross_038_up\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.green, width=2, style=line.style_dashed)\n    line.new(bar_index - 500 , ma400, bar_index + 500, ma400, extend=extend.none, color=darkcolor, width=2, style=line.style_dashed)\nif cross_end_up\n    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.red, width=2, style=line.style_dashed)`;
       var gannDownOn = false;
       var gannUpOn = false;
+
+      window.toggleGannTrend = function(dir) {
+        // Feature Gating
+        if (dir === 'up' && (!window._featureStatus || !window._featureStatus.gann_up)) {
+          if (window.showFeatureModal) window.showFeatureModal('gann_up');
+          return;
+        }
+        if (dir === 'down' && (!window._featureStatus || !window._featureStatus.gann_down)) {
+          if (window.showFeatureModal) window.showFeatureModal('gann_down');
+          return;
+        }
+
+        if (dir === 'up') gannUpOn = !gannUpOn;
+        if (dir === 'down') gannDownOn = !gannDownOn;
+
+        var editorTa = document.getElementById('fractalEditor');
+        var oldTaVal = editorTa ? editorTa.value : null;
+
+        if (gannUpOn && gannDownOn) {
+          fractalOverlayOn = true;
+          fractalSource = GANN_BOTH_SCRIPT;
+          if (editorTa) editorTa.value = '';
+          if (typeof window._runFractalScript === 'function') { window._runFractalScript(); } else if (typeof _runFractalScript === 'function') { _runFractalScript(); }
+        } else if (gannUpOn) {
+          fractalOverlayOn = true;
+          fractalSource = GANN_UP_SCRIPT;
+          if (editorTa) editorTa.value = '';
+          if (typeof window._runFractalScript === 'function') { window._runFractalScript(); } else if (typeof _runFractalScript === 'function') { _runFractalScript(); }
+        } else if (gannDownOn) {
+          fractalOverlayOn = true;
+          fractalSource = GANN_DOWN_SCRIPT;
+          if (editorTa) editorTa.value = '';
+          if (typeof window._runFractalScript === 'function') { window._runFractalScript(); } else if (typeof _runFractalScript === 'function') { _runFractalScript(); }
+        } else {
+          fractalOverlayOn = false;
+          fractalResult = null;
+        }
+
+        if (editorTa && oldTaVal !== null) editorTa.value = oldTaVal;
+
+        /* Update button styles */
+        var upBtn = document.getElementById('fractalTrendUpBtn');
+        var downBtn = document.getElementById('fractalTrendDownBtn');
+        if (upBtn) {
+          upBtn.style.background = gannUpOn ? 'rgba(39,174,96,.4)' : 'rgba(39,174,96,.15)';
+          upBtn.style.boxShadow = gannUpOn ? '0 0 10px rgba(39,174,96,.3)' : '';
+        }
+        if (downBtn) {
+          downBtn.style.background = gannDownOn ? 'rgba(231,76,60,.4)' : 'rgba(231,76,60,.15)';
+          downBtn.style.boxShadow = gannDownOn ? '0 0 10px rgba(231,76,60,.3)' : '';
+        }
+        if (typeof buildToolbar === 'function') buildToolbar();
+        if (typeof renderChart === 'function') renderChart();
+      };
 
       /* ── Tool groups ── */
       var GROUPS = [
@@ -4431,8 +4485,6 @@
             { id: 'liqheatmap', label: 'Liquidity Heatmap', icon: S('<rect x="2" y="3" width="12" height="2" rx="0.4" fill="rgba(239,83,80,0.85)"/><rect x="2" y="7" width="12" height="2" rx="0.4" fill="rgba(201,168,76,0.7)"/><rect x="2" y="11" width="12" height="2" rx="0.4" fill="rgba(38,166,154,0.85)"/>'), toggle: true, liqheatmaptool: true, getState: function () { return liqHeatmapOn; } },
             { id: 'volbubbles', label: 'Volume Bubbles', icon: S('<ellipse cx="8" cy="5.5" rx="5.5" ry="3.2" fill="rgba(38,166,154,0.75)" stroke="rgba(38,166,154,1)" stroke-width="0.6"/><ellipse cx="8" cy="10.5" rx="5.5" ry="3.2" fill="rgba(239,83,80,0.75)" stroke="rgba(239,83,80,1)" stroke-width="0.6"/>'), toggle: true, volbubblestool: true, getState: function () { return volBubblesOn; } },
             { id: 'macascade', label: 'Fractal Geometry', icon: S('<line x1="2" y1="4" x2="14" y2="4" stroke-width="1" opacity=".9"/><line x1="3" y1="10" x2="9" y2="7" stroke-width="1"/><line x1="9" y1="7" x2="14" y2="7" stroke-width="0.9" stroke-dasharray="2 2" opacity=".75"/><line x1="3" y1="13" x2="8" y2="11" stroke-width="0.9" opacity=".6"/><line x1="8" y1="11" x2="14" y2="11" stroke-width="0.8" stroke-dasharray="2 2" opacity=".5"/>'), toggle: true, macascadetool: true, getState: function () { return maCascadeOn; } },
-            { id: 'gann_down', label: 'Gann Box (Down)', icon: S('<rect x="2" y="2" width="12" height="12" fill="none" stroke="rgba(239,83,80,0.8)"/><line x1="2" y1="2" x2="14" y2="14" stroke="rgba(239,83,80,0.8)"/><line x1="14" y1="2" x2="2" y2="14" stroke="rgba(239,83,80,0.8)"/>'), toggle: true, gann_down: true, getState: function () { return gannDownOn; } },
-            { id: 'gann_up', label: 'Gann Box (Up)', icon: S('<rect x="2" y="2" width="12" height="12" fill="none" stroke="rgba(38,166,154,0.8)"/><line x1="2" y1="2" x2="14" y2="14" stroke="rgba(38,166,154,0.8)"/><line x1="14" y1="2" x2="2" y2="14" stroke="rgba(38,166,154,0.8)"/>'), toggle: true, gann_up: true, getState: function () { return gannUpOn; } },
           ]
         },
         /* ── Quantitative Analysis ── */
@@ -4679,18 +4731,6 @@
         if (item.macascadetool) {
           if (!window._featureStatus || !window._featureStatus.fractal_geometry) { window.showFeatureModal && window.showFeatureModal('fractal_geometry'); return; }
           maCascadeOn = !maCascadeOn; buildToolbar(); renderChart && renderChart(); return;
-        }
-        if (item.gann_down) {
-          if (!window._featureStatus || !window._featureStatus.gann_down) { window.showFeatureModal && window.showFeatureModal('gann_down'); return; }
-          gannDownOn = !gannDownOn; gannUpOn = false;
-          if (gannDownOn) { fractalOverlayOn = true; fractalSource = GANN_DOWN_SCRIPT; _runFractalScript(); } else { fractalOverlayOn = false; fractalResult = null; }
-          buildToolbar(); renderChart && renderChart(); return;
-        }
-        if (item.gann_up) {
-          if (!window._featureStatus || !window._featureStatus.gann_up) { window.showFeatureModal && window.showFeatureModal('gann_up'); return; }
-          gannUpOn = !gannUpOn; gannDownOn = false;
-          if (gannUpOn) { fractalOverlayOn = true; fractalSource = GANN_UP_SCRIPT; _runFractalScript(); } else { fractalOverlayOn = false; fractalResult = null; }
-          buildToolbar(); renderChart && renderChart(); return;
         }
         if (item.FractalScripttool) { fractalOverlayOn = !fractalOverlayOn; if (fractalOverlayOn) { _showfractalModal(); if (!fractalResult && fractalSource) _runFractalScript(); } buildToolbar(); renderChart && renderChart(); return; }
         if (item.measuretool) { activeTool = 'measure'; activeItem = item; measuring = true; measurePts = []; setCursor('crosshair'); buildToolbar(); return; }
@@ -7079,8 +7119,8 @@
       fractal_spiral:   { name: 'Fractal Spiral Model', price: '$25/mo', desc: 'Multi-level spiral pattern engine that projects nested fractal cycles.' },
       fractal_geometry: { name: 'Fractal Geometry',     price: '$15/mo', desc: 'Alternating MA-cross bridge levels revealing machine-learning support/resistance zones.' },
       seconds_tf:       { name: 'Seconds Timeframes',  price: '$25/mo', desc: 'Unlock high-frequency 1s, 5s, 10s, and 30s charting for scalping and precision entry.' },
-      gann_down:        { name: 'Gann Box (Down)',      price: '$25/mo', desc: 'Advanced Gann Box fractal indicators for downward price movement projections. Contact support to activate.' },
-      gann_up:          { name: 'Gann Box (Up)',        price: '$25/mo', desc: 'Advanced Gann Box fractal indicators for upward price movement projections. Contact support to activate.' },
+      gann_down:        { name: 'Fractal Trend (Down)', price: '$25/mo', desc: 'Advanced Gann Box fractal indicators for downward price movement projections.', checkout: '/gann-down-checkout' },
+      gann_up:          { name: 'Fractal Trend (Up)',   price: '$25/mo', desc: 'Advanced Gann Box fractal indicators for upward price movement projections.', checkout: '/gann-up-checkout' },
     };
 
     window.showFeatureModal = function (feature) {
@@ -8400,7 +8440,7 @@
         if (m) m.classList.remove('show');
       };
       window._runFractalScript = function () {
-        var src = ta ? ta.value : window.fractalSource;
+        var src = (ta && ta.value.trim() !== '') ? ta.value : window.fractalSource;
         if (!src || !src.trim()) return;
 
         /* Auto-strip RTF formatting if detected */

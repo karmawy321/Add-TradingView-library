@@ -36,7 +36,7 @@ BUILT-IN FUNCTIONS:
 - ta.crossover(a, b), ta.crossunder(a, b), ta.change(src, len)
 - ta.cum(src), ta.valuewhen(cond, src, occurrence)
 - ta.pivothigh(src, leftbars, rightbars), ta.pivotlow(src, leftbars, rightbars)
-- ta.vwap(src), ta.supertrend(factor, atrLen) → [st, dir]
+- ta.vwap(src), ta.supertrend(multiplier, period) → [st, dir]
 - ta.dmi(len, smooth) → [plus, minus, adx]
 - ta.mfi(src, len), ta.obv()
 
@@ -116,7 +116,7 @@ module.exports = function (app) {
      Body: { code: string, error: { line, col, message } }
      ───────────────────────────────────────────── */
   app.post('/api/ai/fix', async (req, res) => {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim().replace(/^["'>\s]+|["'>\s]+$/g, '');
     if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
 
     const { code, error } = req.body;
@@ -152,7 +152,7 @@ ${code}`;
      Body: { prompt: string }
      ───────────────────────────────────────────── */
   app.post('/api/ai/generate', async (req, res) => {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim().replace(/^["'>\s]+|["'>\s]+$/g, '');
     if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
 
     const { prompt } = req.body;
@@ -177,6 +177,26 @@ Return ONLY the complete FractalScript code starting with //@version=5. No expla
       console.error('[AI Generate]', err.message);
       res.status(500).json({ error: err.message });
     }
+  });
+
+  /* ─────────────────────────────────────────────
+     GET /api/ai/debug
+     Check if AI keys are configured
+     ───────────────────────────────────────────── */
+  app.get('/api/ai/debug', (req, res) => {
+    const apiKeyRaw = process.env.ANTHROPIC_API_KEY || '';
+    const apiKey = apiKeyRaw.trim().replace(/^["'>\s]+|["'>\s]+$/g, '');
+    const isSet = apiKey.length > 20;
+    const hiddenKey = isSet ? (apiKey.substring(0, 7) + '...' + apiKey.substring(apiKey.length - 4)) : 'NOT SET';
+    
+    res.json({
+      configured: isSet,
+      key_preview: hiddenKey,
+      raw_length: apiKeyRaw.length,
+      cleaned_length: apiKey.length,
+      model: 'claude-haiku-4-5-20251001',
+      status: isSet ? 'Ready' : 'Missing ANTHROPIC_API_KEY in .env'
+    });
   });
 
   console.log('[FractalScript AI] Routes mounted: /api/ai/fix, /api/ai/generate');

@@ -352,6 +352,8 @@ const PLANS = {
 const STRIPE_PRICE_FIB_SPIRAL       = process.env.STRIPE_PRICE_FIB_SPIRAL       || '';
 const STRIPE_PRICE_FRACTAL_SPIRAL   = process.env.STRIPE_PRICE_FRACTAL_SPIRAL   || '';
 const STRIPE_PRICE_FRACTAL_GEOMETRY = process.env.STRIPE_PRICE_FRACTAL_GEOMETRY || '';
+const STRIPE_PRICE_GANN_UP          = process.env.STRIPE_PRICE_GANN_UP          || '';
+const STRIPE_PRICE_GANN_DOWN        = process.env.STRIPE_PRICE_GANN_DOWN        || '';
 
 /* ═══════════════════════════════════════════════════
    AUTH HELPERS
@@ -2873,9 +2875,11 @@ async function _featureCheckout(req, res, feature, priceId) {
 app.post('/fib-spiral-checkout',       rateLimit(5, 60000), (q, s) => _featureCheckout(q, s, 'fib_spiral',       STRIPE_PRICE_FIB_SPIRAL));
 app.post('/fractal-spiral-checkout',   rateLimit(5, 60000), (q, s) => _featureCheckout(q, s, 'fractal_spiral',   STRIPE_PRICE_FRACTAL_SPIRAL));
 app.post('/fractal-geometry-checkout', rateLimit(5, 60000), (q, s) => _featureCheckout(q, s, 'fractal_geometry', STRIPE_PRICE_FRACTAL_GEOMETRY));
+app.post('/gann-up-checkout',          rateLimit(5, 60000), (q, s) => _featureCheckout(q, s, 'gann_up',          STRIPE_PRICE_GANN_UP));
+app.post('/gann-down-checkout',        rateLimit(5, 60000), (q, s) => _featureCheckout(q, s, 'gann_down',        STRIPE_PRICE_GANN_DOWN));
 
 app.get('/feature-status', rateLimit(30, 60000), async (req, res) => {
-  const def = { fib_spiral: false, fractal_spiral: false, fractal_geometry: false };
+  const def = { fib_spiral: false, fractal_spiral: false, fractal_geometry: false, seconds_tf: false, gann_up: false, gann_down: false };
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token || !sbAdmin) return res.json(def);
   try {

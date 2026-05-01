@@ -14,6 +14,7 @@
   window.addEventListener('DOMContentLoaded', function() {
     renderHistory();
     setupAutoResize();
+    watchErrors();
   });
 
   /* ── Show/hide Fix button when error appears ── */
@@ -24,7 +25,7 @@
 
     var observer = new MutationObserver(function() {
       var msg = errEl.textContent.trim();
-      if (msg && errEl.style.display !== 'none') {
+      if (msg && errEl.style.display !== 'none' && !msg.startsWith('AI Error:')) {
         var m = msg.match(/Line (\d+):(\d+)\s*[—–\-]\s*(.*)/);
         _lastError = m
           ? { line: parseInt(m[1]), col: parseInt(m[2]), message: m[3].trim() }
@@ -114,13 +115,20 @@
 
   /* ── Core AI Actions ── */
   window._fsAiFix = async function () {
-    if (!_lastError || _isFixing) return;
+    if (_isFixing) return;
+    
+    var promptEl = document.getElementById('fs-ai-generate-input');
+    var promptInstructions = promptEl ? promptEl.value.trim() : '';
+    
     _isFixing = true;
     
     var fixBtn = document.getElementById('fs-ai-fix-btn');
-    var originalText = fixBtn.innerHTML;
-    fixBtn.innerHTML = '✨ Fixing...';
-    fixBtn.style.opacity = '0.7';
+    var fixBarBtn = document.getElementById('fs-ai-fix-bar-btn');
+    var originalText = fixBtn ? fixBtn.innerHTML : '✨ Fixing...';
+    var originalBarText = fixBarBtn ? fixBarBtn.innerHTML : '🔧 Fix Code';
+    
+    if (fixBtn) { fixBtn.innerHTML = '✨ Fixing...'; fixBtn.style.opacity = '0.7'; }
+    if (fixBarBtn) { fixBarBtn.innerHTML = '⏳ Fixing...'; fixBarBtn.disabled = true; }
 
     try {
       var response = await fetch('/api/ai/fix', {
@@ -128,19 +136,32 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code: document.getElementById('fractalEditor').value,
-          error: _lastError
+          error: _lastError,
+          instructions: promptInstructions
         })
       });
+      
+      if (!response.ok) {
+        var errData = await response.json();
+        throw new Error(errData.error || 'Server error ' + response.status);
+      }
+
       var data = await response.json();
-      if (data.code) {
-        document.getElementById('fractalEditor').value = data.code;
+      var code = data.fixed || data.code;
+      if (code) {
+        document.getElementById('fractalEditor').value = code;
         if (window._runFractalFromModal) window._runFractalFromModal();
       }
     } catch (err) {
       console.error('AI Fix failed:', err);
+      var errEl = document.getElementById('fractalErrors');
+      if (errEl) {
+        errEl.textContent = 'AI Error: ' + err.message + '\nCheck console or /api/ai/debug';
+        errEl.style.display = 'block';
+      }
     } finally {
-      fixBtn.innerHTML = originalText;
-      fixBtn.style.opacity = '1';
+      if (fixBtn) { fixBtn.innerHTML = originalText; fixBtn.style.opacity = '1'; }
+      if (fixBarBtn) { fixBarBtn.innerHTML = originalBarText; fixBarBtn.disabled = false; }
       _isFixing = false;
     }
   };
@@ -164,6 +185,12 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: prompt })
       });
+
+      if (!response.ok) {
+        var errData = await response.json();
+        throw new Error(errData.error || 'Server error ' + response.status);
+      }
+
       var data = await response.json();
       if (data.code) {
         document.getElementById('fractalEditor').value = data.code;
@@ -174,6 +201,11 @@
       }
     } catch (err) {
       console.error('AI Generation failed:', err);
+      var errEl = document.getElementById('fractalErrors');
+      if (errEl) {
+        errEl.textContent = 'AI Error: ' + err.message + '\nCheck console or /api/ai/debug';
+        errEl.style.display = 'block';
+      }
     } finally {
       genBtn.innerHTML = originalText;
       genBtn.disabled = false;
