@@ -2896,6 +2896,31 @@ app.get('/feature-status', rateLimit(30, 60000), async (req, res) => {
   } catch (e) { res.json(def); }
 });
 
+/* ── CHART LAYOUT SYNC ── */
+app.get('/api/get-layout', rateLimit(20, 60000), async (req, res) => {
+  if (!sbAdmin) return res.json({});
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.json({});
+  try {
+    const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+    if (error || !user) return res.json({});
+    const { data: profile } = await sbAdmin.from('profiles').select('chart_layout').eq('id', user.id).single();
+    res.json(profile?.chart_layout || {});
+  } catch (e) { res.json({}); }
+});
+
+app.post('/api/save-layout', rateLimit(30, 60000), async (req, res) => {
+  if (!sbAdmin) return res.json({ success: false });
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.json({ success: false });
+  try {
+    const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+    if (error || !user) return res.json({ success: false });
+    await sbAdmin.from('profiles').update({ chart_layout: req.body.layout || {} }).eq('id', user.id);
+    res.json({ success: true });
+  } catch (e) { res.json({ success: false }); }
+});
+
 app.post('/stripe-webhook', async (req, res) => {
   if (!stripe) return res.status(500).send('Stripe not configured');
   let event;

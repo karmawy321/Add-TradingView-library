@@ -916,6 +916,7 @@
 
     function renderChart() {
       if (!chartCtx || !chartCanvas.width) return;
+      if (typeof window._triggerLayoutSave === 'function') window._triggerLayoutSave();
       /* Context has setTransform(DPR,...) so coords are CSS pixels */
       var dpr = window.devicePixelRatio || 1;
       var W = chartCanvas.width / dpr;
@@ -6635,7 +6636,79 @@
         if (r.ok) { window._featureStatus = await r.json(); }
       } catch (e) {}
     }
-    loadFeatureStatus();
+    
+    /* ── CHART LAYOUT SYNC ── */
+    var saveLayoutTimer = null;
+    window._triggerLayoutSave = function() {
+      clearTimeout(saveLayoutTimer);
+      saveLayoutTimer = setTimeout(function() {
+        var pairIn = document.getElementById('pairIn');
+        var tfIn = document.getElementById('tfIn');
+        var layout = {
+          pair: pairIn ? pairIn.value : 'GOLD',
+          tf: tfIn ? tfIn.value : '4h',
+          chartType: typeof chartType !== 'undefined' ? chartType : 'candles',
+          vpvrOn: typeof vpvrOn !== 'undefined' ? vpvrOn : false,
+          liqHeatmapOn: typeof liqHeatmapOn !== 'undefined' ? liqHeatmapOn : false,
+          volBubblesOn: typeof volBubblesOn !== 'undefined' ? volBubblesOn : false,
+          maCascadeOn: typeof maCascadeOn !== 'undefined' ? maCascadeOn : false,
+          gannDownOn: typeof gannDownOn !== 'undefined' ? gannDownOn : false,
+          gannUpOn: typeof gannUpOn !== 'undefined' ? gannUpOn : false,
+          hurstOn: typeof hurstOn !== 'undefined' ? hurstOn : false,
+          garchBandsOn: typeof garchBandsOn !== 'undefined' ? garchBandsOn : false,
+          fractalSignalOn: typeof fractalSignalOn !== 'undefined' ? fractalSignalOn : false,
+          kalmanOn: typeof kalmanOn !== 'undefined' ? kalmanOn : false,
+          fractalPathsOn: typeof fractalPathsOn !== 'undefined' ? fractalPathsOn : false,
+          gbmOn: typeof gbmOn !== 'undefined' ? gbmOn : false,
+          ouOn: typeof ouOn !== 'undefined' ? ouOn : false
+        };
+        var token = localStorage.getItem('fractal_token');
+        if (token) {
+          fetch('/api/save-layout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ layout: layout })
+          }).catch(function(){});
+        }
+      }, 2500);
+    };
+
+    window.loadChartLayout = async function() {
+      var token = localStorage.getItem('fractal_token');
+      if (!token) return;
+      try {
+        var r = await fetch('/api/get-layout', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (r.ok) {
+          var layout = await r.json();
+          if (Object.keys(layout).length > 0) {
+            if (layout.chartType) { chartType = layout.chartType; var ctIn = document.getElementById('chartTypeIn'); if (ctIn) ctIn.value = layout.chartType; }
+            if (layout.tf) { var tfIn = document.getElementById('tfIn'); if (tfIn) tfIn.value = layout.tf; }
+            if (layout.vpvrOn) vpvrOn = true;
+            if (layout.liqHeatmapOn) liqHeatmapOn = true;
+            if (layout.volBubblesOn) volBubblesOn = true;
+            if (layout.maCascadeOn && window._featureStatus?.fractal_geometry) maCascadeOn = true;
+            if (layout.gannDownOn && window._featureStatus?.gann_down) { gannDownOn = true; fractalOverlayOn = true; fractalSource = GANN_DOWN_SCRIPT; _runFractalScript(); }
+            if (layout.gannUpOn && window._featureStatus?.gann_up) { gannUpOn = true; fractalOverlayOn = true; fractalSource = GANN_UP_SCRIPT; _runFractalScript(); }
+            if (layout.hurstOn) hurstOn = true;
+            if (layout.garchBandsOn) garchBandsOn = true;
+            if (layout.fractalSignalOn) fractalSignalOn = true;
+            if (layout.kalmanOn) kalmanOn = true;
+            if (layout.fractalPathsOn) fractalPathsOn = true;
+            if (layout.gbmOn) gbmOn = true;
+            if (layout.ouOn) ouOn = true;
+            
+            if (typeof buildToolbar === 'function') buildToolbar();
+            if (typeof renderChart === 'function') renderChart();
+            
+            if (layout.pair && layout.tf && typeof selectPairWithSource === 'function') {
+              selectPairWithSource(layout.pair, 'capital');
+            }
+          }
+        }
+      } catch (e) {}
+    };
+
+    loadFeatureStatus().then(window.loadChartLayout);
 
     /* ── Feature modal ── */
     var _FEATURE_META = {
