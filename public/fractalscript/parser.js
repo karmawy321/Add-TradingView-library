@@ -694,7 +694,18 @@
             if (expr && (expr.type === 'Switch' || expr.type === 'If')) return expr;
 
             while (true) {
-                skipNewlines();
+                // Only skip newlines if the NEXT token is a continuation token (. or [ or ()
+                var nextT = cur();
+                if (nextT.type === TT.NEWLINE) {
+                    var p2 = pos + 1;
+                    while(p2 < tokens.length && tokens[p2].type === TT.NEWLINE) p2++;
+                    if (p2 < tokens.length && (tokens[p2].type === TT.DOT || tokens[p2].type === TT.LBRACKET || tokens[p2].type === TT.LPAREN)) {
+                        pos = p2;
+                    } else {
+                        break;
+                    }
+                }
+                
                 if (at(TT.LBRACKET)) {
                     var l = loc(); pos++;
                     var index = parseExpression(); if (index && index.error) return index;

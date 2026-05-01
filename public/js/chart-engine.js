@@ -1392,6 +1392,7 @@
               var _bts = _bxSizePx[_BX.text_size] || 12;
               chartCtx.font = _bts + 'px "DM Sans", sans-serif';
               chartCtx.fillStyle = _BX.text_color || '#FFFFFF';
+              chartCtx.fillStyle = _BX.text_color || '#FFFFFF';
               
               var _maxW = _bw - 8;
               if (_maxW < 20) _maxW = 20;
@@ -6453,44 +6454,43 @@
         themeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>';
         
         themeBtn.onclick = function(e) {
-          e.stopPropagation();
+          e.stopPropagation(); e.preventDefault();
           var existing = document.getElementById('chartBgPicker');
           if (existing) { existing.remove(); return; }
           
           var picker = document.createElement('div');
           picker.id = 'chartBgPicker';
-          picker.style.cssText = 'position:absolute;top:45px;right:0;background:#1a1d23;border:1px solid rgba(255,255,255,0.1);padding:12px;display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;z-index:10000;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,0.5)';
+          var rect = themeBtn.getBoundingClientRect();
+          picker.style.cssText = 'position:fixed;top:'+(rect.bottom+8)+'px;left:'+(rect.left-120)+'px;background:#1a1d23;border:2px solid rgba(201,168,76,0.4);padding:12px;display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;z-index:999999;border-radius:4px;box-shadow:0 12px 40px rgba(0,0,0,0.8);pointer-events:auto;';
           
           var colors = [
-            { c: '#06080d', n: 'Fractal Night' },
-            { c: '#131722', n: 'TV Dark' },
-            { c: '#1e1e1e', n: 'Charcoal' },
-            { c: '#0a1a12', n: 'Deep Forest' },
-            { c: '#0a0e1a', n: 'Royal Navy' },
-            { c: '#2c3e50', n: 'Midnight Blue' },
-            { c: '#34495e', n: 'Wet Asphalt' },
-            { c: '#ffffff', n: 'Pure White' },
-            { c: '#f3f4f6', n: 'Light Grey' },
-            { c: '#fff9e6', n: 'Parchment' },
-            { c: '#e6f3ff', n: 'Sky Mist' },
-            { c: '#f0f0f0', n: 'Silver' }
+            { c: '#06080d', n: 'Fractal Night' }, { c: '#131722', n: 'TV Dark' }, { c: '#1e1e1e', n: 'Charcoal' }, { c: '#0a1a12', n: 'Deep Forest' },
+            { c: '#0a0e1a', n: 'Royal Navy' }, { c: '#1a2a3a', n: 'Slate' }, { c: '#2c3e50', n: 'Midnight' }, { c: '#444444', n: 'Grey' },
+            { c: '#ffffff', n: 'Pure White' }, { c: '#f3f4f6', n: 'Light Grey' }, { c: '#fff9e6', n: 'Parchment' }, { c: '#e6f3ff', n: 'Sky Mist' }
           ];
           
           colors.forEach(function(item) {
             var sw = document.createElement('button');
-            sw.style.cssText = 'width:24px;height:24px;border-radius:2px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;background:' + item.c;
+            sw.style.cssText = 'width:30px;height:30px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);cursor:pointer;background:' + item.c + ';transition:transform 0.1s;';
             sw.title = item.n;
-            sw.onclick = function() {
+            sw.onmouseover = function() { sw.style.transform = 'scale(1.1)'; };
+            sw.onmouseout = function() { sw.style.transform = 'scale(1)'; };
+            sw.onclick = function(e2) {
+              e2.stopPropagation();
               setTheme(item.c);
               picker.remove();
             };
             picker.appendChild(sw);
           });
           
-          themeBtn.parentElement.appendChild(picker);
+          document.body.appendChild(picker);
           
-          var closePicker = function() { picker.remove(); document.removeEventListener('click', closePicker); };
-          setTimeout(function() { document.addEventListener('click', closePicker); }, 10);
+          var closePicker = function(ev) { 
+            if (ev.target.closest('#chartBgPicker') || ev.target.closest('#themeToggleBtn')) return;
+            picker.remove(); 
+            document.removeEventListener('mousedown', closePicker); 
+          };
+          setTimeout(function() { document.addEventListener('mousedown', closePicker); }, 10);
         };
 
         toolbar.appendChild(btn);
