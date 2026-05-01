@@ -5682,6 +5682,273 @@
       var FIB_R = [[0, '0%'], [.236, '23.6%'], [.382, '38.2%'], [.5, '50%'], [.618, '61.8%'], [.786, '78.6%'], [1, '100%'], [1.272, '127.2%'], [1.618, '161.8%']];
       var FIB_C = ['#e74c3c', '#e67e22', '#f1c40f', '#27ae60', '#c9a84c', '#3498db', '#9b8fe8', '#e74c3c', '#2ecc71'];
 
+      /* ══ DEFAULT FIB LEVELS CONFIG (TradingView-style) ══ */
+      var FIB_DEFAULT_LEVELS = [
+        { value: 0,     label: '0',     color: '#787b86', enabled: true },
+        { value: 0.236, label: '0.236', color: '#e74c3c', enabled: true },
+        { value: 0.382, label: '0.382', color: '#e67e22', enabled: true },
+        { value: 0.5,   label: '0.5',   color: '#27ae60', enabled: true },
+        { value: 0.618, label: '0.618', color: '#26a69a', enabled: true },
+        { value: 0.786, label: '0.786', color: '#00bcd4', enabled: true },
+        { value: 1,     label: '1',     color: '#787b86', enabled: true },
+        { value: 1.618, label: '1.618', color: '#2962ff', enabled: true },
+        { value: 2.618, label: '2.618', color: '#e74c3c', enabled: true },
+        { value: 3.618, label: '3.618', color: '#9b59b6', enabled: true },
+        { value: 4.236, label: '4.236', color: '#e74c3c', enabled: true },
+        { value: 1.272, label: '1.272', color: '#f0b90b', enabled: false },
+        { value: 1.414, label: '1.414', color: '#e91e63', enabled: false },
+        { value: 2.272, label: '2.272', color: '#f0b90b', enabled: false },
+        { value: 2.414, label: '2.414', color: '#26a69a', enabled: false },
+        { value: 2,     label: '2',     color: '#26a69a', enabled: false }
+      ];
+      function _fibGetDefaults() { return JSON.parse(JSON.stringify(FIB_DEFAULT_LEVELS)); }
+      function _fibEnsureConfig(d) {
+        if (!d._fibLevels) d._fibLevels = _fibGetDefaults();
+        if (d._fibTrendLine === undefined) d._fibTrendLine = true;
+        if (!d._fibTrendColor) d._fibTrendColor = '#787b86';
+        if (!d._fibTrendStyle) d._fibTrendStyle = 'dashed';
+        if (!d._fibLevelsStyle) d._fibLevelsStyle = 'solid';
+        if (!d._fibExtend) d._fibExtend = 'none';
+        if (d._fibShowLabels === undefined) d._fibShowLabels = true;
+        if (d._fibShowPrices === undefined) d._fibShowPrices = true;
+        if (d._fibShowPercent === undefined) d._fibShowPercent = true;
+        if (d._fibFills === undefined) d._fibFills = true;
+      }
+
+      /* ── Fib Settings Modal Logic ── */
+      var _fibEditDrawing = null;
+      var _fibEditIdx = -1;
+      var _fibEditSnapshot = null;
+
+      window.openFibSettings = function(drawingIdx) {
+        var fx = window._fx; if (!fx) return;
+        var d = fx.drawings[drawingIdx]; if (!d || d.fibtype !== 'retrace') return;
+        _fibEditDrawing = d;
+        _fibEditIdx = drawingIdx;
+        _fibEnsureConfig(d);
+        _fibEditSnapshot = JSON.stringify({
+          _fibLevels: d._fibLevels, _fibTrendLine: d._fibTrendLine, _fibTrendColor: d._fibTrendColor,
+          _fibTrendStyle: d._fibTrendStyle, _fibLevelsStyle: d._fibLevelsStyle, _fibExtend: d._fibExtend,
+          _fibShowLabels: d._fibShowLabels, _fibShowPrices: d._fibShowPrices, _fibShowPercent: d._fibShowPercent,
+          _fibFills: d._fibFills, p1: d.p1, p2: d.p2
+        });
+        _populateFibModal(d);
+        var m = document.getElementById('fibSettingsModal');
+        if (m) m.classList.add('show');
+      };
+
+      window.closeFibSettings = function() {
+        /* Restore snapshot on cancel */
+        if (_fibEditDrawing && _fibEditSnapshot) {
+          var snap = JSON.parse(_fibEditSnapshot);
+          Object.keys(snap).forEach(function(k) { if (k !== 'p1' && k !== 'p2') _fibEditDrawing[k] = snap[k]; });
+          var fx = window._fx; if (fx) fx.renderChart();
+        }
+        _fibEditDrawing = null; _fibEditIdx = -1; _fibEditSnapshot = null;
+        var m = document.getElementById('fibSettingsModal');
+        if (m) m.classList.remove('show');
+      };
+
+      window.applyFibSettings = function() {
+        if (!_fibEditDrawing) return;
+        _readFibModal(_fibEditDrawing);
+        _fibEditSnapshot = null; /* prevent cancel-restore */
+        _fibEditDrawing = null; _fibEditIdx = -1;
+        var m = document.getElementById('fibSettingsModal');
+        if (m) m.classList.remove('show');
+        var fx = window._fx; if (fx) fx.renderChart();
+      };
+
+      window.resetFibToDefaults = function() {
+        if (!_fibEditDrawing) return;
+        _fibEditDrawing._fibLevels = _fibGetDefaults();
+        _fibEditDrawing._fibTrendLine = true;
+        _fibEditDrawing._fibTrendColor = '#787b86';
+        _fibEditDrawing._fibTrendStyle = 'dashed';
+        _fibEditDrawing._fibLevelsStyle = 'solid';
+        _fibEditDrawing._fibExtend = 'none';
+        _fibEditDrawing._fibShowLabels = true;
+        _fibEditDrawing._fibShowPrices = true;
+        _fibEditDrawing._fibShowPercent = true;
+        _fibEditDrawing._fibFills = true;
+        _populateFibModal(_fibEditDrawing);
+        var fx = window._fx; if (fx) fx.renderChart();
+      };
+
+      window.switchFibTab = function(tab, btn) {
+        document.querySelectorAll('.fib-tab').forEach(function(t) { t.classList.remove('active'); });
+        btn.classList.add('active');
+        document.getElementById('fibTabStyle').style.display = tab === 'style' ? '' : 'none';
+        document.getElementById('fibTabCoords').style.display = tab === 'coords' ? '' : 'none';
+        document.getElementById('fibTabVisibility').style.display = tab === 'visibility' ? '' : 'none';
+      };
+
+      window.toggleFibVis = function(el) { el.classList.toggle('on'); };
+
+      function _populateFibModal(d) {
+        /* Trend line */
+        var tlChk = document.getElementById('fibTrendLineChk'); if (tlChk) tlChk.checked = d._fibTrendLine;
+        var tlColor = document.getElementById('fibTrendColorIn'); if (tlColor) { tlColor.value = d._fibTrendColor; }
+        var tlBtn = document.getElementById('fibTrendColorBtn'); if (tlBtn) tlBtn.style.background = d._fibTrendColor;
+        if (tlColor) tlColor.oninput = function() { tlBtn.style.background = this.value; };
+
+        /* Trend line style */
+        document.querySelectorAll('#fibTrendLineStyle .fib-line-style').forEach(function(b) {
+          b.classList.toggle('active', b.getAttribute('data-style') === d._fibTrendStyle);
+          b.onclick = function() {
+            document.querySelectorAll('#fibTrendLineStyle .fib-line-style').forEach(function(bb) { bb.classList.remove('active'); });
+            this.classList.add('active');
+          };
+        });
+        /* Levels line style */
+        document.querySelectorAll('#fibLevelsLineStyle .fib-line-style').forEach(function(b) {
+          b.classList.toggle('active', b.getAttribute('data-style') === d._fibLevelsStyle);
+          b.onclick = function() {
+            document.querySelectorAll('#fibLevelsLineStyle .fib-line-style').forEach(function(bb) { bb.classList.remove('active'); });
+            this.classList.add('active');
+          };
+        });
+        /* Extend */
+        var extSel = document.getElementById('fibExtendSel'); if (extSel) extSel.value = d._fibExtend;
+
+        /* Levels grid */
+        var grid = document.getElementById('fibLevelsGrid');
+        if (grid) {
+          grid.innerHTML = '';
+          d._fibLevels.forEach(function(lv, i) {
+            var item = document.createElement('div');
+            item.className = 'fib-level-item';
+            var chk = document.createElement('input');
+            chk.type = 'checkbox'; chk.className = 'fib-chk'; chk.checked = lv.enabled;
+            chk.setAttribute('data-fib-idx', i);
+            var inp = document.createElement('input');
+            inp.type = 'text'; inp.className = 'fib-val-input'; inp.value = lv.value;
+            inp.setAttribute('data-fib-idx', i);
+            var colBtn = document.createElement('div');
+            colBtn.className = 'fib-color-btn'; colBtn.style.background = lv.color;
+            var colInp = document.createElement('input');
+            colInp.type = 'color'; colInp.value = lv.color;
+            colInp.setAttribute('data-fib-idx', i);
+            colInp.oninput = function() { colBtn.style.background = this.value; };
+            colBtn.appendChild(colInp);
+            item.appendChild(chk);
+            item.appendChild(inp);
+            item.appendChild(colBtn);
+            grid.appendChild(item);
+          });
+        }
+
+        /* Background fills */
+        var fillsCont = document.getElementById('fibFillsContainer');
+        if (fillsCont) {
+          fillsCont.innerHTML = '';
+          var enabledLevels = d._fibLevels.filter(function(l) { return l.enabled; }).sort(function(a,b) { return a.value - b.value; });
+          for (var fi = 0; fi < enabledLevels.length - 1; fi++) {
+            var fr = document.createElement('div'); fr.className = 'fib-fill-row';
+            var sw = document.createElement('div'); sw.className = 'fib-fill-swatch';
+            var c1 = enabledLevels[fi].color, c2 = enabledLevels[fi + 1].color;
+            sw.style.background = 'linear-gradient(90deg,' + c1 + ',' + c2 + ')';
+            sw.style.opacity = d._fibFills ? '.6' : '.15';
+            var flbl = document.createElement('span');
+            flbl.style.cssText = 'font-size:11px;color:#787b86';
+            flbl.textContent = enabledLevels[fi].value + ' → ' + enabledLevels[fi + 1].value;
+            fr.appendChild(sw); fr.appendChild(flbl);
+            fillsCont.appendChild(fr);
+          }
+          /* Fill toggle */
+          var fillRow = document.createElement('div'); fillRow.className = 'fib-row'; fillRow.style.marginTop = '8px';
+          var fillLbl = document.createElement('label'); fillLbl.textContent = 'Fill between levels'; fillLbl.style.minWidth = '140px';
+          var fillTog = document.createElement('div'); fillTog.className = 'fib-toggle' + (d._fibFills ? ' on' : '');
+          fillTog.id = 'fibFillToggle';
+          fillTog.onclick = function() { this.classList.toggle('on'); };
+          fillRow.appendChild(fillLbl); fillRow.appendChild(fillTog);
+          fillsCont.appendChild(fillRow);
+        }
+
+        /* Coordinates */
+        var p1p = document.getElementById('fibCoordP1Price'); if (p1p) p1p.value = d.p1 ? d.p1.price.toFixed(5) : '';
+        var p1b = document.getElementById('fibCoordP1Bar'); if (p1b) p1b.value = d.p1 ? d.p1.bi : '';
+        var p2p = document.getElementById('fibCoordP2Price'); if (p2p) p2p.value = d.p2 ? d.p2.price.toFixed(5) : '';
+        var p2b = document.getElementById('fibCoordP2Bar'); if (p2b) p2b.value = d.p2 ? d.p2.bi : '';
+        /* Dates */
+        function _fibDate(bi) {
+          if (!chartCandles || bi < 0 || bi >= chartCandles.length) return '—';
+          var c = chartCandles[bi], dt = new Date(c.t);
+          return dt.toISOString().replace('T', '  ').slice(0, 19);
+        }
+        var p1d = document.getElementById('fibCoordP1Date'); if (p1d && d.p1) p1d.value = _fibDate(d.p1.bi);
+        var p2d = document.getElementById('fibCoordP2Date'); if (p2d && d.p2) p2d.value = _fibDate(d.p2.bi);
+
+        /* Visibility toggles */
+        var vl = document.getElementById('fibVisLabels'); if (vl) vl.classList.toggle('on', d._fibShowLabels);
+        var vp = document.getElementById('fibVisPrices'); if (vp) vp.classList.toggle('on', d._fibShowPrices);
+        var vpc = document.getElementById('fibVisPercent'); if (vpc) vpc.classList.toggle('on', d._fibShowPercent);
+
+        /* Reset tab to Style */
+        switchFibTab('style', document.querySelector('.fib-tab[data-fib-tab="style"]'));
+      }
+
+      function _readFibModal(d) {
+        /* Trend line */
+        var tlChk = document.getElementById('fibTrendLineChk'); if (tlChk) d._fibTrendLine = tlChk.checked;
+        var tlColor = document.getElementById('fibTrendColorIn'); if (tlColor) d._fibTrendColor = tlColor.value;
+        var tlStyleBtn = document.querySelector('#fibTrendLineStyle .fib-line-style.active');
+        if (tlStyleBtn) d._fibTrendStyle = tlStyleBtn.getAttribute('data-style');
+        var lvStyleBtn = document.querySelector('#fibLevelsLineStyle .fib-line-style.active');
+        if (lvStyleBtn) d._fibLevelsStyle = lvStyleBtn.getAttribute('data-style');
+        var extSel = document.getElementById('fibExtendSel'); if (extSel) d._fibExtend = extSel.value;
+
+        /* Levels */
+        var chks = document.querySelectorAll('#fibLevelsGrid .fib-chk');
+        var inps = document.querySelectorAll('#fibLevelsGrid .fib-val-input');
+        var cols = document.querySelectorAll('#fibLevelsGrid input[type=color]');
+        chks.forEach(function(chk) {
+          var i = parseInt(chk.getAttribute('data-fib-idx'));
+          if (d._fibLevels[i]) d._fibLevels[i].enabled = chk.checked;
+        });
+        inps.forEach(function(inp) {
+          var i = parseInt(inp.getAttribute('data-fib-idx'));
+          var v = parseFloat(inp.value);
+          if (!isNaN(v) && d._fibLevels[i]) {
+            d._fibLevels[i].value = v;
+            d._fibLevels[i].label = String(v);
+          }
+        });
+        cols.forEach(function(col) {
+          var i = parseInt(col.getAttribute('data-fib-idx'));
+          if (d._fibLevels[i]) d._fibLevels[i].color = col.value;
+        });
+
+        /* Fills */
+        var fillTog = document.getElementById('fibFillToggle');
+        if (fillTog) d._fibFills = fillTog.classList.contains('on');
+
+        /* Coordinates */
+        var p1p = document.getElementById('fibCoordP1Price');
+        var p1b = document.getElementById('fibCoordP1Bar');
+        var p2p = document.getElementById('fibCoordP2Price');
+        var p2b = document.getElementById('fibCoordP2Bar');
+        if (p1p && d.p1) { var v = parseFloat(p1p.value); if (!isNaN(v)) d.p1.price = v; }
+        if (p1b && d.p1) { var v = parseInt(p1b.value); if (!isNaN(v)) d.p1.bi = v; }
+        if (p2p && d.p2) { var v = parseFloat(p2p.value); if (!isNaN(v)) d.p2.price = v; }
+        if (p2b && d.p2) { var v = parseInt(p2b.value); if (!isNaN(v)) d.p2.bi = v; }
+
+        /* Visibility */
+        var vl = document.getElementById('fibVisLabels'); if (vl) d._fibShowLabels = vl.classList.contains('on');
+        var vp = document.getElementById('fibVisPrices'); if (vp) d._fibShowPrices = vp.classList.contains('on');
+        var vpc = document.getElementById('fibVisPercent'); if (vpc) d._fibShowPercent = vpc.classList.contains('on');
+      }
+
+      /* Close modal on ESC */
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && _fibEditDrawing) closeFibSettings();
+      });
+      /* Close on backdrop click */
+      var _fibModal = document.getElementById('fibSettingsModal');
+      if (_fibModal) _fibModal.addEventListener('mousedown', function(e) {
+        if (e.target === _fibModal) closeFibSettings();
+      });
+
       function drawOne(ctx, d, co, prev) {
         if (!co) return;
         ctx.save();
@@ -5860,21 +6127,65 @@
           ctx.restore(); return;
         }
 
-        /* Fibonacci Retracement */
+        /* Fibonacci Retracement — with per-drawing editable settings */
         if (d.fibtype === 'retrace') {
+          _fibEnsureConfig(d);
           var hiP = Math.max(d.p1.price, d.p2.price), loP = Math.min(d.p1.price, d.p2.price), diff = hiP - loP;
           var lx = Math.min(x1, x2), rx = Math.max(x1, x2);
-          FIB_R.forEach(function (lv, i) {
-            var pr = hiP - lv[0] * diff, fy = cpY(pr, co);
-            if (fy < PAD.t || fy > co.H - PAD.b) return;
-            ctx.strokeStyle = FIB_C[i]; ctx.globalAlpha = .7; ctx.setLineDash([3, 3]);
-            ctx.beginPath(); ctx.moveTo(lx, fy); ctx.lineTo(rx, fy); ctx.stroke();
+          /* Extend */
+          var ext = d._fibExtend || 'none';
+          var eLx = (ext === 'left' || ext === 'both') ? PAD.l : lx;
+          var eRx = (ext === 'right' || ext === 'both') ? co.W - PAD.r : rx;
+          /* Collect enabled levels sorted by value */
+          var levels = (d._fibLevels || []).filter(function(l) { return l.enabled; }).sort(function(a,b) { return a.value - b.value; });
+          var levelDash = (d._fibLevelsStyle === 'dashed') ? [3, 3] : [];
+          /* Background fills between adjacent levels */
+          if (d._fibFills && levels.length > 1) {
+            for (var fi = 0; fi < levels.length - 1; fi++) {
+              var fy1 = cpY(hiP - levels[fi].value * diff, co);
+              var fy2 = cpY(hiP - levels[fi + 1].value * diff, co);
+              if (fy2 < PAD.t && fy1 < PAD.t) continue;
+              if (fy2 > co.H - PAD.b && fy1 > co.H - PAD.b) continue;
+              ctx.globalAlpha = .08;
+              ctx.fillStyle = levels[fi].color;
+              ctx.fillRect(eLx, Math.min(fy1, fy2), eRx - eLx, Math.abs(fy2 - fy1));
+              ctx.globalAlpha = 1;
+            }
+          }
+          /* Draw each level line */
+          levels.forEach(function (lv) {
+            var pr = hiP - lv.value * diff, fy = cpY(pr, co);
+            if (fy < PAD.t - 20 || fy > co.H - PAD.b + 20) return;
+            ctx.strokeStyle = lv.color; ctx.globalAlpha = .8; ctx.lineWidth = 1.2;
+            ctx.setLineDash(levelDash);
+            ctx.beginPath(); ctx.moveTo(eLx, fy); ctx.lineTo(eRx, fy); ctx.stroke();
             ctx.globalAlpha = 1; ctx.setLineDash([]);
-            ctx.font = 'bold 9px DM Mono'; ctx.fillStyle = FIB_C[i]; ctx.textAlign = 'left';
-            ctx.fillText(lv[1] + ' ' + formatPrice(pr), rx + 3, fy + 3);
+            /* Label */
+            var labelParts = [];
+            if (d._fibShowPercent) labelParts.push((lv.value * 100).toFixed(1) + '%');
+            else if (d._fibShowLabels) labelParts.push(lv.label);
+            if (d._fibShowPrices) labelParts.push(formatPrice(pr));
+            if (labelParts.length) {
+              ctx.font = 'bold 9px DM Mono'; ctx.fillStyle = lv.color; ctx.textAlign = 'left';
+              ctx.fillText(labelParts.join('  '), eRx + 4, fy + 3);
+            }
+            /* Left label */
+            if (d._fibShowLabels && d._fibShowPercent) {
+              ctx.textAlign = 'right'; ctx.font = '8px DM Mono'; ctx.fillStyle = lv.color;
+              ctx.fillText(lv.label, eLx - 4, fy + 3);
+            }
           });
-          ctx.strokeStyle = gold; ctx.setLineDash([]);
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          /* Trend line */
+          if (d._fibTrendLine) {
+            ctx.strokeStyle = d._fibTrendColor || gold; ctx.lineWidth = 1.3;
+            ctx.setLineDash(d._fibTrendStyle === 'dashed' ? [5, 4] : []);
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          /* Anchor dots */
+          ctx.fillStyle = d._fibTrendColor || gold;
+          ctx.beginPath(); ctx.arc(x1, y1, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(x2, y2, 4, 0, Math.PI * 2); ctx.fill();
           ctx.restore(); return;
         }
         /* Fibonacci Extension */
@@ -6924,6 +7235,14 @@
           fx.saveUndo(); var dd = fx.drawings.splice(idx, 1)[0]; fx.drawings.unshift(dd); fx.renderChart();
         }));
         M.appendChild(sep());
+        /* Settings (Fib only for now) */
+        if (d.fibtype === 'retrace') {
+          M.appendChild(btn(
+            '<circle cx="8" cy="8" r="1.5"/><path d="M10.5 8a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/><path d="M12.5 12.5L11 11M3.5 3.5L5 5M12.5 3.5L11 5M3.5 12.5L5 11M8 2v2M8 12v2M2 8h2M12 8h2"/>',
+            'Settings', '', function () { window.openFibSettings(idx); }
+          ));
+        }
+
         M.appendChild(btn(
           '<line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>',
           'Delete   Del', 'red', function () {
@@ -6948,6 +7267,12 @@
             d._locked ? '<rect x="4" y="8" width="8" height="6" rx="1"/><path d="M6 8V6a2 2 0 014 0v2"/>' : '<rect x="4" y="8" width="8" height="6" rx="1"/><path d="M6 8V5a2 2 0 014 0"/>',
             d._locked ? 'Unlock' : 'Lock', '', function () { d._locked = !d._locked; fx.renderChart(); }
           ));
+          if (d.fibtype === 'retrace') {
+            M.appendChild(btn(
+              '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/>',
+              'Settings', '', function () { window.openFibSettings(idx); }
+            ));
+          }
           M.appendChild(btn('<rect x="5" y="5" width="8" height="9" rx="1"/><rect x="3" y="3" width="8" height="9" rx="1"/>', 'Clone', '', function () {
             var c = JSON.parse(JSON.stringify(d)); c._auto = false;
             if (c.ghostAnchorBi !== undefined) c.ghostAnchorBi += 5;
@@ -7022,6 +7347,15 @@
           var hp = fx.hoverPoint; if (!hp || !hp.visible || hp.visible.length < 2) return;
           var idx = fx.nearestDrawing(hp); if (idx < 0) return;
           showDrawing(idx, e.clientX + 16, e.clientY);
+        });
+
+        /* Double-click to open settings (Fib only for now) */
+        cv.addEventListener('dblclick', function (e) {
+          var fx = f(); if (!fx) return;
+          var hp = fx.hoverPoint; if (!hp || !hp.visible || hp.visible.length < 2) return;
+          var idx = fx.nearestDrawing(hp); if (idx < 0) return;
+          var d = fx.drawings[idx];
+          if (d && d.fibtype === 'retrace') window.openFibSettings(idx);
         });
 
         /* ── Long-press → context menu on mobile ── */

@@ -1854,6 +1854,186 @@
       </div>
     </div>
   </div>
+  <!-- ══ FIB RETRACEMENT SETTINGS MODAL ══ -->
+  <style>
+    /* ── Fib Settings Modal ── */
+    #fibSettingsModal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.55);z-index:2147483647;backdrop-filter:blur(3px);align-items:center;justify-content:center}
+    #fibSettingsModal.show{display:flex}
+    .fib-modal{background:#1e222d;border:1px solid #2a2e39;width:520px;max-width:95vw;border-radius:8px;box-shadow:0 16px 60px rgba(0,0,0,.7);display:flex;flex-direction:column;max-height:85vh;font-family:'Trebuchet MS',sans-serif;color:#d1d4dc}
+    .fib-modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #2a2e39}
+    .fib-modal-title{font-size:16px;font-weight:700;color:#d1d4dc;display:flex;align-items:center;gap:8px}
+    .fib-modal-close{background:none;border:none;color:#787b86;cursor:pointer;font-size:22px;line-height:1;padding:0 4px;transition:color .15s}
+    .fib-modal-close:hover{color:#d1d4dc}
+    /* Tabs */
+    .fib-tabs{display:flex;gap:0;border-bottom:1px solid #2a2e39;padding:0 20px}
+    .fib-tab{padding:10px 18px;font-size:13px;font-weight:600;color:#787b86;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none}
+    .fib-tab:hover{color:#d1d4dc}
+    .fib-tab.active{color:#2962ff;border-bottom-color:#2962ff}
+    /* Body */
+    .fib-body{padding:16px 20px 12px;overflow-y:auto;flex:1;min-height:0}
+    .fib-body::-webkit-scrollbar{width:5px}
+    .fib-body::-webkit-scrollbar-thumb{background:#363a45;border-radius:4px}
+    /* Rows */
+    .fib-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+    .fib-row label{font-size:13px;color:#787b86;min-width:90px}
+    .fib-chk{width:16px;height:16px;accent-color:#2962ff;cursor:pointer;flex-shrink:0}
+    .fib-val-input{width:68px;background:#131722;border:1px solid #363a45;border-radius:4px;color:#d1d4dc;font-size:12px;padding:5px 8px;font-family:'Trebuchet MS',sans-serif;outline:none;transition:border-color .15s}
+    .fib-val-input:focus{border-color:#2962ff}
+    .fib-color-btn{width:28px;height:28px;border-radius:4px;border:1px solid #363a45;cursor:pointer;flex-shrink:0;position:relative;transition:border-color .15s}
+    .fib-color-btn:hover{border-color:#787b86}
+    .fib-color-btn input[type=color]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+    /* Levels grid */
+    .fib-levels-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+    .fib-level-item{display:flex;align-items:center;gap:6px;padding:4px 0}
+    .fib-level-item .fib-val-input{width:60px}
+    /* Select */
+    .fib-select{background:#131722;border:1px solid #363a45;border-radius:4px;color:#d1d4dc;font-size:12px;padding:5px 24px 5px 10px;font-family:inherit;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='%23787b86' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+    .fib-select:focus{border-color:#2962ff}
+    /* Line style buttons */
+    .fib-line-styles{display:flex;gap:4px}
+    .fib-line-style{width:36px;height:28px;background:#131722;border:1px solid #363a45;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+    .fib-line-style:hover{border-color:#787b86}
+    .fib-line-style.active{border-color:#2962ff;background:rgba(41,98,255,.12)}
+    .fib-line-style svg{width:24px;height:2px}
+    /* Toggle switch */
+    .fib-toggle{position:relative;width:32px;height:18px;background:#363a45;border-radius:9px;cursor:pointer;flex-shrink:0;transition:background .2s}
+    .fib-toggle.on{background:#2962ff}
+    .fib-toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#d1d4dc;border-radius:50%;transition:transform .2s}
+    .fib-toggle.on::after{transform:translateX(14px)}
+    /* Section label */
+    .fib-section{font-size:11px;font-weight:700;color:#787b86;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;padding-top:10px;border-top:1px solid #2a2e39}
+    .fib-section:first-child{border-top:none;margin-top:0;padding-top:0}
+    /* Footer */
+    .fib-modal-footer{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-top:1px solid #2a2e39}
+    .fib-footer-left{display:flex;align-items:center;gap:8px}
+    .fib-footer-right{display:flex;align-items:center;gap:8px}
+    .fib-btn{padding:7px 18px;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:inherit;transition:all .15s}
+    .fib-btn-cancel{background:transparent;color:#787b86;border-color:#363a45}
+    .fib-btn-cancel:hover{color:#d1d4dc;border-color:#787b86}
+    .fib-btn-ok{background:#2962ff;color:#fff;border:none}
+    .fib-btn-ok:hover{background:#1e53e5}
+    .fib-btn-template{background:#131722;color:#787b86;border-color:#363a45;font-size:12px;padding:5px 14px}
+    .fib-btn-template:hover{color:#d1d4dc;border-color:#787b86}
+    /* Coordinates tab */
+    .fib-coord-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+    .fib-coord-label{font-size:12px;color:#787b86;min-width:50px;font-weight:600}
+    .fib-coord-input{width:100px;background:#131722;border:1px solid #363a45;border-radius:4px;color:#d1d4dc;font-size:12px;padding:5px 8px;font-family:'DM Mono',monospace;outline:none}
+    .fib-coord-input:focus{border-color:#2962ff}
+    /* Visibility tab */
+    .fib-vis-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #2a2e39}
+    .fib-vis-row:last-child{border-bottom:none}
+    .fib-vis-label{font-size:13px;color:#d1d4dc}
+    .fib-fill-row{display:flex;align-items:center;gap:8px;padding:3px 0}
+    .fib-fill-swatch{width:22px;height:14px;border-radius:2px;border:1px solid rgba(255,255,255,.15);opacity:.7}
+  </style>
+
+  <div id="fibSettingsModal">
+    <div class="fib-modal">
+      <div class="fib-modal-hdr">
+        <div class="fib-modal-title">
+          <span>Fib retracement</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.4"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        </div>
+        <button class="fib-modal-close" onclick="closeFibSettings()">×</button>
+      </div>
+      <div class="fib-tabs">
+        <button class="fib-tab active" data-fib-tab="style" onclick="switchFibTab('style',this)">Style</button>
+        <button class="fib-tab" data-fib-tab="coords" onclick="switchFibTab('coords',this)">Coordinates</button>
+        <button class="fib-tab" data-fib-tab="visibility" onclick="switchFibTab('visibility',this)">Visibility</button>
+      </div>
+
+      <!-- STYLE TAB -->
+      <div class="fib-body" id="fibTabStyle">
+        <div class="fib-row" style="margin-bottom:12px">
+          <input type="checkbox" class="fib-chk" id="fibTrendLineChk" checked>
+          <label for="fibTrendLineChk" style="min-width:80px">Trend line</label>
+          <div class="fib-color-btn" id="fibTrendColorBtn" style="background:#787b86">
+            <input type="color" id="fibTrendColorIn" value="#787b86">
+          </div>
+          <div class="fib-line-styles" id="fibTrendLineStyle">
+            <button class="fib-line-style" data-style="solid" title="Solid"><svg viewBox="0 0 24 2"><line x1="0" y1="1" x2="24" y2="1" stroke="#d1d4dc" stroke-width="2"/></svg></button>
+            <button class="fib-line-style active" data-style="dashed" title="Dashed"><svg viewBox="0 0 24 2"><line x1="0" y1="1" x2="24" y2="1" stroke="#d1d4dc" stroke-width="2" stroke-dasharray="4 3"/></svg></button>
+          </div>
+        </div>
+        <div class="fib-row" style="margin-bottom:12px">
+          <label style="min-width:80px">Levels line</label>
+          <div class="fib-line-styles" id="fibLevelsLineStyle">
+            <button class="fib-line-style active" data-style="solid" title="Solid"><svg viewBox="0 0 24 2"><line x1="0" y1="1" x2="24" y2="1" stroke="#d1d4dc" stroke-width="2"/></svg></button>
+            <button class="fib-line-style" data-style="dashed" title="Dashed"><svg viewBox="0 0 24 2"><line x1="0" y1="1" x2="24" y2="1" stroke="#d1d4dc" stroke-width="2" stroke-dasharray="4 3"/></svg></button>
+          </div>
+        </div>
+        <div class="fib-row" style="margin-bottom:14px">
+          <label style="min-width:80px">Extend</label>
+          <select class="fib-select" id="fibExtendSel">
+            <option value="none">Don't extend</option>
+            <option value="left">Extend left</option>
+            <option value="right">Extend right</option>
+            <option value="both">Extend both</option>
+          </select>
+        </div>
+
+        <div class="fib-section">Levels</div>
+        <div class="fib-levels-grid" id="fibLevelsGrid">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="fib-section">Background fills</div>
+        <div id="fibFillsContainer">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- COORDINATES TAB -->
+      <div class="fib-body" id="fibTabCoords" style="display:none">
+        <div class="fib-section" style="border-top:none;margin-top:0;padding-top:0">Point 1 (Start)</div>
+        <div class="fib-coord-row">
+          <span class="fib-coord-label">Price</span>
+          <input type="text" class="fib-coord-input" id="fibCoordP1Price">
+        </div>
+        <div class="fib-coord-row">
+          <span class="fib-coord-label">Bar #</span>
+          <input type="text" class="fib-coord-input" id="fibCoordP1Bar">
+        </div>
+        <div class="fib-coord-row">
+          <span class="fib-coord-label">Date</span>
+          <input type="text" class="fib-coord-input" id="fibCoordP1Date" readonly style="width:160px;color:#787b86">
+        </div>
+        <div class="fib-section">Point 2 (End)</div>
+        <div class="fib-coord-row">
+          <span class="fib-coord-label">Price</span>
+          <input type="text" class="fib-coord-input" id="fibCoordP2Price">
+        </div>
+        <div class="fib-coord-row">
+          <span class="fib-coord-label">Bar #</span>
+          <input type="text" class="fib-coord-input" id="fibCoordP2Bar">
+        </div>
+        <div class="fib-coord-row">
+          <span class="fib-coord-label">Date</span>
+          <input type="text" class="fib-coord-input" id="fibCoordP2Date" readonly style="width:160px;color:#787b86">
+        </div>
+      </div>
+
+      <!-- VISIBILITY TAB -->
+      <div class="fib-body" id="fibTabVisibility" style="display:none">
+        <div class="fib-section" style="border-top:none;margin-top:0;padding-top:0">Show on timeframes</div>
+        <div class="fib-vis-row"><span class="fib-vis-label">All timeframes</span><div class="fib-toggle on" id="fibVisTfAll" onclick="toggleFibVis(this)"></div></div>
+        <div class="fib-vis-row"><span class="fib-vis-label">Show labels</span><div class="fib-toggle on" id="fibVisLabels" onclick="toggleFibVis(this)"></div></div>
+        <div class="fib-vis-row"><span class="fib-vis-label">Show prices</span><div class="fib-toggle on" id="fibVisPrices" onclick="toggleFibVis(this)"></div></div>
+        <div class="fib-vis-row"><span class="fib-vis-label">Show levels as %</span><div class="fib-toggle on" id="fibVisPercent" onclick="toggleFibVis(this)"></div></div>
+      </div>
+
+      <div class="fib-modal-footer">
+        <div class="fib-footer-left">
+          <button class="fib-btn fib-btn-template" onclick="resetFibToDefaults()">↺ Reset defaults</button>
+        </div>
+        <div class="fib-footer-right">
+          <button class="fib-btn fib-btn-cancel" onclick="closeFibSettings()">Cancel</button>
+          <button class="fib-btn fib-btn-ok" onclick="applyFibSettings()">Ok</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="js/i18n.js"></script>
   <script defer src="js/tool-renderers.js"></script>
   <script defer src="js/analyzer.js"></script>
