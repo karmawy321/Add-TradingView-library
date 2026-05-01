@@ -5733,8 +5733,15 @@
           _fibFills: d._fibFills, p1: d.p1, p2: d.p2
         });
         _populateFibModal(d);
+        switchFibTab('style', document.querySelector('.fib-tab[data-fib-tab="style"]'));
         var m = document.getElementById('fibSettingsModal');
-        if (m) m.classList.add('show');
+        if (m) {
+          /* Reset positioning for fresh open */
+          m.style.alignItems = 'center'; m.style.justifyContent = 'center';
+          var inner = m.querySelector('.fib-modal');
+          if (inner) { inner.style.position = ''; inner.style.left = ''; inner.style.top = ''; inner.style.margin = ''; }
+          m.classList.add('show');
+        }
       };
 
       window.closeFibSettings = function() {
@@ -5785,12 +5792,57 @@
 
       window.toggleFibVis = function(el) { el.classList.toggle('on'); };
 
+      /* ── Draggable Modal Logic ── */
+      (function initFibDraggable() {
+        var m = document.querySelector('.fib-modal');
+        var hdr = document.querySelector('.fib-modal-hdr');
+        if (!m || !hdr) { setTimeout(initFibDraggable, 500); return; }
+        var isDragging = false, startX, startY, initialX, initialY;
+        hdr.onmousedown = function(e) {
+          if (e.target.closest('.fib-modal-close') || e.target.closest('button')) return;
+          isDragging = true;
+          startX = e.clientX; startY = e.clientY;
+          var rect = m.getBoundingClientRect();
+          initialX = rect.left; initialY = rect.top;
+          var parent = document.getElementById('fibSettingsModal');
+          if (parent) { parent.style.alignItems = 'flex-start'; parent.style.justifyContent = 'flex-start'; }
+          m.style.position = 'absolute';
+          m.style.left = initialX + 'px';
+          m.style.top = initialY + 'px';
+          m.style.margin = '0';
+          document.addEventListener('mousemove', onMouseMove);
+          document.addEventListener('mouseup', onMouseUp);
+        };
+        function onMouseMove(e) {
+          if (!isDragging) return;
+          var dx = e.clientX - startX, dy = e.clientY - startY;
+          m.style.left = (initialX + dx) + 'px';
+          m.style.top = (initialY + dy) + 'px';
+        }
+        function onMouseUp() { isDragging = false; document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); }
+      })();
+
+      function _syncFib() {
+        if (!_fibEditDrawing) return;
+        _readFibModal(_fibEditDrawing);
+        var fx = window._fx; if (fx) fx.renderChart();
+      }
+
       function _populateFibModal(d) {
+        var fx = window._fx;
         /* Trend line */
-        var tlChk = document.getElementById('fibTrendLineChk'); if (tlChk) tlChk.checked = d._fibTrendLine;
-        var tlColor = document.getElementById('fibTrendColorIn'); if (tlColor) { tlColor.value = d._fibTrendColor; }
-        var tlBtn = document.getElementById('fibTrendColorBtn'); if (tlBtn) tlBtn.style.background = d._fibTrendColor;
-        if (tlColor) tlColor.oninput = function() { tlBtn.style.background = this.value; };
+        var tlChk = document.getElementById('fibTrendLineChk');
+        if (tlChk) {
+          tlChk.checked = d._fibTrendLine;
+          tlChk.onchange = _syncFib;
+        }
+        var tlColor = document.getElementById('fibTrendColorIn');
+        var tlBtn = document.getElementById('fibTrendColorBtn');
+        if (tlColor && tlBtn) {
+          tlColor.value = d._fibTrendColor;
+          tlBtn.style.background = d._fibTrendColor;
+          tlColor.oninput = function() { tlBtn.style.background = this.value; _syncFib(); };
+        }
 
         /* Trend line style */
         document.querySelectorAll('#fibTrendLineStyle .fib-line-style').forEach(function(b) {
@@ -5798,6 +5850,7 @@
           b.onclick = function() {
             document.querySelectorAll('#fibTrendLineStyle .fib-line-style').forEach(function(bb) { bb.classList.remove('active'); });
             this.classList.add('active');
+            _syncFib();
           };
         });
         /* Levels line style */
@@ -5806,10 +5859,15 @@
           b.onclick = function() {
             document.querySelectorAll('#fibLevelsLineStyle .fib-line-style').forEach(function(bb) { bb.classList.remove('active'); });
             this.classList.add('active');
+            _syncFib();
           };
         });
         /* Extend */
-        var extSel = document.getElementById('fibExtendSel'); if (extSel) extSel.value = d._fibExtend;
+        var extSel = document.getElementById('fibExtendSel');
+        if (extSel) {
+          extSel.value = d._fibExtend;
+          extSel.onchange = _syncFib;
+        }
 
         /* Levels grid */
         var grid = document.getElementById('fibLevelsGrid');
@@ -5821,15 +5879,20 @@
             var chk = document.createElement('input');
             chk.type = 'checkbox'; chk.className = 'fib-chk'; chk.checked = lv.enabled;
             chk.setAttribute('data-fib-idx', i);
+            chk.onchange = function() { _syncFib(); _populateFibModal(d); }; /* repopulate for fills */
+
             var inp = document.createElement('input');
             inp.type = 'text'; inp.className = 'fib-val-input'; inp.value = lv.value;
             inp.setAttribute('data-fib-idx', i);
+            inp.oninput = _syncFib;
+
             var colBtn = document.createElement('div');
             colBtn.className = 'fib-color-btn'; colBtn.style.background = lv.color;
             var colInp = document.createElement('input');
             colInp.type = 'color'; colInp.value = lv.color;
             colInp.setAttribute('data-fib-idx', i);
-            colInp.oninput = function() { colBtn.style.background = this.value; };
+            colInp.oninput = function() { colBtn.style.background = this.value; _syncFib(); };
+
             colBtn.appendChild(colInp);
             item.appendChild(chk);
             item.appendChild(inp);
@@ -5860,32 +5923,21 @@
           var fillLbl = document.createElement('label'); fillLbl.textContent = 'Fill between levels'; fillLbl.style.minWidth = '140px';
           var fillTog = document.createElement('div'); fillTog.className = 'fib-toggle' + (d._fibFills ? ' on' : '');
           fillTog.id = 'fibFillToggle';
-          fillTog.onclick = function() { this.classList.toggle('on'); };
+          fillTog.onclick = function() { this.classList.toggle('on'); _syncFib(); _populateFibModal(d); };
           fillRow.appendChild(fillLbl); fillRow.appendChild(fillTog);
           fillsCont.appendChild(fillRow);
         }
 
         /* Coordinates */
-        var p1p = document.getElementById('fibCoordP1Price'); if (p1p) p1p.value = d.p1 ? d.p1.price.toFixed(5) : '';
-        var p1b = document.getElementById('fibCoordP1Bar'); if (p1b) p1b.value = d.p1 ? d.p1.bi : '';
-        var p2p = document.getElementById('fibCoordP2Price'); if (p2p) p2p.value = d.p2 ? d.p2.price.toFixed(5) : '';
-        var p2b = document.getElementById('fibCoordP2Bar'); if (p2b) p2b.value = d.p2 ? d.p2.bi : '';
-        /* Dates */
-        function _fibDate(bi) {
-          if (!chartCandles || bi < 0 || bi >= chartCandles.length) return '—';
-          var c = chartCandles[bi], dt = new Date(c.t);
-          return dt.toISOString().replace('T', '  ').slice(0, 19);
-        }
-        var p1d = document.getElementById('fibCoordP1Date'); if (p1d && d.p1) p1d.value = _fibDate(d.p1.bi);
-        var p2d = document.getElementById('fibCoordP2Date'); if (p2d && d.p2) p2d.value = _fibDate(d.p2.bi);
+        var p1p = document.getElementById('fibCoordP1Price'); if (p1p) { p1p.value = d.p1 ? d.p1.price.toFixed(5) : ''; p1p.oninput = _syncFib; }
+        var p1b = document.getElementById('fibCoordP1Bar'); if (p1b) { p1b.value = d.p1 ? d.p1.bi : ''; p1b.oninput = _syncFib; }
+        var p2p = document.getElementById('fibCoordP2Price'); if (p2p) { p2p.value = d.p2 ? d.p2.price.toFixed(5) : ''; p2p.oninput = _syncFib; }
+        var p2b = document.getElementById('fibCoordP2Bar'); if (p2b) { p2b.value = d.p2 ? d.p2.bi : ''; p2b.oninput = _syncFib; }
 
         /* Visibility toggles */
-        var vl = document.getElementById('fibVisLabels'); if (vl) vl.classList.toggle('on', d._fibShowLabels);
-        var vp = document.getElementById('fibVisPrices'); if (vp) vp.classList.toggle('on', d._fibShowPrices);
-        var vpc = document.getElementById('fibVisPercent'); if (vpc) vpc.classList.toggle('on', d._fibShowPercent);
-
-        /* Reset tab to Style */
-        switchFibTab('style', document.querySelector('.fib-tab[data-fib-tab="style"]'));
+        var vl = document.getElementById('fibVisLabels'); if (vl) vl.onclick = function() { this.classList.toggle('on'); _syncFib(); };
+        var vp = document.getElementById('fibVisPrices'); if (vp) vp.onclick = function() { this.classList.toggle('on'); _syncFib(); };
+        var vpc = document.getElementById('fibVisPercent'); if (vpc) vpc.onclick = function() { this.classList.toggle('on'); _syncFib(); };
       }
 
       function _readFibModal(d) {
