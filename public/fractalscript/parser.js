@@ -50,12 +50,6 @@
                 var s = parseStatement();
                 if (s && s.error) return s;
                 if (s) stmts.push(s);
-                while (at(TT.COMMA)) {
-                    pos++;
-                    var s2 = parseStatement();
-                    if (s2 && s2.error) return s2;
-                    if (s2) stmts.push(s2);
-                }
                 skipNewlines();
             }
             return node('Program', { body: stmts });
@@ -323,35 +317,25 @@
             // Format 1: Type name = value
             // Format 2: Type[] name = value
             // Format 3: Type<Subtype> name = value
-            if (at(TT.IDENT)) {
+            if (at(TT.IDENT) || at(TT.KW_STRING) || at(TT.KW_INT) || at(TT.KW_FLOAT) || at(TT.KW_BOOL)) {
                 var peekPos = pos + 1;
                 var isAnnotation = false;
                 
-                if (peekPos < tokens.length && tokens[peekPos].type === TT.IDENT) {
-                    // Format 1: Type name = value
+                if (peekPos < tokens.length && (tokens[peekPos].type === TT.IDENT || tokens[peekPos].type === TT.KW_STRING)) {
                     isAnnotation = true;
                     peekPos++;
                 } else if (peekPos < tokens.length && tokens[peekPos].type === TT.OP && tokens[peekPos].value === '<') {
-                    // Format 3: Type<Subtype> name = value
-                    var depth = 1;
-                    peekPos++;
+                    var depth = 1; peekPos++;
                     while (peekPos < tokens.length && depth > 0) {
                         if (tokens[peekPos].type === TT.OP && tokens[peekPos].value === '<') depth++;
                         else if (tokens[peekPos].type === TT.OP && tokens[peekPos].value === '>') depth--;
                         peekPos++;
                     }
-                    if (peekPos < tokens.length && tokens[peekPos].type === TT.IDENT) {
-                        isAnnotation = true;
-                        peekPos++;
-                    }
+                    if (peekPos < tokens.length && tokens[peekPos].type === TT.IDENT) { isAnnotation = true; peekPos++; }
                 } else if (peekPos < tokens.length && tokens[peekPos].type === TT.LBRACKET) {
-                    // Format 2: Type[] name = value
                     if (peekPos + 1 < tokens.length && tokens[peekPos + 1].type === TT.RBRACKET) {
                         peekPos += 2;
-                        if (peekPos < tokens.length && tokens[peekPos].type === TT.IDENT) {
-                            isAnnotation = true;
-                            peekPos++;
-                        }
+                        if (peekPos < tokens.length && tokens[peekPos].type === TT.IDENT) { isAnnotation = true; peekPos++; }
                     }
                 }
                 
@@ -359,10 +343,8 @@
                     var savedPos = peekPos;
                     while (peekPos < tokens.length && tokens[peekPos].type === TT.NEWLINE) peekPos++;
                     if (peekPos < tokens.length && (tokens[peekPos].type === TT.ASSIGN || tokens[peekPos].type === TT.REASSIGN || tokens[peekPos].type === TT.COMPOUND_ASSIGN)) {
-                        // Consuming type annotation tokens cleanly
-                        pos = savedPos - 1; // Move to the variable name token
+                        pos = savedPos - 1;
                         var nameToken = eat(TT.IDENT);
-                        
                         if (at(TT.ASSIGN)) {
                             pos++;
                             var val = parseExpression();
@@ -374,17 +356,6 @@
                             var val2 = parseExpression();
                             if (val2 && val2.error) return val2;
                             return { type: 'Reassign', name: nameToken.value, value: val2, line: l.line, col: l.col };
-                        }
-                        if (at(TT.COMPOUND_ASSIGN)) {
-                            var compOp = cur().value[0];
-                            pos++;
-                            var val3 = parseExpression();
-                            if (val3 && val3.error) return val3;
-                            return {
-                                type: 'Reassign', name: nameToken.value,
-                                value: { type: 'BinaryExpr', op: compOp, left: { type: 'Identifier', name: nameToken.value, line: nameToken.line, col: nameToken.col }, right: val3, line: l.line, col: l.col },
-                                line: l.line, col: l.col
-                            };
                         }
                     }
                 }
@@ -528,12 +499,6 @@
                 var s = parseStatement();
                 if (s && s.error) return s;
                 if (s) stmts.push(s);
-                while (at(TT.COMMA)) {
-                    pos++;
-                    var s22 = parseStatement();
-                    if (s22 && s22.error) return s22;
-                    if (s22) stmts.push(s22);
-                }
             }
 
             if (stmts.length === 1) return stmts[0];
@@ -758,7 +723,10 @@
             }
 
             if (at(TT.IDENT)) { pos++; return { type: 'Identifier', name: t.value, line: t.line, col: t.col }; }
-
+            if (at(TT.KW_STRING) || at(TT.KW_INT) || at(TT.KW_FLOAT) || at(TT.KW_BOOL)) {
+                pos++;
+                return { type: 'Identifier', name: t.value, line: t.line, col: t.col };
+            }
             if (at(TT.KW_HLINE) || at(TT.KW_PLOT) || at(TT.KW_PLOTSHAPE) || at(TT.KW_BGCOLOR) || at(TT.KW_STRATEGY)) {
                 pos++;
                 return { type: 'Identifier', name: t.value, line: t.line, col: t.col };
