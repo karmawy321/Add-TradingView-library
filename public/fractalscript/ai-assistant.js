@@ -160,11 +160,36 @@
     });
   };
 
+  /* ── Auto-resize textarea ── */
+  function setupAutoResize() {
+    var input = document.getElementById('fs-ai-generate-input');
+    if (!input) return;
+    
+    input.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = (this.scrollHeight) + 'px';
+      
+      // Also expand modal width if typing a lot
+      var inner = document.getElementById('fractalModalInner');
+      if (inner && this.value.length > 100) {
+        inner.style.maxWidth = '1000px';
+        inner.style.width = '96%';
+      } else if (inner) {
+        inner.style.maxWidth = '720px';
+        inner.style.width = '92%';
+      }
+    });
+  }
+
   /* ── Boot ── */
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', watchErrors);
+    document.addEventListener('DOMContentLoaded', function() {
+      watchErrors();
+      setupAutoResize();
+    });
   } else {
     watchErrors();
+    setupAutoResize();
   }
 
 })();
