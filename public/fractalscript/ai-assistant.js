@@ -29,9 +29,9 @@
         _lastError = m
           ? { line: parseInt(m[1]), col: parseInt(m[2]), message: m[3].trim() }
           : { line: 1, col: 1, message: msg };
-        fixBtn.style.display = 'inline-flex';
+        fixBtn.classList.add('visible');
       } else {
-        fixBtn.style.display = 'none';
+        fixBtn.classList.remove('visible');
         _lastError = null;
       }
     }

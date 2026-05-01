@@ -4459,7 +4459,7 @@
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
       display: flex;
       flex-direction: column;
-      max-height: 85vh;
+      max-height: 92vh;
       overflow: hidden;
     }
 
@@ -4494,6 +4494,34 @@
       display: none;
       margin-top: 8px;
       white-space: pre-wrap;
+    }
+
+    #fs-ai-fix-btn {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 10px 22px;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      color: #a78bfa;
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 0.3px;
+    }
+
+    #fs-ai-fix-btn:hover {
+      background: rgba(139, 92, 246, 0.28);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(139, 92, 246, 0.25);
+    }
+
+    #fs-ai-fix-btn.visible {
+      display: inline-flex;
     }
 
     #fractalInputs {

@@ -1796,6 +1796,7 @@
           <span style="font-family:'DM Sans',sans-serif;font-weight:600;color:#f0f4fa;font-size:15px;">FractalScript
             <span style="font-size:10px;opacity:0.5;font-weight:400;">(Pine-compatible)</span></span>
           <span style="font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;">logic engine</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(139,92,246,0.18);border:1px solid rgba(139,92,246,0.35);border-radius:12px;font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:0.5px;font-family:'DM Sans',sans-serif;">✦ AI</span>
         </div>
         <button onclick="_closeFractalModal()"
           style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;"
@@ -1809,8 +1810,25 @@
         <textarea id="fractalEditor"
           placeholder="//@version=5&#10;indicator(&quot;My Indicator&quot;, overlay=true)&#10;&#10;fast = ta.sma(close, 9)&#10;slow = ta.sma(close, 21)&#10;&#10;plot(fast, title=&quot;Fast&quot;, color=color.blue)&#10;plot(slow, title=&quot;Slow&quot;, color=color.orange)"></textarea>
         <div id="fractalErrors"></div>
+        <button id="fs-ai-fix-btn" onclick="window._fsAiFix()" onmouseover="this.style.background='rgba(139,92,246,0.28)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='';this.style.transform=''">🔧 Fix with AI</button>
         <div id="fractalInputs"></div>
       </div>
+      <!-- AI Generate Bar -->
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 24px;border-top:1px solid rgba(139,92,246,0.2);background:rgba(139,92,246,0.05);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="1.5" style="flex-shrink:0;opacity:0.7;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <input id="fs-ai-generate-input" type="text"
+          placeholder="Describe an indicator… e.g. RSI with overbought/oversold background"
+          onkeydown="if(event.key==='Enter') window._fsAiGenerate()"
+          style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(139,92,246,0.25);border-radius:8px;padding:10px 16px;color:#e2e8f0;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color 0.2s;"
+          onfocus="this.style.borderColor='rgba(139,92,246,0.55)';this.style.boxShadow='0 0 0 3px rgba(139,92,246,0.12)'"
+          onblur="this.style.borderColor='rgba(139,92,246,0.25)';this.style.boxShadow='none'" />
+        <button onclick="window._fsAiGenerate()"
+          style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(139,92,246,0.18);border:1px solid rgba(139,92,246,0.45);color:#a78bfa;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;white-space:nowrap;"
+          onmouseover="this.style.background='rgba(139,92,246,0.3)';this.style.color='#c4b5fd'"
+          onmouseout="this.style.background='rgba(139,92,246,0.18)';this.style.color='#a78bfa'"
+          id="fs-ai-generate-btn">⚡ Generate</button>
+      </div>
+      <!-- Footer -->
       <div
         style="padding:12px 24px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);">
         <div style="flex:1;">
@@ -1821,8 +1839,7 @@
               style="color:var(--gold);text-decoration:none;margin-left:8px;font-weight:600;opacity:0.8;"
               onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">LEARN MORE →</a>
           </div>
-          <div style="font-size:11px;color:rgba(201,168,76,0.5);font-family:'DM Mono',monospace;">v5-compatible syntax
-            only</div>
+          <div style="font-size:11px;color:rgba(201,168,76,0.5);font-family:'DM Mono',monospace;">v5-compatible syntax only</div>
         </div>
         <div style="display:flex;gap:8px;">
           <button onclick="_clearFractalScript()"
