@@ -1,0 +1,1864 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" id="R">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fractal AI Agent — Fractal Intelligence for Traders</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://js.stripe.com/v3/"></script>
+  <script src="ma-cascade.js"></script>
+  <script src="fractal-paths.js"></script>
+  <script src="fractalscript/na.js"></script>
+  <script src="fractalscript/constants.js"></script>
+  <script src="fractalscript/lexer.js"></script>
+  <script src="fractalscript/parser.js"></script>
+  <script src="fractalscript/ta-context.js"></script>
+  <script src="fractalscript/resolver.js"></script>
+  <script src="fractalscript/dispatchers.js"></script>
+  <script src="fractalscript/evaluator.js"></script>
+  <script src="fractalscript/index.js"></script>
+  <script src="fractalscript/ai-assistant.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Fractal AI Agent v3.0 -->
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&family=Tajawal:wght@300;400;500;700&display=swap"
+    rel="stylesheet">
+  <script>
+    var isEmbedded = window.location.search.includes('embed=true');
+    var embedId = new URLSearchParams(window.location.search).get('paneId');
+
+    // Prevent FOUC and aggressively strip UI when loaded as an inner Multi-chart Pane
+    if (isEmbedded) {
+      document.write('<style>nav,header,footer,#home,.hero,#how,#about,#aiToolsPanel,.az-bar,.gate-overlay,#chartWatermark,#layoutIn,#drawToolbar,.nav-credits{display:none!important}#chartToolsPanel>div>div:first-child,#liveTicker{display:none!important}body,#analyzer{padding:0!important;margin:0!important;overflow:hidden!important}.az-box,.az-wrap,#chartToolsPanel,#chartToolsPanel>div,.nd-chart-area,#chartArea{border:none!important;padding:0!important;max-width:100%!important;margin:0!important;border-radius:0!important;height:100vh!important;background:#000!important}#chartCanvasWrap{height:100vh!important}#chartCanvas{height:100vh!important}</style>');
+
+      // Listen for clicks inside the Iframe body to alert the parent
+      window.addEventListener('mousedown', function () {
+        if (window.parent) {
+          var sym = window.currentSymbol;
+          if (!sym) { var pin = document.getElementById('pairIn'); if (pin) sym = pin.value; }
+          window.parent.postMessage({ type: 'focus', paneId: embedId, symbol: sym }, '*');
+        }
+      }, true);
+    }
+
+    // Auto-launch preset symbol if provided or default to GOLD
+    var initSym = new URLSearchParams(window.location.search).get('symbol') || 'GOLD';
+    window.addEventListener('load', function () {
+      if (typeof quickLoad === 'function') {
+        quickLoad(initSym);
+      } else {
+        // Fallback if chart-engine is still loading
+        var _check = setInterval(function() {
+           if (typeof quickLoad === 'function') { clearInterval(_check); quickLoad(initSym); }
+        }, 100);
+        setTimeout(function() { clearInterval(_check); }, 5000);
+      }
+    });
+
+  </script>
+
+</head>
+
+<body>
+
+  <nav id="nav">
+    <a href="#" class="logo">
+      <img src="/logo-animated.svg" width="30" height="30" id="navLogoImg" alt="" style="flex-shrink:0;display:block">
+      <span id="t-brand">Fractal AI Agent</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#how" id="t-n1">How it works</a></li>
+      <li><a href="#about" id="t-n2">Methodology</a></li>
+      <li><a href="#analyzer" id="t-n3">Analyzer</a></li>
+      <li><a href="#pricing" id="t-n4">Pricing</a></li>
+    </ul>
+    <div class="nav-r">
+      <div class="ls">
+        <button class="lb on" onclick="setLang('en')">EN</button>
+        <button class="lb" onclick="setLang('ar')">AR</button>
+        <button class="lb" onclick="setLang('pt')">PT</button>
+      </div>
+      <!-- Auth: logged out -->
+      <div id="nav-loggedout" style="display:flex;align-items:center;gap:8px">
+        <a href="/auth" class="nav-cta" id="t-ncta">Sign In</a>
+      </div>
+      <!-- Auth: logged in -->
+      <div id="nav-loggedin" style="display:none;align-items:center;gap:10px">
+        <div class="nav-credits" title="Your credit balance">
+          <span class="nav-credits-icon">◈</span>
+          <span class="nav-credits-val" id="nav-credit-val">—</span>
+          <span style="opacity:.5">cr</span>
+        </div>
+        <a href="/profile" class="nav-user" id="nav-username"
+          style="text-decoration:none;cursor:pointer;transition:color .2s" title="Profile settings">—</a>
+        <button class="nav-signout" onclick="signOut()">Sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero" id="home">
+    <canvas id="hc"></canvas>
+    <div class="hero-in"
+      style="display:grid;grid-template-columns:200px 1fr;align-items:start;gap:64px;text-align:left;max-width:1100px;width:100%">
+      <div style="opacity:0.9;padding-top:8px"><img src="/logo-animated.svg" width="200" height="200"
+          alt="Fractal AI Agent" style="display:block;width:200px;height:200px"></div>
+      <div>
+        <p class="hero-eye" id="t-heye">Fractal Intelligence for Traders</p>
+        <h1 id="t-h1">The Market Is a<br><em>Fractal.</em> Read It.</h1>
+        <p class="hero-sub" id="t-hsub">Upload any chart. Our AI detects self-similar fractal structures at every scale
+          — returning an annotated image, wave analysis, and predicted price path in seconds.</p>
+        <div class="hero-acts">
+          <a href="#analyzer" class="btn-g" id="t-hcta1">Analyze My Chart</a>
+          <a href="#about" class="btn-o" id="t-hcta2">The Science</a>
+        </div>
+        <div class="hero-stats">
+          <div>
+            <div class="hs-v">3</div>
+            <div class="hs-l" id="t-st1">Fractal Scales</div>
+          </div>
+          <div>
+            <div class="hs-v">&lt;15s</div>
+            <div class="hs-l" id="t-st2">Analysis Time</div>
+          </div>
+          <div>
+            <div class="hs-v">88%</div>
+            <div class="hs-l" id="t-st3">Avg Similarity</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider">
+    <div class="dl"></div>
+    <div class="dg">◈</div>
+    <div class="dl"></div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <p class="eye reveal" id="t-heye2">The Process</p>
+    <h2 class="sec-h reveal" id="t-htitle">From Chart to Clarity in Seconds</h2>
+    <p class="sec-p reveal" id="t-hsub2">Four steps. No indicators needed. Pure fractal geometry applied to your chart
+      the moment you upload it.</p>
+    <div class="steps reveal">
+      <div class="step">
+        <div class="sn">01</div>
+        <div class="sb"></div>
+        <div class="st" id="t-s1t">Upload Your Chart</div>
+        <div class="sd" id="t-s1d">Any screenshot from TradingView, Binance, MT4 or MT5. Any pair, any market, any
+          timeframe.</div>
+      </div>
+      <div class="step">
+        <div class="sn">02</div>
+        <div class="sb"></div>
+        <div class="st" id="t-s2t">AI Reads the Fractal</div>
+        <div class="sd" id="t-s2d">Identifies self-similar structures across macro, mid and micro scales simultaneously.
+        </div>
+      </div>
+      <div class="step">
+        <div class="sn">03</div>
+        <div class="sb"></div>
+        <div class="st" id="t-s3t">Annotations Drawn</div>
+        <div class="sd" id="t-s3d">Your chart comes back annotated — fractal flip zones, wave labels, entry zone and
+          Fibonacci targets.</div>
+      </div>
+      <div class="step">
+        <div class="sn">04</div>
+        <div class="sb"></div>
+        <div class="st" id="t-s4t">Full Analysis Written</div>
+        <div class="sd" id="t-s4d">Complete breakdown: fractal structure, wave position, entry, stop loss, targets and
+          R:R ratio.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider">
+    <div class="dl"></div>
+    <div class="dg">◈</div>
+    <div class="dl"></div>
+  </div>
+
+  <!-- METHODOLOGY -->
+  <section id="about" style="padding-top:80px;padding-bottom:80px">
+    <p class="eye reveal" id="t-aeye">The Methodology</p>
+    <h2 class="sec-h reveal" id="t-atitle">Built on Real Fractal Mathematics</h2>
+    <p class="sec-p reveal" id="t-abody">Price is <strong style="color:var(--light)">continuous everywhere but
+        differentiable nowhere</strong> — exactly like the Weierstrass function. Interact with the live models below to
+      feel how fractal structure builds price at every scale.</p>
+
+    <!-- SCIENCE DEMOS EMBEDDED -->
+    <div class="reveal" style="max-width:1100px;margin:0 auto;border:1px solid var(--border);background:var(--dark2)">
+
+      <!-- Demo tabs bar -->
+      <div style="display:flex;border-bottom:1px solid var(--border2);background:var(--dark3)">
+        <div class="sci-tab-m active" id="smt0" onclick="swSciM(0,this)">Weierstrass Function</div>
+        <div class="sci-tab-m" id="smt1" onclick="swSciM(1,this)">Time Series</div>
+        <div class="sci-tab-m" id="smt2" onclick="swSciM(2,this)">Self-Similarity</div>
+      </div>
+
+      <!-- PANEL 0: WEIERSTRASS -->
+      <div class="sci-pan-m active" id="smp0" style="padding:20px 24px">
+        <div style="display:grid;grid-template-columns:1fr 260px;gap:14px;align-items:start">
+          <div style="border:1px solid var(--border2);position:relative">
+            <canvas id="mwCanvas" height="240" style="display:block;width:100%;background:#07090f"></canvas>
+            <div
+              style="position:absolute;top:7px;left:8px;font-family:DM Mono,monospace;font-size:9px;letter-spacing:.1em;color:var(--gold);background:rgba(6,8,13,.88);padding:2px 7px;border:1px solid rgba(201,168,76,.2)">
+              Weierstrass Function — continuous, never smooth</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div
+              style="background:var(--dark3);border:1px solid var(--border2);padding:14px;display:flex;flex-direction:column;gap:10px">
+              <div>
+                <div
+                  style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:4px">
+                  Terms (n) <span style="color:var(--gold)" id="mwNv">8</span></div>
+                <input type="range" id="mwN" min="1" max="20" value="8"
+                  style="width:100%;accent-color:var(--gold);cursor:pointer" oninput="drawMW()">
+              </div>
+              <div>
+                <div
+                  style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:4px">
+                  Amplitude decay (a) <span style="color:var(--gold)" id="mwAv">0.70</span></div>
+                <input type="range" id="mwA" min="50" max="95" value="70"
+                  style="width:100%;accent-color:var(--gold);cursor:pointer" oninput="drawMW()">
+              </div>
+              <div>
+                <div
+                  style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:4px">
+                  Frequency growth (b) <span style="color:var(--gold)" id="mwBv">3</span></div>
+                <input type="range" id="mwB" min="2" max="9" value="3"
+                  style="width:100%;accent-color:var(--gold);cursor:pointer" oninput="drawMW()">
+              </div>
+            </div>
+            <div
+              style="font-family:DM Mono,monospace;font-size:10px;color:rgba(155,143,232,.85);background:rgba(155,143,232,.05);border-left:2px solid rgba(155,143,232,.3);padding:8px 12px;line-height:1.9">
+              W(x) = Σ <span style="color:var(--gold)">aⁿ</span>·cos(<span style="color:var(--gold)">bⁿ</span>πx)<br>
+              n = 0 → N &nbsp;·&nbsp; <span style="color:var(--gold)">a</span> ∈ (0,1)<br>
+              Condition: <span style="color:var(--gold)">ab > 1 + 3π/2</span>
+            </div>
+            <div style="background:var(--dark3);border:1px solid var(--border2);padding:12px 14px">
+              <div style="font-family:Cinzel,serif;font-size:12px;color:var(--white);font-weight:600;margin-bottom:6px">
+                What this means for trading</div>
+              <div style="font-size:11px;color:var(--muted);line-height:1.8">Price is <strong
+                  style="color:var(--light)">continuous everywhere</strong> but <strong
+                  style="color:var(--light)">differentiable nowhere</strong>. Drag <em>n</em> to add frequency layers —
+                each makes the curve rougher. This is exactly how price builds across timeframes. The inset shows the
+                same rough structure at zoom ×8.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 1: TIME SERIES -->
+      <div class="sci-pan-m" id="smp1" style="padding:20px 24px;flex-direction:column;gap:14px">
+        <div style="border:1px solid var(--border2);position:relative">
+          <canvas id="mtsCanvas" height="220" style="display:block;width:100%;background:#07090f"></canvas>
+          <div
+            style="position:absolute;top:7px;left:8px;font-family:DM Mono,monospace;font-size:9px;letter-spacing:.1em;color:var(--gold);background:rgba(6,8,13,.88);padding:2px 7px;border:1px solid rgba(201,168,76,.2)">
+            Price = Trend + Cycle + Fractal Noise</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div style="border:1px solid var(--border2)">
+            <div
+              style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
+              <span style="color:var(--gold)">Trend (T)</span><span style="color:var(--muted)">Low freq</span>
+            </div>
+            <canvas id="mtsT" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
+          </div>
+          <div style="border:1px solid var(--border2)">
+            <div
+              style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
+              <span style="color:#3498db">Cycle (C)</span><span style="color:var(--muted)">Mid freq</span>
+            </div>
+            <canvas id="mtsC" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
+          </div>
+          <div style="border:1px solid var(--border2)">
+            <div
+              style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
+              <span style="color:#9b8fe8">Fractal Noise (N)</span><span style="color:var(--muted)">High freq</span>
+            </div>
+            <canvas id="mtsN" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
+          </div>
+        </div>
+        <div
+          style="border-left:2px solid var(--gold);background:rgba(201,168,76,.04);padding:10px 14px;font-size:12px;color:var(--muted);line-height:1.8">
+          <strong style="color:var(--gold)">Price = Trend + Cycle + Fractal Noise.</strong> Conventional analysts read
+          the trend. Elliott Wave reads cycles. <strong style="color:var(--light)">Fractal AI Agent reads the noise
+            layer</strong> — the structured chaos everyone else discards as random.
+        </div>
+      </div>
+
+      <!-- PANEL 2: SELF-SIMILARITY -->
+      <div class="sci-pan-m" id="smp2" style="padding:20px 24px;flex-direction:column;gap:14px">
+        <div style="display:grid;grid-template-columns:1fr 260px;gap:14px;align-items:start">
+          <div style="border:1px solid var(--border2);position:relative">
+            <canvas id="mfCanvas" height="240" style="display:block;width:100%;background:#07090f"></canvas>
+            <div
+              style="position:absolute;top:7px;left:8px;font-family:DM Mono,monospace;font-size:9px;letter-spacing:.1em;color:var(--gold);background:rgba(6,8,13,.88);padding:2px 7px;border:1px solid rgba(201,168,76,.2)">
+              Fractal wave — all scales overlaid</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div
+              style="background:var(--dark3);border:1px solid var(--border2);padding:14px;display:flex;flex-direction:column;gap:10px">
+              <div>
+                <div
+                  style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:4px">
+                  Depth (scales) <span style="color:var(--gold)" id="mfDv">3</span></div>
+                <input type="range" id="mfD" min="1" max="5" value="3"
+                  style="width:100%;accent-color:var(--gold);cursor:pointer" oninput="drawMF()">
+              </div>
+              <div>
+                <div
+                  style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:4px">
+                  Wave amplitude <span style="color:var(--gold)" id="mfAv">0.55</span></div>
+                <input type="range" id="mfAmp" min="30" max="80" value="55"
+                  style="width:100%;accent-color:var(--gold);cursor:pointer" oninput="drawMF()">
+              </div>
+              <div>
+                <div
+                  style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:4px">
+                  Similarity ratio <span style="color:var(--gold)" id="mfRv">0.50</span></div>
+                <input type="range" id="mfR" min="25" max="75" value="50"
+                  style="width:100%;accent-color:var(--gold);cursor:pointer" oninput="drawMF()">
+              </div>
+            </div>
+            <div
+              style="font-family:DM Mono,monospace;font-size:10px;color:rgba(155,143,232,.85);background:rgba(155,143,232,.05);border-left:2px solid rgba(155,143,232,.3);padding:8px 12px;line-height:1.9">
+              F(t,d) = A·W(t) + <span style="color:var(--gold)">r</span>·F(t·s, d-1)<br>
+              <span style="color:var(--gold)">d</span> = depth · <span style="color:var(--gold)">r</span> = ratio<br>
+              Each level = same wave at <span style="color:var(--gold)">r×</span> smaller amplitude
+            </div>
+            <div style="background:var(--dark3);border:1px solid var(--border2);padding:12px 14px">
+              <div style="font-family:Cinzel,serif;font-size:12px;color:var(--white);font-weight:600;margin-bottom:6px">
+                Drag the sliders to feel it</div>
+              <div style="font-size:11px;color:var(--muted);line-height:1.8">Increasing depth adds nested scales — each
+                a smaller copy of the wave above. The <strong style="color:var(--light)">similarity ratio</strong>
+                controls how closely the inner wave mirrors the outer. In real markets this closeness is the <strong
+                  style="color:var(--light)">similarity score</strong> the AI calculates.</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div style="border:1px solid var(--border2)">
+            <div
+              style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
+              <span style="color:var(--gold)">Macro wave</span><span style="color:var(--muted)">Scale 1</span>
+            </div>
+            <canvas id="mfZ1" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
+          </div>
+          <div style="border:1px solid var(--border2)">
+            <div
+              style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
+              <span style="color:#3498db">Mid wave</span><span style="color:var(--muted)">Scale 2</span>
+            </div>
+            <canvas id="mfZ2" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
+          </div>
+          <div style="border:1px solid var(--border2)">
+            <div
+              style="padding:6px 10px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px">
+              <span style="color:#9b8fe8">Micro wave</span><span style="color:var(--muted)">Scale 3</span>
+            </div>
+            <canvas id="mfZ3" style="display:block;width:100%;height:70px;background:#0d1018"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end science demos -->
+  </section>
+
+  <div class="divider">
+    <div class="dl"></div>
+    <div class="dg">◈</div>
+    <div class="dl"></div>
+  </div>
+
+  <!-- ANALYZER -->
+  <section id="analyzer">
+    <div class="az-wrap">
+      <p class="eye" id="t-azeye">Live Demo</p>
+      <h2 class="sec-h" id="t-aztitle">Analyze Your Chart Now</h2>
+      <p class="sec-p" id="t-azsub">Upload once. All three fractal tools run in parallel and display below
+        simultaneously.</p>
+      <div class="az-box">
+        <div class="az-bar">
+          <div class="az-dot" style="background:#c0392b"></div>
+          <div class="az-dot" style="background:#f39c12"></div>
+          <div class="az-dot" style="background:#27ae60"></div>
+          <span class="az-lbl" style="margin-right:20px">FRACTAL AI AGENT — UNIFIED ANALYSIS DASHBOARD</span>
+
+          <!-- FractalScript Label & Logo (Beside Expand btn) -->
+          <div style="display:flex;align-items:center;gap:15px;margin-left:auto;margin-right:15px;">
+            <span id="fsLabelText"
+              style="font-family:'Cinzel',serif;font-size:14px;font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.18em;pointer-events:none;user-select:none;transition:all 0.3s;">FractalScript</span>
+            <div id="fractalScriptBtn" onclick="_toggleFractalScript()"
+              style="width:68px;height:68px;cursor:pointer;position:relative;border-radius:12px;transition:all 0.2s;background:#000;box-shadow:0 4px 20px rgba(0,0,0,0.6);"
+              onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+              <img src="fractalscript-logo.svg" style="width:100%;height:100%;border-radius:12px;display:block;">
+              <div id="fsBtnGlow"
+                style="position:absolute;inset:-3px;border:2px solid #c9a84c;border-radius:15px;opacity:0;transition:opacity 0.2s;box-shadow:0 0 20px rgba(201,168,76,0.4)">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ LIVE CHART PANEL ══ -->
+        <div id="chartToolsPanel" style="display:flex;flex-direction:column;border-bottom:1px solid var(--border2)">
+
+          <!-- CHART AREA: full width -->
+          <div style="position:relative">
+            <!-- Chart toolbar — always visible -->
+            <div
+              style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);flex-wrap:wrap;position:relative;z-index:1001">
+              <div style="position:relative;display:inline-block">
+                <input type="text" id="pairIn" placeholder="Search symbol… (/)" autocomplete="off" readonly
+                  onclick="openSearchModal()"
+                  style="font-family:'DM Mono',monospace;font-size:13px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 12px;width:150px;outline:none;letter-spacing:.04em;cursor:pointer">
+              </div>
+              <select id="tfIn" onchange="onTfChange()"
+                style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
+                <optgroup label="SECONDS">
+                  <option value="1s">1s</option>
+                  <option value="5s">5s</option>
+                  <option value="10s">10s</option>
+                  <option value="30s">30s</option>
+                </optgroup>
+                <optgroup label="MINUTES">
+                  <option value="1m">1m</option>
+                  <option value="2m">2m</option>
+                  <option value="5m">5m</option>
+                  <option value="10m">10m</option>
+                  <option value="15m">15m</option>
+                  <option value="30m">30m</option>
+                </optgroup>
+                <optgroup label="HOURS">
+                  <option value="1h">1h</option>
+                  <option value="2h">2h</option>
+                  <option value="4h" selected>4h</option>
+                  <option value="6h">6h</option>
+                </optgroup>
+                <optgroup label="DAYS">
+                  <option value="1d">1d</option>
+                  <option value="1w">1w</option>
+                  <option value="1M">1M</option>
+                </optgroup>
+              </select>
+              <select id="tzSelect"
+                onchange="chartTzOffsetHours=parseFloat(this.value);localStorage.setItem('chartTzOffset',this.value);renderChart()"
+                style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
+                <option value="-12">UTC-12</option>
+                <option value="-11">UTC-11</option>
+                <option value="-10">UTC-10 Hawaii</option>
+                <option value="-9">UTC-9 Alaska</option>
+                <option value="-8">UTC-8 LA/Seattle</option>
+                <option value="-7">UTC-7 Denver/Phoenix</option>
+                <option value="-6">UTC-6 Chicago</option>
+                <option value="-5">UTC-5 New York</option>
+                <option value="-4">UTC-4 Halifax</option>
+                <option value="-3">UTC-3 São Paulo</option>
+                <option value="-2">UTC-2</option>
+                <option value="-1">UTC-1</option>
+                <option value="0">UTC+0 London</option>
+                <option value="1">UTC+1 Frankfurt</option>
+                <option value="2">UTC+2 Cairo/Athens</option>
+                <option value="3">UTC+3 Moscow/Riyadh</option>
+                <option value="4">UTC+4 Dubai</option>
+                <option value="5">UTC+5 Islamabad</option>
+                <option value="5.5">UTC+5:30 India</option>
+                <option value="6">UTC+6 Dhaka</option>
+                <option value="7">UTC+7 Bangkok</option>
+                <option value="8">UTC+8 Singapore/HK</option>
+                <option value="9">UTC+9 Tokyo</option>
+                <option value="9.5">UTC+9:30 Adelaide</option>
+                <option value="10">UTC+10 Sydney</option>
+                <option value="11">UTC+11</option>
+                <option value="12">UTC+12 Auckland</option>
+              </select>
+              <!-- SMA indicators loaded silently in background -->
+              <!-- Chart type selector -->
+              <select id="chartTypeIn" onchange="chartType=this.value;renderChart()"
+                style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
+                <option value="candles">Candles</option>
+                <option value="hollow">Hollow</option>
+                <option value="bars">Bars</option>
+                <option value="area">Area</option>
+                <option value="line">Line</option>
+              </select>
+
+              <button id="smaCrossZoneBtn" onclick="toggleSmaCrossZone()"
+                style="font-family:'DM Mono',monospace;font-size:11px;padding:6px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;opacity:0.6">SMA CROSS</button>
+
+              <button id="sma200Btn" onclick="toggleSMA(200)"
+                style="font-family:'DM Mono',monospace;font-size:11px;padding:6px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;opacity:0.6">SMA 200</button>
+              <button id="sma400Btn" onclick="toggleSMA(400)"
+                style="font-family:'DM Mono',monospace;font-size:11px;padding:6px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;opacity:0.6">SMA 400</button>
+              <button id="sma900Btn" onclick="toggleSMA(900)"
+                style="font-family:'DM Mono',monospace;font-size:11px;padding:6px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;opacity:0.6">SMA 900</button>
+
+              <button id="fmBtn" onclick="toggleFM()"
+                style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em;opacity:0.35">F·M</button>
+
+              <!-- Upload fallback -->
+              <label id="uploadLabel"
+                style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#8a95a8;cursor:pointer;letter-spacing:.06em">
+                ↑ UPLOAD
+                <input type="file" id="fileIn" accept="image/*" style="display:none">
+              </label>
+              <button id="clearUploadBtn" onclick="clearUploadedChart()"
+                style="display:none;font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.3);color:#ef5350;cursor:pointer;letter-spacing:.06em">✕
+                CLEAR PHOTO</button>
+              <button id="terminateChartBtn" onclick="terminateChart()"
+                style="font-family:'DM Mono',monospace;font-size:9px;padding:4px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);color:#8a95a8;cursor:pointer;letter-spacing:.06em">⏹
+                STOP</button>
+
+              <div class="live-price-bar" id="livePriceBar" style="margin-left:auto">
+                <div class="live-dot"></div>
+                <div class="live-price-val" id="livePriceVal">—</div>
+                <div class="live-price-change" id="livePriceChange"></div>
+                <div class="live-price-hl" id="livePriceHL" style="display:none"></div>
+                <div class="live-price-meta" id="livePriceMeta">LIVE</div>
+              </div>
+
+            </div>
+
+            <!-- Live price ticker strip -->
+            <div id="liveTicker"
+              style="display:flex;align-items:center;gap:0;overflow:hidden;border-bottom:1px solid rgba(201,168,76,.12);background:#07090e;height:26px;position:relative;z-index:20">
+              <div id="liveTickerTrack"
+                style="display:flex;align-items:center;gap:0;white-space:nowrap;will-change:transform"></div>
+            </div>
+
+
+            <!-- Custom Fractal Chart -->
+            <div id="chartArea">
+              <!-- Drawing toolbar — left strip -->
+              <div id="drawToolbar"
+                style="width:52px;flex-shrink:0;background:#07090e;border-right:1px solid rgba(201,168,76,.13);display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:1px;z-index:30;overflow-y:auto;overflow-x:hidden">
+              </div>
+              <!-- Canvas wrapper -->
+              <div id="chartCanvasWrap" style="position:relative">
+
+                <!-- TRADINGVIEW-STYLE REPLAY WIDGET -->
+                <div id="replayWidget"
+                  style="display:none;position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:200;background:rgba(18,20,30,0.95);border:1px solid rgba(52,152,219,.4);border-radius:6px;padding:6px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.6);backdrop-filter:blur(8px);font-family:'DM Mono',monospace;align-items:center;gap:12px">
+                  <div
+                    style="color:rgba(240,244,250,.9);font-weight:bold;font-size:11px;display:flex;align-items:center;gap:6px">
+                    <span style="color:#3498db">▶</span> REPLAY
+                  </div>
+                  <div style="width:1px;height:14px;background:rgba(255,255,255,.1)"></div>
+
+                  <div id="rpPlayControls" style="display:none;align-items:center;gap:6px">
+                    <button id="rpPlayBtn" onclick="toggleReplayPlay()"
+                      style="background:rgba(52,152,219,.15);border:1px solid rgba(52,152,219,.3);color:#3498db;cursor:pointer;display:flex;align-items:center;justify-content:center;width:26px;height:24px;border-radius:4px">
+                      <svg id="rpPlayIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </button>
+                    <button id="rpStepBtn" onclick="stepReplayForward()"
+                      style="background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);cursor:pointer;display:flex;align-items:center;justify-content:center;width:26px;height:24px;border-radius:4px">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                      </svg>
+                    </button>
+                    <div style="width:1px;height:14px;background:rgba(255,255,255,.1);margin-left:6px"></div>
+                    <select id="rpSpeed"
+                      style="background:#0a0c10;color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.15);border-radius:3px;padding:2px 4px;font-family:inherit;font-size:9px;outline:none">
+                      <option value="1000">1x</option>
+                      <option value="500">2x</option>
+                      <option value="300" selected>3x</option>
+                      <option value="100">5x</option>
+                      <option value="30">10x</option>
+                    </select>
+                  </div>
+
+                  <div id="rpSelectMsg" style="font-size:10px;color:rgba(255,255,255,.5);font-style:italic">
+                    Click on the chart to select starting point...
+                  </div>
+
+                  <div style="width:1px;height:14px;background:rgba(255,255,255,.1);margin-right:2px"></div>
+                  <button onclick="exitBacktestMode()"
+                    style="background:transparent;border:none;color:#e74c3c;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;line-height:1">×</button>
+                </div>
+
+
+                <canvas id="chartCanvas" style="display:block;width:100%;height:560px;cursor:crosshair"></canvas>
+                <!-- Sniper signal floating card -->
+                <div id="sniperCard"></div>
+
+                <!-- Chart watermark logo (TradingView-style with reverse animation) -->
+                <a href="https://fractalaiagent.com" target="_blank" id="chartWatermark"
+                  style="position:absolute;bottom:12px;right:12px;z-index:50;display:flex;align-items:center;gap:6px;text-decoration:none;opacity:0.75;transition:opacity 0.2s">
+                  <img src="/logo.svg" id="wmLogo" width="28" height="28" alt="Fractal AI Agent"
+                    style="display:block;transition:transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)">
+                  <span id="wmText"
+                    style="font-family:'DM Mono',monospace;font-size:11px;color:#c9a84c;font-weight:500;letter-spacing:0.02em;display:inline-block"></span>
+                </a>
+
+                <!-- Upload preview overlay -->
+                <div class="img-pv" id="imgPv" style="display:none;position:absolute;inset:0;z-index:100">
+                  <img id="prevImg" src="" alt="" style="width:100%;height:100%;object-fit:contain">
+                  <button class="rm-x" id="rmX">✕</button>
+                </div>
+                <!-- Welcome overlay -->
+                <div id="chartEmpty"
+                  style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#06080d;z-index:10;overflow-y:auto">
+                  <div style="text-align:center;max-width:380px;padding:24px">
+                    <img src="/logo-animated.svg" id="chartEmptyLogo" width="72" height="72"
+                      style="display:block;margin:0 auto 16px">
+                    <div
+                      style="font-family:'Cinzel',serif;font-size:16px;font-weight:600;color:#f0f4fa;letter-spacing:.08em;margin-bottom:8px">
+                      Begin Your Analysis</div>
+                    <div
+                      style="font-family:'DM Mono',monospace;font-size:9px;color:rgba(201,168,76,.6);letter-spacing:.12em;margin-bottom:20px">
+                      FRACTAL INTELLIGENCE FOR TRADERS</div>
+                    <div style="display:flex;flex-direction:column;gap:10px;text-align:left;margin-bottom:20px">
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <div
+                          style="width:24px;height:24px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:10px;color:#c9a84c;font-weight:600">
+                          1</div>
+                        <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:#8a95a8">Type a symbol — <span
+                            style="color:#c9a84c">BTCUSDT</span>, <span style="color:#c9a84c">ETHUSDT</span></div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <div
+                          style="width:24px;height:24px;border:1px solid rgba(201,168,76,.3);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace;font-size:10px;color:#c9a84c;font-weight:600">
+                          2</div>
+                        <div style="font-family:'DM Sans',sans-serif;font-size:12px;color:#8a95a8">Capture chart → run
+                          <span style="color:#c9a84c">AI tools</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                      <button onclick="quickLoad('GOLD')"
+                        style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">GOLD</button>
+                      <button onclick="quickLoad('BTCUSDT')"
+                        style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">BTC/USDT</button>
+                      <button onclick="quickLoad('ETHUSDT')"
+                        style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">ETH/USDT</button>
+                      <button onclick="quickLoad('SOLUSDT')"
+                        style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">SOL/USDT</button>
+                      <button onclick="quickLoad('USDBRL')"
+                        style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em">USD/BRL</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Strategy Report Panel — hidden until a strategy script runs -->
+          <div id="strategyReportPanel">
+            <!-- TV Top Header -->
+            <div id="srpHeader" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #131722; border-bottom: 1px solid #2a2e39;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <span id="srp-stratName" style="font: 600 15px 'Trebuchet MS', sans-serif; color: #d1d4dc;">Strategy Tester</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="font: 12px 'Trebuchet MS', sans-serif; color: #787b86; display: flex; align-items: center; gap: 6px;">
+                  <span id="srp-date-range">Apr 6, 2026 — Apr 27, 2026</span>
+                </div>
+                <div style="display:flex; align-items:center; gap: 6px;">
+                  <button id="btn-expand-strategy" onclick="_toggleExpandStrategy()" style="font-family:'DM Mono',monospace;font-size:9px;padding:6px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:#c9a84c;cursor:pointer;letter-spacing:.06em" title="Expand strategy tester">Expand</button>
+                  <button class="srp-hdr-btn" onclick="_srpExportXlsx()" title="Export data as XLSX">Export XLSX</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- TV Round Tabs Row -->
+            <div style="display: flex; align-items: center; padding: 10px 20px; background: #131722; border-bottom: 1px solid #2a2e39; gap: 6px;">
+              <button class="srp-tab srp-active" data-tab="metrics" onclick="_srpTab(this)" style="background: #2a2e39; color: #2962ff; border: none; padding: 6px 16px; border-radius: 20px; font: bold 12px 'Trebuchet MS', sans-serif; cursor: pointer;">Metrics</button>
+              <button class="srp-tab" data-tab="trades" onclick="_srpTab(this)" style="background: transparent; color: #787b86; border: none; padding: 6px 16px; border-radius: 20px; font: bold 12px 'Trebuchet MS', sans-serif; cursor: pointer;">List of trades</button>
+            </div>
+            
+            <!-- TV Metrics Tab Content -->
+            <div id="srp-metrics" class="srp-pane srp-active" style="background:#131722; overflow-y: auto; padding-bottom: 20px;">
+              <!-- TV Overview Banner -->
+              <div class="tv-banner" id="tv-ov-banner" style="display: flex; justify-content: space-around; padding: 20px; background: #131722; border-bottom: 1px solid #2a2e39;">
+                <!-- Populated dynamically: Total P&L | Max DD | Total Trades | Profitable trades | Profit Factor -->
+              </div>
+              
+              <!-- TV Equity Chart -->
+              <div style="padding: 20px 20px 0 20px; background: #131722;">
+                <div style="font: bold 13px 'Trebuchet MS', sans-serif; color: #d1d4dc; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                  Equity chart <span style="font-size: 11px; font-weight: normal; color: #787b86;">ⓘ</span>
+                </div>
+                <div class="tv-equity-wrapper" style="display: flex; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; height: 500px; overflow: hidden;">
+                  <!-- Sidebar Options -->
+                  <div id="eq-sidebar" style="width: 150px; border-right: 1px solid #2a2e39; padding: 10px 0; display: flex; flex-direction: column; background: #171b26; flex-shrink: 0;">
+                    <div class="eq-option active" onclick="_changeEqView('equity')" id="eq-opt-equity" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Equity <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
+                    <div class="eq-option" onclick="_changeEqView('buyhold')" id="eq-opt-buyhold" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer; opacity: 0.5; display: flex; justify-content: space-between; align-items: center;">Buy & hold <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
+                    <div class="eq-option active" onclick="_changeEqView('excursions')" id="eq-opt-excursions" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #d1d4dc; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">Trades excursions <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
+                    <div class="eq-option" onclick="_changeEqView('drawdowns')" id="eq-opt-drawdowns" style="padding: 10px 16px; font: 600 12px 'Trebuchet MS', sans-serif; color: #787b86; cursor: pointer; opacity: 0.5; display: flex; justify-content: space-between; align-items: center;">Run-up / Drawdowns <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></div>
+                  </div>
+                  <!-- Chart Panel -->
+                  <div style="flex: 1; position: relative; padding: 16px;">
+                    <canvas id="srp-equity-canvas" style="width: 100%; height: 100%; cursor: crosshair;"></canvas>
+                    <div id="tv-equity-tooltip" style="display:none; position:fixed; background:#1e222d; border:1px solid #2a2e39; border-radius:4px; padding:10px; font:11px 'Trebuchet MS',sans-serif; color:#d1d4dc; pointer-events:none; z-index:99999; box-shadow:0 4px 12px rgba(0,0,0,0.5);"></div>
+                  </div>
+                </div>
+              </div>
+              <!-- TV Accordions Container -->
+              <div id="tv-accordions-container" style="padding: 20px 20px 0 20px; background: #131722;">
+                <!-- Injected dynamically: Performance, Returns, trades analysis etc -->
+              </div>
+            </div>
+
+            <!-- TV Trades List Tab Content -->
+            <div id="srp-trades" class="srp-pane" style="display: none; background: #131722; overflow-y: auto; padding: 20px;">
+              <div id="tv-trades-container" style="width: 100%;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- BOTTOM STRIP: AI tools — horizontal row below canvas -->
+          <div id="aiToolsPanel">
+            <div id="aiCtrlRow" style="gap:12px;padding:12px 16px">
+              <select id="focusIn" style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
+                <option value="fractal">Fractal</option>
+                <option value="fibonacci">Fibonacci</option>
+                <option value="wave">Elliott waves</option>
+                <option value="full">Full analysis</option>
+              </select>
+              <select id="matchIn" style="font-family:'DM Mono',monospace;font-size:12px;background:#0d1018;border:1px solid rgba(255,255,255,.15);color:#f0f4fa;padding:6px 10px;outline:none;cursor:pointer">
+                <option value="2">2 matches</option>
+                <option value="3" selected>3 matches</option>
+                <option value="4">4 matches</option>
+              </select>
+              <button id="snapBtn" onclick="takeSnapshot()" style="font-family:'DM Mono',monospace;font-size:11px;padding:7px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em;display:flex;align-items:center;gap:6px">
+                <span>📷</span><span id="snapTxt">Capture</span>
+              </button>
+              <button id="btModeBtn" onclick="toggleBacktestMode()" style="font-family:'DM Mono',monospace;font-size:11px;padding:7px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#f0f4fa;cursor:pointer;letter-spacing:.04em"
+                title="Replay mode — step through historical candles bar by bar">⏪ Replay</button>
+              <button class="az-btn" id="azBtn" disabled style="font-family:'Cinzel',serif;font-size:12px;letter-spacing:.08em;padding:8px 20px">
+                <div class="az-spin" id="azSpin"></div>
+                <span id="azTxt">Fractal · Bar · Weierstrass</span>
+                <span class="cost-badge" id="main-cost-badge">15 cr</span>
+              </button>
+              <div id="aiCtrlStatus">
+                <div class="tool-badge" id="ts-fractal">
+                  <div class="tb-dot" id="tsd-fractal"></div>
+                  <div class="tb-label">Fractal</div>
+                  <div class="tb-state" id="tss-fractal">—</div>
+                </div>
+                <div class="tool-badge" id="ts-bar">
+                  <div class="tb-dot" id="tsd-bar"></div>
+                  <div class="tb-label">Bar</div>
+                  <div class="tb-state" id="tss-bar">—</div>
+                </div>
+                <div class="tool-badge" id="ts-ww">
+                  <div class="tb-dot" id="tsd-ww"></div>
+                  <div class="tb-label">WW</div>
+                  <div class="tb-state" id="tss-ww">—</div>
+                </div>
+              </div>
+            </div>
+            <div id="aiToolGrid"></div>
+          </div>
+        </div>
+
+        <!-- RESULTS: full-width scrollable dashboard -->
+        <!-- Usage counter -->
+        <div id="usageBar" style="display:none;padding:8px 16px;border-top:1px solid rgba(255,255,255,.06)">
+          <div class="usage-bar">
+            <span class="usage-label">FREE ANALYSES</span>
+            <div class="usage-track">
+              <div class="usage-fill" id="usageFill" style="width:100%"></div>
+            </div>
+            <span class="usage-count"><span id="usageLeft">3</span>/3 left</span>
+          </div>
+        </div>
+
+        <div id="rEmpty2" class="r-empty" style="padding:40px;border-top:1px solid rgba(255,255,255,.06)">
+          <img src="/logo-animated.svg" id="rEmptyLogo" width="72" height="72" style="display:block;margin:0 auto 8px">
+          <p id="t-rempty">Upload a chart to run all three tools simultaneously</p>
+        </div>
+        <div id="rErr" class="r-err" style="margin:12px"></div>
+
+        <!-- ══ NEW COMPACT DASHBOARD ══ -->
+        <div id="uniDash" style="display:none;flex-direction:column">
+
+          <!-- MAIN ROW: Annotated chart + side signal panel -->
+          <div class="nd-main">
+            <!-- Chart area with tab switcher -->
+            <div class="nd-chart-area">
+              <!-- BACKTEST TIME CURTAIN BAR -->
+              <div id="btBar">
+                <span style="color:#e74c3c;font-size:10px">⏪</span>
+                <span style="color:rgba(240,244,250,.7)">REPLAY</span>
+                <span style="color:rgba(240,244,250,.4)">·</span>
+                <span id="btDateLbl">—</span>
+                <input id="btSlider" type="range" min="0" max="100" value="70" oninput="onBtSlider(this.value)">
+                <span style="color:rgba(240,244,250,.4);font-size:8px" id="btCandlesLeft">— bars hidden</span>
+                <button id="btRevealBtn" onclick="revealBacktest()">▶ Reveal &amp; Score</button>
+                <button id="btCloseBtn" onclick="exitBacktestMode()">✕ Exit</button>
+              </div>
+              <div class="nd-chart-top">
+                <div class="nd-tabs">
+                  <button class="nd-tab on" onclick="switchChart('annotated',this)">Annotated</button>
+                  <button class="nd-tab" onclick="switchChart('predicted',this)">Predicted Path</button>
+                  <button class="nd-tab" onclick="switchChart('barmap',this)">Bar Map</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span class="ud-sec-badge sig" id="fractalBadge" style="font-size:8px"></span>
+                  <div class="ud-sec-status" id="fractalStatus" style="display:flex">
+                    <div class="ud-spin"></div>
+                  </div>
+                  <button class="cv-dl" id="dlBtn" style="position:static">↓ Save</button>
+                </div>
+              </div>
+              <div class="nd-canvas-wrap" style="min-height:300px">
+                <canvas id="outCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>
+                <canvas id="predCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:none"></canvas>
+                <canvas id="bpCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:none"></canvas>
+              </div>
+            </div>
+            <!-- Side signal panel -->
+            <div class="nd-side">
+              <div class="nd-side-hd">
+                <span>SIGNAL</span>
+                <span id="sigBadge" class="sig"></span>
+              </div>
+              <div class="nd-side-body">
+                <div style="font-family:Cinzel,serif;font-size:11px;color:var(--white);font-weight:600" id="acPair">
+                </div>
+                <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)" id="acTf"></div>
+                <div class="ac-body" id="acBody" style="font-size:11px;margin-top:4px"></div>
+                <div class="levels" id="levelsEl" style="margin-top:4px"></div>
+                <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:8px;margin-top:4px">
+                  <div style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);margin-bottom:5px">
+                    PREDICTION</div>
+                  <div class="pred-b" id="predBody" style="font-size:11px"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- METRICS STRIP -->
+          <div class="nd-metrics" id="metricsStrip">
+            <div class="nd-metric">
+              <div class="nd-metric-v" id="mWinRate">—</div>
+              <div class="nd-metric-l">WIN RATE</div>
+            </div>
+            <div class="nd-metric">
+              <div class="nd-metric-v" id="mAvgRR">—</div>
+              <div class="nd-metric-l">AVG R:R</div>
+            </div>
+            <div class="nd-metric">
+              <div class="nd-metric-v" id="mHurst" style="color:#9b8fe8">—</div>
+              <div class="nd-metric-l">HURST H</div>
+            </div>
+            <div class="nd-metric">
+              <div class="nd-metric-v" id="mRegime" style="color:#3498db;font-size:11px">—</div>
+              <div class="nd-metric-l">REGIME</div>
+            </div>
+          </div>
+
+          <!-- PATTERN MATCHES (free) -->
+          <div class="ud-section">
+            <div class="ud-sec-hd">
+              <span class="ud-sec-icon">◈</span>
+              <span class="ud-sec-title">Historical Pattern Matches</span>
+              <span class="ud-sec-badge" id="matchesBadge"
+                style="color:var(--muted);font-family:DM Mono,monospace;font-size:8px"></span>
+              <div class="ud-sec-status ud-done" id="matchesStatus" style="display:none">✓ Done</div>
+            </div>
+            <div class="ud-sec-body">
+              <div class="wr-row" id="wrRow"></div>
+              <div class="mcards" style="margin-top:6px" id="mcardsEl"></div>
+            </div>
+          </div>
+
+          <!-- ADVANCED SECTION: Bar + Weierstrass + Time Series together -->
+          <div class="nd-adv" id="advSection">
+            <div class="nd-adv-tabs">
+              <button class="nd-adv-tab on" onclick="switchAdv('bar',this)">Bar Self-Similarity <span id="barBadge"
+                  style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted)"></span></button>
+              <button class="nd-adv-tab" onclick="switchAdv('ww',this)">Weierstrass · Time Series <span id="wwBadge"
+                  style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted)"></span></button>
+              <div style="flex:1"></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:0 14px">
+                <span class="pro-badge">PRO</span>
+                <div class="ud-sec-status" id="barStatus" style="display:flex">
+                  <div class="ud-spin"></div>
+                </div>
+                <div class="ud-sec-status" id="wwStatus" style="display:none"></div>
+              </div>
+            </div>
+
+            <!-- Gate overlay (shown when not pro) -->
+            <div id="advGate" style="position:relative">
+              <!-- BAR PATTERN PANE -->
+              <div class="nd-adv-pane adv-3col on" id="advPane-bar">
+                <div class="adv-col">
+                  <div class="adv-col-hd">CLUSTER ANALYSIS</div>
+                  <div class="acard" style="flex:1">
+                    <div class="ac-hd"><span class="sig" id="bpSigBadge"></span>
+                      <div>
+                        <div class="ac-pair" id="bpPair"></div>
+                        <div class="ac-tf" id="bpMeta"></div>
+                      </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:6px 0" id="bpMetrics">
+                    </div>
+                    <div class="ac-body" id="bpImplication"></div>
+                  </div>
+                  <div
+                    style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">
+                    SCALE LEVELS</div>
+                  <div id="bpScales" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"></div>
+                </div>
+                <div class="adv-col">
+                  <div class="adv-col-hd">SELF-SIMILAR CLUSTERS</div>
+                  <div id="bpClusters" style="display:flex;flex-direction:column;gap:5px"></div>
+                </div>
+                <div class="adv-col">
+                  <div class="adv-col-hd">BAR PATTERN MAP + SLIDERS</div>
+                  <div class="cv-w" style="flex:1;min-height:120px"><canvas id="bpLiveCanvas"
+                      style="display:block;width:100%;height:100%;min-height:120px"></canvas>
+                    <div class="cv-l">Live Bar Map</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">
+                    <div class="slider-row"><label>Similarity</label><input type="range" id="bpSimSlider" min="0"
+                        max="100" value="80" oninput="onBpSlider()"><span class="slider-val" id="bpSimVal">80%</span>
+                    </div>
+                    <div class="slider-row"><label>Fractal Dim.</label><input type="range" id="bpDimSlider" min="100"
+                        max="200" value="133" oninput="onBpSlider()"><span class="slider-val" id="bpDimVal">1.33</span>
+                    </div>
+                    <div class="slider-row"><label>Clusters</label><input type="range" id="bpClustSlider" min="1"
+                        max="5" value="2" oninput="onBpSlider()"><span class="slider-val" id="bpClustVal">2</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- WEIERSTRASS PANE -->
+              <div class="nd-adv-pane adv-3col" id="advPane-ww">
+                <div class="adv-col">
+                  <div class="adv-col-hd">FRACTAL METRICS</div>
+                  <div class="acard">
+                    <div class="ac-hd"><span class="sig" id="wwSigBadge"></span>
+                      <div>
+                        <div class="ac-pair" id="wwPair"></div>
+                        <div class="ac-tf" id="wwMeta"></div>
+                      </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin:6px 0" id="wwMetrics">
+                    </div>
+                    <div class="ac-body" id="wwNoise"></div>
+                  </div>
+                  <div id="wwDecompCards" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px">
+                  </div>
+                </div>
+                <div class="adv-col">
+                  <div class="adv-col-hd">TIME SERIES DECOMPOSITION</div>
+                  <div class="cv-w" style="flex:1;min-height:120px"><canvas id="wwDecompCanvas"
+                      style="display:block;width:100%;height:100%;min-height:120px"></canvas>
+                    <div class="cv-l">P(t) = T + C + N</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">
+                    <div class="slider-row"><label>Hurst H</label><input type="range" id="wwHurstSlider" min="1"
+                        max="99" value="67" oninput="onWwSlider()"><span class="slider-val" id="wwHurstVal">0.67</span>
+                    </div>
+                    <div class="slider-row"><label>Amplitude</label><input type="range" id="wwAmpSlider" min="1"
+                        max="50" value="15" oninput="onWwSlider()"><span class="slider-val" id="wwAmpVal">0.15</span>
+                    </div>
+                    <div class="slider-row"><label>Period</label><input type="range" id="wwPeriodSlider" min="3"
+                        max="30" value="14" oninput="onWwSlider()"><span class="slider-val" id="wwPeriodVal">14</span>
+                    </div>
+                  </div>
+                  <div class="pred-card">
+                    <div class="pred-t">Fractal Noise Signal</div>
+                    <div class="pred-b" id="wwInterpretation"></div>
+                  </div>
+                </div>
+                <div class="adv-col">
+                  <div class="adv-col-hd">WEIERSTRASS HARMONICS</div>
+                  <div class="cv-w" style="flex:1;min-height:120px"><canvas id="wwHarmonicsCanvas"
+                      style="display:block;width:100%;height:100%;min-height:120px"></canvas>
+                    <div class="cv-l">W(x) = Σ aⁿcos(bⁿπx)</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">
+                    <div class="slider-row"><label>W param a</label><input type="range" id="wwASlider" min="50" max="95"
+                        value="70" oninput="onWwSlider()"><span class="slider-val" id="wwAVal">0.70</span></div>
+                    <div class="slider-row"><label>W param b</label><input type="range" id="wwBSlider" min="2" max="9"
+                        value="3" oninput="onWwSlider()"><span class="slider-val" id="wwBVal">3</span></div>
+                    <div class="slider-row"><label>Harmonics N</label><input type="range" id="wwNSlider" min="1"
+                        max="20" value="8" oninput="onWwSlider()"><span class="slider-val" id="wwNVal">8</span></div>
+                  </div>
+                  <div
+                    style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);background:rgba(155,143,232,.05);border-left:2px solid rgba(155,143,232,.3);padding:8px 10px;line-height:1.9">
+                    <span style="color:#9b8fe8">W(x)</span> = Σ <span id="wwADisp">0.70</span>ⁿ · cos(<span
+                      id="wwBDisp">3</span>ⁿπx)<br>
+                    H = 2 − D · <span id="wwHDisp" style="color:var(--gold)">Trending</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PRO GATE OVERLAY -->
+              <div class="gate-overlay" id="proGate" style="display:none">
+                <div class="gate-lock">🔒</div>
+                <div class="gate-title">Advanced Fractal Intelligence</div>
+                <div class="gate-sub">Weierstrass decomposition, time series analysis, and bar pattern self-similarity
+                  are Pro features. Upgrade to unlock the full picture.</div>
+                <button class="gate-btn" onclick="scrollToPricing()">Unlock Pro — from $29/mo</button>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- ══ TOOL: FIBONACCI ══ -->
+          <div class="tool-result-section" id="sec-fib">
+            <div class="tool-result-hd" onclick="toggleResult('fib')">
+              <span class="tool-result-icon">⟡</span>
+              <span class="tool-result-title">Fibonacci Auto-Draw</span>
+              <span class="tool-result-badge" id="fib-badge">PRO</span>
+              <div class="ud-sec-status" id="fib-status" style="display:none">
+                <div class="ud-spin"></div>
+              </div>
+              <button class="tool-run-btn" id="fib-btn" onclick="event.stopPropagation();runTool('fib')" disabled>Run
+                <span class="cost-badge">__FIB__3 cr</span></button>
+              <span class="tool-result-chevron" id="fib-chev">▶</span>
+            </div>
+            <div class="tool-result-body" id="fib-body">
+              <div class="res-2col" style="margin-bottom:10px">
+                <div class="fib-wrap"><canvas id="fibCanvas" height="200"></canvas></div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div class="res-4col" style="grid-template-columns:1fr 1fr">
+                    <div class="res-card">
+                      <div class="res-card-v" id="fib-trend">—</div>
+                      <div class="res-card-l">TREND</div>
+                    </div>
+                    <div class="res-card">
+                      <div class="res-card-v" id="fib-conf" style="font-size:11px">—</div>
+                      <div class="res-card-l">CONFIDENCE</div>
+                    </div>
+                  </div>
+                  <div
+                    style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);margin-bottom:4px;letter-spacing:.08em">
+                    KEY LEVELS</div>
+                  <div id="fib-levels" style="display:flex;flex-direction:column;gap:3px"></div>
+                  <div class="acard" style="margin-top:4px">
+                    <div class="ac-hd"><span class="sig" id="fib-sig"></span>
+                      <div class="ac-tf" id="fib-key-label"></div>
+                    </div>
+                    <div class="ac-body" id="fib-analysis" style="font-size:11px"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ TOOL: SMART MONEY CONCEPTS ══ -->
+          <div class="tool-result-section" id="sec-smc">
+            <div class="tool-result-hd" onclick="toggleResult('smc')">
+              <span class="tool-result-icon">⬡</span>
+              <span class="tool-result-title">Smart Money Concepts</span>
+              <span class="tool-result-badge" id="smc-badge">PRO</span>
+              <div class="ud-sec-status" id="smc-status" style="display:none">
+                <div class="ud-spin"></div>
+              </div>
+              <button class="tool-run-btn" id="smc-btn" onclick="event.stopPropagation();runTool('smc')" disabled>Run
+                <span class="cost-badge">4 cr</span></button>
+              <span class="tool-result-chevron" id="smc-chev">▶</span>
+            </div>
+            <div class="tool-result-body" id="smc-body">
+              <div class="res-2col">
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div class="res-3col">
+                    <div class="res-card">
+                      <div class="res-card-v" id="smc-struct" style="font-size:10px">—</div>
+                      <div class="res-card-l">STRUCTURE</div>
+                    </div>
+                    <div class="res-card">
+                      <div class="res-card-v" id="smc-zone" style="font-size:10px">—</div>
+                      <div class="res-card-l">ZONE</div>
+                    </div>
+                    <div class="res-card">
+                      <div class="res-card-v" id="smc-bias">—</div>
+                      <div class="res-card-l">BIAS</div>
+                    </div>
+                  </div>
+                  <div class="fib-wrap"><canvas id="smcCanvas" height="180"></canvas></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);letter-spacing:.08em">ENTRY
+                    MODEL</div>
+                  <div id="smc-entry" style="display:flex;flex-direction:column;gap:4px"></div>
+                  <div class="acard" style="margin-top:4px">
+                    <div class="ac-hd"><span class="sig" id="smc-sig"></span>
+                      <div class="ac-tf" id="smc-bos-label"></div>
+                    </div>
+                    <div class="ac-body" id="smc-analysis" style="font-size:11px"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ TOOL: VOLATILITY REGIME ══ -->
+          <div class="tool-result-section" id="sec-vol">
+            <div class="tool-result-hd" onclick="toggleResult('vol')">
+              <span class="tool-result-icon">≋</span>
+              <span class="tool-result-title">Volatility Regime + Position Sizing</span>
+              <span class="tool-result-badge" id="vol-badge">PRO</span>
+              <div class="ud-sec-status" id="vol-status" style="display:none">
+                <div class="ud-spin"></div>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center" onclick="event.stopPropagation()">
+                <input type="number" id="vol-acct" placeholder="Account $" value="10000"
+                  style="width:90px;background:var(--dark4);border:1px solid rgba(201,168,76,.2);color:var(--light);padding:4px 7px;font-size:11px;border-radius:1px;outline:none">
+                <input type="number" id="vol-risk" placeholder="Risk %" value="1" min="0.1" max="10" step="0.1"
+                  style="width:60px;background:var(--dark4);border:1px solid rgba(201,168,76,.2);color:var(--light);padding:4px 7px;font-size:11px;border-radius:1px;outline:none">
+              </div>
+              <button class="tool-run-btn" id="vol-btn" onclick="event.stopPropagation();runTool('vol')" disabled>Run
+                <span class="cost-badge">3 cr</span></button>
+              <span class="tool-result-chevron" id="vol-chev">▶</span>
+            </div>
+            <div class="tool-result-body" id="vol-body">
+              <div class="res-3col" style="margin-bottom:10px">
+                <div class="res-card">
+                  <div class="res-card-v" id="vol-regime">—</div>
+                  <div class="vol-gauge">
+                    <div class="vol-gauge-fill" id="vol-gauge-fill" style="width:0%"></div>
+                  </div>
+                  <div class="res-card-l">REGIME</div>
+                </div>
+                <div class="res-card">
+                  <div class="res-card-v" id="vol-size" style="color:#27ae60">—</div>
+                  <div class="res-card-l">MAX POSITION</div>
+                </div>
+                <div class="res-card">
+                  <div class="res-card-v" id="vol-risk-amt" style="color:#e74c3c">—</div>
+                  <div class="res-card-l">RISK AMOUNT</div>
+                </div>
+              </div>
+              <div class="res-2col">
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);letter-spacing:.08em">
+                    REGIME CHARACTERISTICS</div>
+                  <div id="vol-chars" style="display:flex;flex-direction:column;gap:4px"></div>
+                </div>
+                <div class="acard">
+                  <div class="ac-body" id="vol-analysis" style="font-size:11px"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ TOOL: MTF CONFLUENCE (MENTOR) ══ -->
+          <div class="tool-result-section" id="sec-mtf">
+            <div class="tool-result-hd" onclick="toggleResult('mtf')">
+              <span class="tool-result-icon">⊕</span>
+              <span class="tool-result-title">Multi-Timeframe Confluence</span>
+              <span class="tool-result-badge tier-mentor" id="mtf-badge"
+                style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">ELITE · Opus
+                4</span>
+              <div class="ud-sec-status" id="mtf-status" style="display:none">
+                <div class="ud-spin"></div>
+              </div>
+              <button class="tool-run-btn" id="mtf-btn" onclick="event.stopPropagation();runTool('mtf')" disabled>Run
+                <span class="cost-badge">8 cr</span></button>
+              <span class="tool-result-chevron" id="mtf-chev">▶</span>
+            </div>
+            <div class="tool-result-body" id="mtf-body">
+              <div class="res-2col">
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div class="fib-wrap"><canvas id="mtfCanvas" height="160"></canvas></div>
+                  <div class="res-3col" id="mtf-tfs"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div class="res-card">
+                    <div class="res-card-v" id="mtf-score" style="font-size:22px">—</div>
+                    <div class="res-card-l">CONFLUENCE SCORE</div>
+                  </div>
+                  <div id="mtf-zones" style="display:flex;flex-direction:column;gap:4px"></div>
+                  <div class="acard">
+                    <div class="ac-hd"><span class="sig" id="mtf-sig"></span></div>
+                    <div class="ac-body" id="mtf-analysis" style="font-size:11px;margin-top:6px"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ TOOL: FRACTAL AGE (MENTOR) ══ -->
+          <div class="tool-result-section" id="sec-age">
+            <div class="tool-result-hd" onclick="toggleResult('age')">
+              <span class="tool-result-icon">⧗</span>
+              <span class="tool-result-title">Fractal Age · Market Timing</span>
+              <span class="tool-result-badge tier-mentor" id="age-badge"
+                style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">ELITE · Opus
+                4</span>
+              <div class="ud-sec-status" id="age-status" style="display:none">
+                <div class="ud-spin"></div>
+              </div>
+              <button class="tool-run-btn" id="age-btn" onclick="event.stopPropagation();runTool('age')" disabled>Run
+                <span class="cost-badge">25 cr</span></button>
+              <span class="tool-result-chevron" id="age-chev">▶</span>
+            </div>
+            <div class="tool-result-body" id="age-body">
+              <div class="res-2col">
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div class="res-3col">
+                    <div class="res-card">
+                      <div class="res-card-v" id="age-pct">—</div>
+                      <div class="res-card-l">COMPLETE</div>
+                    </div>
+                    <div class="res-card">
+                      <div class="res-card-v" id="age-phase" style="font-size:10px">—</div>
+                      <div class="res-card-l">PHASE</div>
+                    </div>
+                    <div class="res-card">
+                      <div class="res-card-v" id="age-urgency" style="font-size:10px">—</div>
+                      <div class="res-card-l">URGENCY</div>
+                    </div>
+                  </div>
+                  <div class="fib-wrap"><canvas id="ageCanvas" height="140"></canvas></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);letter-spacing:.08em">TIME
+                    SCENARIOS</div>
+                  <div id="age-scenarios" style="display:flex;flex-direction:column;gap:5px"></div>
+                  <div class="acard">
+                    <div class="ac-body" id="age-analysis" style="font-size:11px"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ TOOL: LIQUIDITY MAP (MENTOR) ══ -->
+          <div class="tool-result-section" id="sec-liq">
+            <div class="tool-result-hd" onclick="toggleResult('liq')">
+              <span class="tool-result-icon">◎</span>
+              <span class="tool-result-title">Liquidity Map</span>
+              <span class="tool-result-badge tier-mentor" id="liq-badge"
+                style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">ELITE</span>
+              <div class="ud-sec-status" id="liq-status" style="display:none">
+                <div class="ud-spin"></div>
+              </div>
+              <button class="tool-run-btn" id="liq-btn" onclick="event.stopPropagation();runTool('liq')" disabled>Run
+                <span class="cost-badge">8 cr</span></button>
+              <span class="tool-result-chevron" id="liq-chev">▶</span>
+            </div>
+            <div class="tool-result-body" id="liq-body">
+              <div class="res-2col">
+                <div class="fib-wrap"><canvas id="liqCanvas" height="220"></canvas></div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div class="res-3col">
+                    <div class="res-card">
+                      <div class="res-card-v" id="liq-dir" style="font-size:11px">—</div>
+                      <div class="res-card-l">SM DIRECTION</div>
+                    </div>
+                    <div class="res-card">
+                      <div class="res-card-v" id="liq-buy" style="color:#27ae60">—</div>
+                      <div class="res-card-l">BUY SIDE</div>
+                    </div>
+                    <div class="res-card">
+                      <div class="res-card-v" id="liq-sell" style="color:#e74c3c">—</div>
+                      <div class="res-card-l">SELL SIDE</div>
+                    </div>
+                  </div>
+                  <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);letter-spacing:.08em">HUNT
+                    TARGETS</div>
+                  <div id="liq-targets" style="display:flex;flex-direction:column;gap:4px"></div>
+                  <div class="acard">
+                    <div class="ac-body" id="liq-analysis" style="font-size:11px"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ TOOL: PRICE PATH PROJECTION ══ -->
+          <div class="tool-result-section" id="sec-proj">
+            <div class="tool-result-hd" onclick="toggleResult('proj')">
+              <span class="tool-result-icon">↗</span>
+              <span class="tool-result-title">Price Path Projection</span>
+              <span class="tool-result-badge tier-pro"
+                style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">PRO · Opus
+                4</span>
+              <div class="ud-sec-status" id="proj-status" style="display:none">
+                <div class="ud-spin"></div>
+              </div>
+              <button class="tool-run-btn" id="proj-btn" onclick="event.stopPropagation();runTool('proj')" disabled>Run
+                <span class="cost-badge">25 cr</span></button>
+              <span class="tool-result-chevron" id="proj-chev">▶</span>
+            </div>
+            <div class="tool-result-body" id="proj-body">
+              <!-- Main projection canvas — chart + drawn paths -->
+              <div style="position:relative;margin-bottom:12px">
+                <div class="fib-wrap" style="position:relative">
+                  <canvas id="projCanvas" style="display:block;width:100%;min-height:300px"></canvas>
+                  <div class="cv-l">AI Fractal Projection</div>
+                  <button class="cv-dl" id="projDlBtn" style="position:absolute;top:5px;right:5px">↓ Save</button>
+                </div>
+                <!-- Scenario toggle buttons overlaid -->
+                <div id="projScenarioBtns"
+                  style="position:absolute;top:32px;left:8px;display:flex;flex-direction:column;gap:4px"></div>
+              </div>
+              <!-- Scenario cards -->
+              <div class="res-3col" id="projScenarioCards" style="margin-bottom:10px"></div>
+              <!-- Analysis + levels -->
+              <div class="res-2col">
+                <div class="acard">
+                  <div class="ac-hd"><span class="sig" id="proj-sig"></span>
+                    <div>
+                      <div class="ac-pair" id="proj-pair"></div>
+                      <div class="ac-tf" id="proj-meta"></div>
+                    </div>
+                  </div>
+                  <div class="ac-body" id="proj-analysis" style="font-size:11px;margin-top:6px"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);letter-spacing:.08em">
+                    FRACTAL BASIS</div>
+                  <div style="font-size:11px;color:var(--light);line-height:1.7" id="proj-basis"></div>
+                  <div class="res-3col" style="margin-top:4px" id="proj-levels"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ TOOL: TRADE JOURNAL (MENTOR) ══ -->
+          <div class="tool-result-section" id="sec-journal" style="border-bottom:none">
+            <div class="tool-result-hd" onclick="toggleResult('journal')">
+              <span class="tool-result-icon">✦</span>
+              <span class="tool-result-title">Trade Journal AI — Get Graded</span>
+              <span class="tool-result-badge tier-mentor" id="journal-badge"
+                style="font-family:DM Mono,monospace;font-size:8px;padding:2px 7px;border-radius:1px">ELITE · Opus
+                4</span>
+              <div class="ud-sec-status" id="journal-status" style="display:none">
+                <div class="ud-spin"></div>
+              </div>
+              <button class="tool-run-btn" id="journal-btn" onclick="event.stopPropagation();runTool('journal')"
+                disabled>Run <span class="cost-badge">20 cr</span></button>
+              <span class="tool-result-chevron" id="journal-chev">▶</span>
+            </div>
+            <div class="tool-result-body" id="journal-body">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+                <textarea class="journal-input" id="journal-notes"
+                  placeholder="Describe your trade: why you entered, what you saw, what happened…"></textarea>
+                <div style="display:flex;gap:6px">
+                  <select id="journal-outcome"
+                    style="flex:1;background:var(--dark4);border:1px solid rgba(201,168,76,.2);color:var(--light);padding:6px;font-size:12px;border-radius:1px;outline:none">
+                    <option value="">Outcome…</option>
+                    <option value="win">Win ✓</option>
+                    <option value="loss">Loss ✗</option>
+                    <option value="breakeven">Break-even</option>
+                    <option value="open">Still open</option>
+                  </select>
+                  <input type="text" id="journal-pnl" placeholder="P&L e.g. +2.4R"
+                    style="flex:1;background:var(--dark4);border:1px solid rgba(201,168,76,.2);color:var(--light);padding:6px;font-size:12px;border-radius:1px;outline:none">
+                </div>
+                <div id="journal-result-empty"
+                  style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted);display:flex;align-items:center;justify-content:center">
+                  Fill in notes then run ↑</div>
+              </div>
+              <div id="journal-result" style="display:none">
+                <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px">
+                  <div class="grade-circle grade-B" id="journal-grade-circle">B</div>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                    <div style="font-family:Cinzel,serif;font-size:13px;color:var(--white);font-weight:600"
+                      id="journal-lesson"></div>
+                    <div style="font-size:11px;color:var(--muted)" id="journal-coach"></div>
+                  </div>
+                </div>
+                <div class="res-3col" id="journal-cats"></div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- end uniDash -->
+
+        <!-- Free analyses exhausted gate -->
+        <div id="analysisGate"
+          style="display:none;padding:32px;text-align:center;border-top:1px solid rgba(255,255,255,.06);flex-direction:column;align-items:center;gap:12px">
+          <div style="font-size:24px">🔒</div>
+          <div style="font-family:Cinzel,serif;font-size:16px;color:var(--white);font-weight:600">You've used your 3
+            free analyses</div>
+          <div style="font-size:13px;color:var(--muted);max-width:400px;line-height:1.8">Upgrade to Pro for unlimited
+            chart analyses, advanced fractal tools, and historical pattern matching.</div>
+          <button class="btn-g" onclick="scrollToPricing()">Choose a Plan</button>
+        </div>
+
+      </div><!-- az-box -->
+    </div><!-- az-wrap -->
+  </section>
+
+
+  <div class="divider">
+    <div class="dl"></div>
+    <div class="dg">◈</div>
+    <div class="dl"></div>
+  </div>
+
+  <!-- TOOLS SHOWCASE -->
+  <section class="tools-section" id="tools">
+    <p class="eye">The Full Arsenal</p>
+    <h2 class="sec-h">10 AI Tools. Every Angle Covered.</h2>
+    <p class="sec-p" style="max-width:600px">Upload once, run any combination. Each tool is a specialist AI model
+      trained on fractal market structure.</p>
+    <div class="tools-grid reveal">
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-free">FREE</span>
+        <div class="tool-card-icon">◈</div>
+        <div class="tool-card-name">Fractal Pattern Matcher</div>
+        <div class="tool-card-desc">Identifies self-similar fractal structures across macro, mid and micro scales. Finds
+          historical matches and calculates win rates from the fractal database.</div>
+        <div class="tool-card-tags"><span class="tool-tag">Pattern Recognition</span><span class="tool-tag">Historical
+            Matches</span><span class="tool-tag">Signal</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-pro">PRO</span>
+        <div class="tool-card-icon">⟡</div>
+        <div class="tool-card-name">Fibonacci Auto-Draw</div>
+        <div class="tool-card-desc">AI detects swing highs and lows automatically, draws all retracement levels
+          (0.236→0.786) and extensions (1.272, 1.618, 2.618) directly on your chart.</div>
+        <div class="tool-card-tags"><span class="tool-tag">Fibonacci</span><span class="tool-tag">Auto
+            Levels</span><span class="tool-tag">Extensions</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-pro">PRO</span>
+        <div class="tool-card-icon">⬡</div>
+        <div class="tool-card-name">Smart Money Concepts</div>
+        <div class="tool-card-desc">Detects institutional footprints: Break of Structure, Change of Character, Order
+          Blocks, Fair Value Gaps, liquidity pools and premium/discount zones.</div>
+        <div class="tool-card-tags"><span class="tool-tag">BOS / CHoCH</span><span class="tool-tag">Order
+            Blocks</span><span class="tool-tag">FVG</span><span class="tool-tag">Liquidity</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-pro">PRO</span>
+        <div class="tool-card-icon">≋</div>
+        <div class="tool-card-name">Volatility Regime + Sizing</div>
+        <div class="tool-card-desc">Classifies current volatility regime using fractal variance. Adapts position sizing
+          to account size and risk percentage. Warns before overexposure.</div>
+        <div class="tool-card-tags"><span class="tool-tag">ATR Estimate</span><span class="tool-tag">Position
+            Size</span><span class="tool-tag">Risk %</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-pro">PRO</span>
+        <div class="tool-card-icon">▦</div>
+        <div class="tool-card-name">Bar Pattern Self-Similarity</div>
+        <div class="tool-card-desc">Finds repeating bar sequences within the same chart at different locations and
+          scales. Measures intra-chart fractal self-similarity with cluster mapping.</div>
+        <div class="tool-card-tags"><span class="tool-tag">Intra-chart</span><span class="tool-tag">Clusters</span><span
+            class="tool-tag">Scale Levels</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-pro">PRO</span>
+        <div class="tool-card-icon">∿</div>
+        <div class="tool-card-name">Weierstrass · Time Series</div>
+        <div class="tool-card-desc">Decomposes price into Trend + Cycle + Fractal Noise layers. Calculates Hurst
+          exponent, fractal dimension, and fits the Weierstrass function to the price series.</div>
+        <div class="tool-card-tags"><span class="tool-tag">Hurst H</span><span
+            class="tool-tag">Decomposition</span><span class="tool-tag">Harmonics</span><span class="tool-tag">Sonnet
+            4.5</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-mentor">ELITE</span>
+        <div class="tool-card-icon">⊕</div>
+        <div class="tool-card-name">Multi-Timeframe Confluence</div>
+        <div class="tool-card-desc">Infers Weekly, Daily and H4 fractal bias from a single chart. Scores confluence
+          across timeframes and highlights zones where all three align for highest-probability entries.</div>
+        <div class="tool-card-tags"><span class="tool-tag">W / D / H4</span><span class="tool-tag">Confluence
+            Score</span><span class="tool-tag">Opus 4</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-mentor">ELITE</span>
+        <div class="tool-card-icon">⧗</div>
+        <div class="tool-card-name">Fractal Age · Timing</div>
+        <div class="tool-card-desc">Measures how many bars into the pattern you are and estimates bars to resolution.
+          Shows cycle phase, urgency score, and time-projected scenarios with probabilities.</div>
+        <div class="tool-card-tags"><span class="tool-tag">Cycle Position</span><span class="tool-tag">Time
+            Projection</span><span class="tool-tag">Opus 4</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-mentor">ELITE</span>
+        <div class="tool-card-icon">◎</div>
+        <div class="tool-card-name">Liquidity Map</div>
+        <div class="tool-card-desc">Maps stop clusters, buy/sell-side liquidity pools, equal highs/lows, and engineered
+          liquidity. Shows where smart money is likely to hunt next and in which direction.</div>
+        <div class="tool-card-tags"><span class="tool-tag">Stop Clusters</span><span class="tool-tag">Liquidity
+            Pools</span><span class="tool-tag">Hunt Targets</span></div>
+      </div>
+
+      <div class="tool-card">
+        <span class="tool-card-tier tier-mentor">ELITE</span>
+        <div class="tool-card-icon">✦</div>
+        <div class="tool-card-name">Trade Journal AI</div>
+        <div class="tool-card-desc">Upload your chart, describe your trade, get a graded report card: entry quality,
+          fractal alignment, risk management, timing and patience — with personalised coaching.</div>
+        <div class="tool-card-tags"><span class="tool-tag">Grade A–F</span><span class="tool-tag">Coaching</span><span
+            class="tool-tag">Opus 4</span></div>
+      </div>
+
+      <div class="tool-card" style="border-top:2px solid var(--gold);position:relative;overflow:hidden">
+        <span class="tool-card-tier tier-pro">PRO</span>
+        <div
+          style="position:absolute;top:0;right:0;width:60%;height:100%;opacity:.04;background:linear-gradient(135deg,transparent,var(--gold))">
+        </div>
+        <div class="tool-card-icon">↗</div>
+        <div class="tool-card-name">Price Path Projection</div>
+        <div class="tool-card-desc">AI generates a fractal-based forward price path drawn directly on your chart — 3
+          scenarios (base, bear, extended) with probabilities, targets and invalidation levels. Like the blue forecast
+          line, but calculated.</div>
+        <div class="tool-card-tags"><span class="tool-tag">3 Scenarios</span><span class="tool-tag">Drawn on
+            chart</span><span class="tool-tag">Opus 4</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <div class="testi-strip">
+    <div class="testi-grid">
+      <div class="testi reveal" id="t-ts1">"I used to spend an hour identifying fractal cuts. Now I upload the chart and
+        get back an annotated image in 10 seconds."<cite id="t-ts1c">— Ahmad K. · Forex Trader</cite></div>
+      <div class="testi reveal" id="t-ts2">"This reads the actual fractal structure of price — not another RSI wrapper.
+        The Fibonacci targets have been consistently accurate."<cite id="t-ts2c">— Sara M. · Crypto Trader</cite></div>
+      <div class="testi reveal" id="t-ts3">"The AI explains the wave position and why the fractal cut matters. It
+        teaches me while I trade."<cite id="t-ts3c">— Omar T. · Student Trader</cite></div>
+    </div>
+  </div>
+
+  <!-- PRICING -->
+  <section id="pricing">
+    <p class="eye reveal" id="t-peye">Plans</p>
+    <h2 class="sec-h reveal" id="t-ptitle2">Choose Your Edge</h2>
+    <p class="sec-p reveal" id="t-psub">50 free credits to start. No card needed. Upgrade when you are ready — credits
+      reset every month.</p>
+
+    <div
+      style="display:grid;grid-template-columns:repeat(5,1fr);gap:1px;max-width:1200px;margin:0 auto;background:var(--border)"
+      class="reveal">
+
+      <!-- FREE -->
+      <div class="pc">
+        <div class="pc-name">Free</div>
+        <div class="pc-amt"><sup></sup>$0</div>
+        <div class="pc-period">50 starter credits · once</div>
+        <ul class="pc-features">
+          <li>50 credits on signup</li>
+          <li>Fractal analysis (15 cr)</li>
+          <li>Fibonacci AI (5 cr)</li>
+          <li>Volatility AI (5 cr)</li>
+          <li>Live chart · Binance data</li>
+          <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Opus 4 tools</li>
+          <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Fib Spiral tool</li>
+        </ul>
+        <button class="pc-btn" onclick="document.getElementById('analyzer').scrollIntoView({behavior:'smooth'})">Try
+          Free</button>
+      </div>
+
+      <!-- STARTER -->
+      <div class="pc" id="plan-starter">
+        <div class="pc-name">Starter</div>
+        <div class="pc-amt"><sup>$</sup>69</div>
+        <div class="pc-period">500 credits / month</div>
+        <ul class="pc-features">
+          <li>500 cr/mo (~4 full sessions)</li>
+          <li>All Sonnet 4 tools</li>
+          <li>Fractal · Bar · WW (15 cr)</li>
+          <li>Fibonacci (5 cr)</li>
+          <li>SMC (8 cr)</li>
+          <li>Volatility (5 cr)</li>
+          <li>Liquidity (8 cr)</li>
+          <li style="color:rgba(138,149,168,.4);text-decoration:line-through">Opus 4 tools</li>
+        </ul>
+        <button class="pc-btn" onclick="startCheckout('starter', this)">Get Started</button>
+      </div>
+
+      <!-- PRO — featured -->
+      <div class="pc feat" id="plan-pro">
+        <div class="feat-badge">MOST POPULAR</div>
+        <div class="pc-name">Pro</div>
+        <div
+          style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);margin-bottom:4px;letter-spacing:.1em">
+          ALL TOOLS UNLOCKED</div>
+        <div class="pc-amt"><sup>$</sup>149</div>
+        <div class="pc-period">1,500 credits / month</div>
+        <ul class="pc-features">
+          <li>1,500 cr/mo (~13 full sessions)</li>
+          <li>Every Sonnet tool</li>
+          <li style="color:var(--gold)">⬡ MTF Confluence (25 cr)</li>
+          <li style="color:var(--gold)">⬡ Fractal Age (25 cr)</li>
+          <li style="color:var(--gold)">⬡ Projection (25 cr)</li>
+          <li style="color:var(--gold)">⬡ Trade Journal (20 cr)</li>
+          <li>Forex + Stocks data</li>
+          <li>Priority queue</li>
+        </ul>
+        <button class="pc-btn" onclick="startCheckout('pro', this)">Get Started</button>
+      </div>
+
+      <!-- ELITE -->
+      <div class="pc">
+        <div class="pc-name">Elite</div>
+        <div class="pc-amt"><sup>$</sup>299</div>
+        <div class="pc-period">4,000 credits / month</div>
+        <ul class="pc-features">
+          <li>4,000 cr/mo (~36 full sessions)</li>
+          <li>Everything in Pro</li>
+          <li style="color:var(--gold)">⬡ Daily market report</li>
+          <li style="color:var(--gold)">⬡ Private Telegram access</li>
+          <li style="color:var(--gold)">⬡ Monthly live session</li>
+          <li>Heavy Opus 4 usage</li>
+          <li>Priority support</li>
+        </ul>
+        <button class="pc-btn" onclick="startCheckout('elite', this)">Get Started</button>
+      </div>
+
+      <!-- INSTITUTIONAL -->
+      <div class="pc">
+        <div class="pc-name">Institutional</div>
+        <div class="pc-amt"><sup>$</sup>999</div>
+        <div class="pc-period">15,000 credits / month</div>
+        <ul class="pc-features">
+          <li>15,000 cr/mo (~136 full sessions)</li>
+          <li>Everything in Elite</li>
+          <li style="color:var(--gold)">⬡ White-label dashboard</li>
+          <li style="color:var(--gold)">⬡ Custom analysis on request</li>
+          <li style="color:var(--gold)">⬡ Early access to new tools</li>
+          <li>Direct phone support</li>
+          <li>99.9% uptime SLA</li>
+        </ul>
+        <button class="pc-btn" onclick="startCheckout('institutional', this)">Get Started</button>
+      </div>
+
+    </div>
+
+    <!-- Credit reference table -->
+    <div style="max-width:700px;margin:40px auto 0;border:1px solid var(--border);background:var(--dark2)"
+      class="reveal">
+      <div
+        style="padding:12px 20px;border-bottom:1px solid var(--border);font-family:Cinzel,serif;font-size:11px;color:var(--white);letter-spacing:.08em">
+        CREDIT COST PER TOOL</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+        <div
+          style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04);border-right:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Fractal + Bar +
+            Weierstrass</span>
+          <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">15 cr</span>
+        </div>
+        <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">MTF Confluence · Opus 4</span>
+          <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">25 cr</span>
+        </div>
+        <div
+          style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04);border-right:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Fibonacci AI</span>
+          <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">5 cr</span>
+        </div>
+        <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Fractal Age · Opus 4</span>
+          <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">25 cr</span>
+        </div>
+        <div
+          style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04);border-right:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">SMC Analysis</span>
+          <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">8 cr</span>
+        </div>
+        <div style="padding:8px 20px;border-bottom:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Price Projection · Opus 4</span>
+          <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">25 cr</span>
+        </div>
+        <div style="padding:8px 20px;border-right:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Volatility + Liquidity</span>
+          <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">5–8 cr</span>
+        </div>
+        <div style="padding:8px 20px">
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">Trade Journal · Opus 4</span>
+          <span style="float:right;font-family:Cinzel,serif;font-size:11px;color:var(--gold)">20 cr</span>
+        </div>
+      </div>
+      <div
+        style="padding:10px 20px;border-top:1px solid var(--border);font-family:DM Mono,monospace;font-size:9px;color:var(--muted)">
+        Fib Spiral drawing tool — <span style="color:var(--gold)">$1 per session</span> · paid separately via Stripe
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-sec">
+    <h2 class="reveal" id="t-ctah">The Market Has Always<br>Been a Fractal.</h2>
+    <p class="reveal" id="t-ctap">Now you have the tool to read it.</p>
+    <a href="#analyzer" class="btn-g reveal" id="t-ctabtn">Analyze Your First Chart Free</a>
+  </section>
+
+  <footer>
+    <div class="f-logo">FRACTAL AI AGENT</div>
+    <div class="f-links">
+      <a href="#how" id="t-fn1">How it works</a>
+      <a href="#about" id="t-fn2">Methodology</a>
+      <a href="#tools">Tools</a>
+      <a href="#pricing" id="t-fn3">Pricing</a>
+      <a href="/profile">Profile</a>
+      <a href="/auth" id="footer-auth-link">Sign In</a>
+      <a href="/terms" style="color:var(--muted)">Terms</a>
+      <a href="/privacy" style="color:var(--muted)">Privacy</a>
+    </div>
+    <div class="f-copy">© 2026 Fractal AI Agent · All rights reserved</div>
+  </footer>
+
+  <!-- No credits gate -->
+  <div class="no-credits-gate" id="noCreditsGate">
+    <div style="font-size:32px">◈</div>
+    <h2>Out of Credits</h2>
+    <p>You've used all your credits. Purchase a credit pack to continue running fractal analyses.</p>
+    <a href="#pricing" class="btn-g" onclick="document.getElementById('noCreditsGate').classList.remove('show')">View
+      Credit Packs</a>
+    <button onclick="document.getElementById('noCreditsGate').classList.remove('show')"
+      style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;margin-top:4px">Dismiss</button>
+  </div>
+
+
+
+
+  <!-- logo loops natively via SVG CSS animations -->
+  <!-- ══ FRACTAL DRAWING TOOLBAR ══ -->
+
+
+  <!-- ══ CONTEXT MENU ══ -->
+  <div id="ctxMenu"></div>
+
+
+  <!-- ADVANCED SYMBOL SEARCH MODAL -->
+  <div id="searchModal"
+    style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:2147483647;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div
+      style="background:#090b11;border:1px solid rgba(201,168,76,.3);width:90%;max-width:640px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.8);display:flex;flex-direction:column;max-height:85vh;overflow:hidden;">
+      <div
+        style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:12px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="searchInputReal" placeholder="Search by symbol or name..." autocomplete="off"
+          style="flex:1;background:transparent;border:none;color:#f0f4fa;font-size:16px;outline:none;font-family:'Inter',sans-serif;">
+        <button onclick="closeSearchModal()"
+          style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;"
+          onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'"><svg width="20"
+            height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg></button>
+      </div>
+      <div
+        style="padding:10px 24px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.06);overflow-x:auto;flex-shrink:0;scrollbar-width:none;">
+        <div class="s-tab s-tab-active" data-type="">All</div>
+        <div class="s-tab" data-type="Physical Currency">Forex</div>
+        <div class="s-tab" data-type="Commodity">Commodities</div>
+        <div class="s-tab" data-type="Index">Indices</div>
+        <div class="s-tab" data-type="Common Stock">Stocks</div>
+        <div class="s-tab" data-type="Digital Currency">Crypto</div>
+        <div class="s-tab" data-type="ETF">ETFs</div>
+        <div class="s-tab" data-type="Mutual Fund">Mutual Funds</div>
+      </div>
+      <div id="searchResults" style="flex:1;overflow-y:auto;padding:8px 0;min-height:300px;">
+        <!-- results injected here -->
+      </div>
+      <div
+        style="padding:10px 24px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:rgba(255,255,255,0.3);text-align:center;">
+        Press <kbd style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;color:#c9a84c"> / </kbd> to
+        open search
+      </div>
+    </div>
+  </div>
+
+  <!-- SheetJS for XLSX export -->
+
+  <!-- FractalScript PASTE MODAL -->
+  <div id="fractalModal">
+    <div id="fractalModalInner">
+      <div
+        style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#c9a84c" stroke-width="1.2">
+            <path d="M8 2 L4 7 L6 7 L3 13 L10 7 L7.5 7 L11 3 Z" fill="#c9a84c" stroke="none" />
+          </svg>
+          <span style="font-family:'DM Sans',sans-serif;font-weight:600;color:#f0f4fa;font-size:15px;">FractalScript
+            <span style="font-size:10px;opacity:0.5;font-weight:400;">(Pine-compatible)</span></span>
+          <span style="font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace;">logic engine</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(139,92,246,0.18);border:1px solid rgba(139,92,246,0.35);border-radius:12px;font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:0.5px;font-family:'DM Sans',sans-serif;">✦ AI</span>
+        </div>
+        <button onclick="_closeFractalModal()"
+          style="background:transparent;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:4px;"
+          onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'"><svg width="20"
+            height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg></button>
+      </div>
+      <div style="padding:16px 24px;flex:1;overflow-y:auto;">
+        <textarea id="fractalEditor"
+          placeholder="//@version=5&#10;indicator(&quot;My Indicator&quot;, overlay=true)&#10;&#10;fast = ta.sma(close, 9)&#10;slow = ta.sma(close, 21)&#10;&#10;plot(fast, title=&quot;Fast&quot;, color=color.blue)&#10;plot(slow, title=&quot;Slow&quot;, color=color.orange)"></textarea>
+        <div id="fractalErrors"></div>
+        <button id="fs-ai-fix-btn" onclick="window._fsAiFix()" style="display:none;align-items:center;gap:8px;margin-top:10px;padding:10px 20px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.4);color:#a78bfa;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s ease;letter-spacing:0.3px;"onmouseover="this.style.background='rgba(139,92,246,0.28)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='rgba(139,92,246,0.15)';this.style.transform=''">🔧 Fix with AI</button>
+        <div id="fractalInputs"></div>
+      </div>
+      <!-- AI Generate Bar -->
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 24px;border-top:1px solid rgba(139,92,246,0.2);background:rgba(139,92,246,0.05);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="1.5" style="flex-shrink:0;opacity:0.7;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <input id="fs-ai-generate-input" type="text"
+          placeholder="Describe an indicator… e.g. RSI with overbought/oversold background"
+          onkeydown="if(event.key==='Enter') window._fsAiGenerate()"
+          style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(139,92,246,0.25);border-radius:8px;padding:10px 16px;color:#e2e8f0;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color 0.2s;"
+          onfocus="this.style.borderColor='rgba(139,92,246,0.55)';this.style.boxShadow='0 0 0 3px rgba(139,92,246,0.12)'"
+          onblur="this.style.borderColor='rgba(139,92,246,0.25)';this.style.boxShadow='none'" />
+        <button onclick="window._fsAiGenerate()"
+          style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(139,92,246,0.18);border:1px solid rgba(139,92,246,0.45);color:#a78bfa;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;white-space:nowrap;"
+          onmouseover="this.style.background='rgba(139,92,246,0.3)';this.style.color='#c4b5fd'"
+          onmouseout="this.style.background='rgba(139,92,246,0.18)';this.style.color='#a78bfa'"
+          id="fs-ai-generate-btn">⚡ Generate</button>
+      </div>
+      <!-- Footer -->
+      <div
+        style="padding:12px 24px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);">
+        <div style="flex:1;">
+          <div
+            style="font-size:10px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;line-height:1.2;margin-bottom:2px;">
+            Independent interpreter compatible with Pine Script® syntax. Not affiliated with TradingView®.
+            <a href="docs/" target="_blank"
+              style="color:var(--gold);text-decoration:none;margin-left:8px;font-weight:600;opacity:0.8;"
+              onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">LEARN MORE →</a>
+          </div>
+          <div style="font-size:11px;color:rgba(201,168,76,0.5);font-family:'DM Mono',monospace;">v5-compatible syntax only</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="_clearFractalScript()"
+            style="background:rgba(239,83,80,0.12);border:1px solid rgba(239,83,80,0.3);color:#ef5350;padding:8px 16px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;"
+            onmouseover="this.style.background='rgba(239,83,80,0.2)'"
+            onmouseout="this.style.background='rgba(239,83,80,0.12)'">Clear</button>
+          <button onclick="_runFractalFromModal()"
+            style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.4);color:#c9a84c;padding:8px 20px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;"
+            onmouseover="this.style.background='rgba(201,168,76,0.25)'"
+            onmouseout="this.style.background='rgba(201,168,76,0.15)'">▶ Run</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="js/i18n.js"></script>
+  <script defer src="js/tool-renderers.js"></script>
+  <script defer src="js/analyzer.js"></script>
+  <script defer src="js/auth.js"></script>
+  <script defer src="js/chart-engine.js"></script>
+</body>
+
+</html>
