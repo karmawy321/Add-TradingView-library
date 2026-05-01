@@ -687,22 +687,6 @@
                 }
                 if (at(TT.LPAREN)) {
                     var l3 = loc();
-                    // Check if it's a function declaration: (a, b) => ...
-                    var depth = 0; var isDecl = false;
-                    for (var i = pos; i < tokens.length; i++) {
-                        if (tokens[i].type === TT.LPAREN) depth++;
-                        else if (tokens[i].type === TT.RPAREN) {
-                            depth--;
-                            if (depth === 0) {
-                                var nxt = i + 1;
-                                while(nxt < tokens.length && tokens[nxt].type === TT.NEWLINE) nxt++;
-                                if (nxt < tokens.length && tokens[nxt].type === TT.ARROW) isDecl = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (isDecl) break; 
-                    
                     pos++;
                     var args = parseArgList(); if (args && args.error) return args;
                     var r3 = eat(TT.RPAREN); if (r3 && r3.error) return r3;
