@@ -4499,15 +4499,11 @@
     #fs-ai-fix-btn {
       display: none;
       align-items: center;
-      gap: 8px;
-      margin-top: 10px;
-      padding: 10px 22px;
+      gap: 6px;
+      padding: 6px 12px;
       background: rgba(139, 92, 246, 0.15);
       border: 1px solid rgba(139, 92, 246, 0.4);
       color: #a78bfa;
-      border-radius: 8px;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -4557,5 +4553,162 @@
 
     .FRACTAL-input-field input:focus {
       border-color: rgba(201, 168, 76, 0.4);
+    }
+
+    /* AI Assistant Styles */
+    #fs-ai-fix-btn {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      color: #a78bfa;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: bold;
+      transition: all 0.2s;
+      margin-top: 8px;
+    }
+
+    #fs-ai-fix-btn.visible {
+      display: inline-flex;
+    }
+
+    #fs-ai-bar-container {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 24px;
+      border-top: 1px solid rgba(139, 92, 246, 0.25);
+      background: rgba(139, 92, 246, 0.06);
+    }
+
+    .fs-ai-input-wrapper {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+    }
+
+    #fs-ai-generate-input {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(139, 92, 246, 0.25);
+      border-radius: 10px;
+      padding: 12px 16px;
+      color: #e2e8f0;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      outline: none;
+      transition: all 0.2s;
+      resize: none;
+      min-height: 46px;
+      max-height: 150px;
+      line-height: 1.4;
+    }
+
+    #fs-ai-generate-input:focus {
+      border-color: rgba(139, 92, 246, 0.6);
+      background: rgba(255, 255, 255, 0.09);
+      box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
+    }
+
+    #fs-ai-generate-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 24px;
+      background: rgba(139, 92, 246, 0.22);
+      border: 1px solid rgba(139, 92, 246, 0.5);
+      color: #c4b5fd;
+      border-radius: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      margin-bottom: 2px;
+    }
+
+    #fs-ai-generate-btn:hover {
+      background: rgba(139, 92, 246, 0.35);
+      transform: scale(1.02);
+    }
+
+    #fs-ai-history-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #a78bfa;
+      border-radius: 8px;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 18px;
+      transition: all 0.2s;
+      margin-bottom: 2px;
+    }
+
+    #fs-ai-history-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(139, 92, 246, 0.4);
+    }
+
+    .fs-ai-history-panel {
+      position: absolute;
+      bottom: 100%;
+      left: 24px;
+      right: 24px;
+      background: rgba(15, 20, 35, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-bottom: none;
+      border-radius: 12px 12px 0 0;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+      z-index: 100;
+      box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+    }
+
+    .fs-ai-history-panel.visible {
+      max-height: 300px;
+    }
+
+    .fs-ai-history-header {
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #a78bfa;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+    }
+
+    #fs-ai-history-list {
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .fs-ai-history-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+      transition: background 0.2s;
+      font-size: 13px;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .fs-ai-history-item:hover {
+      background: rgba(139, 92, 246, 0.12);
+      color: #e2e8f0;
     }
 
