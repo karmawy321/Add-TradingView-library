@@ -690,22 +690,18 @@
         function parsePostfix() {
             var expr = parsePrimary();
             if (expr && expr.error) return expr;
-
             if (expr && (expr.type === 'Switch' || expr.type === 'If')) return expr;
 
             while (true) {
-                // Only skip newlines if the NEXT token is a continuation token (. or [ or ()
                 var nextT = cur();
                 if (nextT.type === TT.NEWLINE) {
                     var p2 = pos + 1;
                     while(p2 < tokens.length && tokens[p2].type === TT.NEWLINE) p2++;
                     if (p2 < tokens.length && (tokens[p2].type === TT.DOT || tokens[p2].type === TT.LBRACKET || tokens[p2].type === TT.LPAREN)) {
                         pos = p2;
-                    } else {
-                        break;
-                    }
+                    } else break;
                 }
-                
+
                 if (at(TT.LBRACKET)) {
                     var l = loc(); pos++;
                     var index = parseExpression(); if (index && index.error) return index;
@@ -719,71 +715,29 @@
                     expr = { type: 'MemberAccess', object: expr, member: member.value, line: l2.line, col: l2.col };
                     continue;
                 }
-                if (at(TT.OP) && cur().value === '<' &&
-                    expr.type === 'MemberAccess' && expr.member === 'new' &&
-                    expr.object && expr.object.type === 'Identifier' && 
-                    (expr.object.name === 'array' || expr.object.name === 'map' || expr.object.name === 'matrix')) {
-                    pos++;
-                    while (!at(TT.EOF) && !(at(TT.OP) && cur().value === '>')) {
-                        pos++;
-                    }
-                    if (!(at(TT.OP) && cur().value === '>')) {
-                        return { error: { line: cur().line, col: cur().col, message: "Expected '>' after type parameter" } };
-                    }
-                    pos++;
-                    continue;
-                }
-                if (at(TT.LPAREN)) { // Removed type check to allow calling any expression result
+                if (at(TT.LPAREN)) {
                     var l3 = loc();
-                    var isFuncDecl = false;
-                    var depth = 0;
+                    // Check if it's a function declaration: (a, b) => ...
+                    var depth = 0; var isDecl = false;
                     for (var i = pos; i < tokens.length; i++) {
                         if (tokens[i].type === TT.LPAREN) depth++;
                         else if (tokens[i].type === TT.RPAREN) {
                             depth--;
                             if (depth === 0) {
-                                var nextPos = i + 1;
-                                while (nextPos < tokens.length && tokens[nextPos].type === TT.NEWLINE) {
-                                    nextPos++;
-                                }
-                                if (nextPos < tokens.length && tokens[nextPos].type === TT.ARROW) {
-                                    isFuncDecl = true;
-                                }
+                                var nxt = i + 1;
+                                while(nxt < tokens.length && tokens[nxt].type === TT.NEWLINE) nxt++;
+                                if (nxt < tokens.length && tokens[nxt].type === TT.ARROW) isDecl = true;
                                 break;
                             }
                         }
                     }
-
-                    if (isFuncDecl) {
-                        pos++; 
-                        var params = [];
-                        skipNewlines();
-                        if (!at(TT.RPAREN)) {
-                            while (true) {
-                                skipNewlines();
-                                var idents = [];
-                                while (at(TT.IDENT) || at(TT.KW_VAR)) {
-                                    idents.push(tokens[pos++]);
-                                }
-                                if (idents.length === 0) {
-                                    return { error: { line: cur().line, col: cur().col, message: "Expected parameter name" } };
-                                }
-                                var pName = idents[idents.length - 1];
-                                params.push({ type: 'Identifier', name: pName.value, line: pName.line, col: pName.col });
-                                skipNewlines();
-                                if (!tryEat(TT.COMMA)) break;
-                            }
-                        }
-                        var r2 = eat(TT.RPAREN); if (r2 && r2.error) return r2;
-                        expr = { type: 'Call', callee: expr, args: params, line: l3.line, col: l3.col };
-                        continue;
-                    } else {
-                        pos++;
-                        var args = parseArgList(); if (args.error) return args;
-                        var r2 = eat(TT.RPAREN); if (r2 && r2.error) return r2;
-                        expr = { type: 'Call', callee: expr, args: args, line: l3.line, col: l3.col };
-                        continue;
-                    }
+                    if (isDecl) break; 
+                    
+                    pos++;
+                    var args = parseArgList(); if (args && args.error) return args;
+                    var r3 = eat(TT.RPAREN); if (r3 && r3.error) return r3;
+                    expr = { type: 'Call', callee: expr, args: args, line: l3.line, col: l3.col };
+                    continue;
                 }
                 break;
             }
