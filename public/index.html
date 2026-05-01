@@ -1814,21 +1814,19 @@
         <div id="fractalInputs"></div>
       </div>
       <!-- AI Generate Bar -->
-      <div style="display:flex;align-items:flex-end;gap:12px;padding:16px 24px;border-top:1px solid rgba(139,92,246,0.25);background:rgba(139,92,246,0.06);">
-        <div style="padding-bottom:10px;">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="1.5" style="flex-shrink:0;opacity:0.8;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <div id="fs-ai-bar-container">
+        <div id="fs-ai-history-panel" class="fs-ai-history-panel">
+          <div class="fs-ai-history-header">Recent Prompts</div>
+          <div id="fs-ai-history-list"></div>
         </div>
-        <textarea id="fs-ai-generate-input" 
-          placeholder="Describe your strategy in detail... (e.g. Cross 3 EMAs with volume filter and RSI overbought exit)"
-          onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); window._fsAiGenerate(); }"
-          style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:12px 16px;color:#e2e8f0;font-family:'DM Sans',sans-serif;font-size:15px;outline:none;transition:all 0.2s;resize:none;min-height:46px;max-height:150px;line-height:1.4;"
-          onfocus="this.style.borderColor='rgba(139,92,246,0.6)';this.style.background='rgba(255,255,255,0.09)';this.style.boxShadow='0 0 0 4px rgba(139,92,246,0.15)'"
-          onblur="this.style.borderColor='rgba(139,92,246,0.25)';this.style.background='rgba(255,255,255,0.06)';this.style.boxShadow='none'"></textarea>
-        <button onclick="window._fsAiGenerate()"
-          style="display:flex;align-items:center;gap:10px;padding:12px 24px;background:rgba(139,92,246,0.22);border:1px solid rgba(139,92,246,0.5);color:#c4b5fd;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all 0.2s;white-space:nowrap;margin-bottom:2px;"
-          onmouseover="this.style.background='rgba(139,92,246,0.35)';this.style.transform='scale(1.02)'"
-          onmouseout="this.style.background='rgba(139,92,246,0.22)';this.style.transform='scale(1)'"
-          id="fs-ai-generate-btn">⚡ Generate</button>
+        
+        <div class="fs-ai-input-wrapper">
+          <button id="fs-ai-history-btn" title="Recent Prompts" onclick="window._fsAiToggleHistory()">🕒</button>
+          <textarea id="fs-ai-generate-input" 
+            placeholder="Describe your strategy in detail... (e.g. Cross 3 EMAs with volume filter)"
+            onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); window._fsAiGenerate(); }"></textarea>
+          <button id="fs-ai-generate-btn" onclick="window._fsAiGenerate()">⚡ Generate</button>
+        </div>
       </div>
       <!-- Footer -->
       <div
