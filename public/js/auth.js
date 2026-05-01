@@ -21,8 +21,12 @@
             if (session && session.access_token) {
               localStorage.setItem('fractal_token', session.access_token);
               if (event === 'TOKEN_REFRESHED') console.log('[Auth] Token refreshed silently');
+              if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session.user) {
+                _startPresence(session.user);
+              }
             } else if (event === 'SIGNED_OUT') {
               localStorage.removeItem('fractal_token');
+              _stopPresence();
             }
           });
         } else {
@@ -601,3 +605,50 @@
       spendCredits(toolKey);
       return _origCallBackend(endpoint, payload);
     };
+
+    /* ══ USER PRESENCE ══ */
+    var _heartbeatTimer = null;
+    var _presenceCh = null;
+
+    function _activeTool() {
+      try {
+        var el = document.querySelector('[data-tool].running, [data-tool].active');
+        return el ? (el.dataset.tool || null) : null;
+      } catch(e) { return null; }
+    }
+
+    function _sendHeartbeat() {
+      var token = localStorage.getItem('fractal_token');
+      if (!token) return;
+      fetch('/api/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ tool: _activeTool() })
+      }).catch(function() {});
+    }
+
+    function _startPresence(user) {
+      _sendHeartbeat();
+      if (_heartbeatTimer) clearInterval(_heartbeatTimer);
+      _heartbeatTimer = setInterval(_sendHeartbeat, 60000);
+      if (sb && sb.channel) {
+        if (_presenceCh) { try { _presenceCh.unsubscribe(); } catch(e) {} }
+        _presenceCh = sb.channel('global-presence', { config: { presence: { key: user.id } } });
+        var _u = null;
+        try { _u = JSON.parse(localStorage.getItem('fractal_user')); } catch(e) {}
+        _presenceCh.subscribe(function(status) {
+          if (status === 'SUBSCRIBED') {
+            _presenceCh.track({
+              user_id:   user.id,
+              username:  (_u && _u.username) || (user.email ? user.email.split('@')[0] : 'unknown'),
+              online_at: new Date().toISOString()
+            });
+          }
+        });
+      }
+    }
+
+    function _stopPresence() {
+      if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
+      if (_presenceCh) { try { _presenceCh.unsubscribe(); } catch(e) {} _presenceCh = null; }
+    }

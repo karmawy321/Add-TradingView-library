@@ -549,6 +549,27 @@ app.get('/api/profile', rateLimit(30, 60000), async (req, res) => {
 // /profile page redirect
 app.get('/profile', (req, res) => sendPage('profile.html', res));
 
+/* ── USER PRESENCE / HEARTBEAT ── */
+app.post('/api/heartbeat', rateLimit(3, 60000), async (req, res) => {
+  if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  const { data: { user }, error } = await sbAdmin.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Unauthorized' });
+  const { tool } = req.body;
+  const ip = getClientIp(req);
+  const { data: profile } = await sbAdmin.from('profiles').select('username, plan').eq('id', user.id).single();
+  await sbAdmin.from('user_presence').upsert({
+    user_id:   user.id,
+    username:  profile?.username || user.email?.split('@')[0] || 'unknown',
+    plan:      profile?.plan || 'free',
+    tool:      String(tool || '').slice(0, 30) || null,
+    last_seen: new Date().toISOString(),
+    ip:        ip.slice(0, 45)
+  }, { onConflict: 'user_id' });
+  res.json({ ok: true });
+});
+
 // Tracks in-flight lazy fetches to prevent polling loops from spamming TwelveData
 const _fetchingTF = {};
 
@@ -2752,6 +2773,187 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
     console.error('[Admin Stats] Error:', error);
     res.status(500).send('Error loading stats');
   }
+});
+
+/* ═══════════════════════════════════════════════════
+   USERS ADMIN
+   ═══════════════════════════════════════════════════ */
+
+app.get('/api/admin/users', requireAdmin, async (_req, res) => {
+  if (!sbAdmin) return res.status(500).json({ error: 'DB not configured' });
+  try {
+    const fiveMinsAgo   = new Date(Date.now() - 5  * 60 * 1000).toISOString();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const todayStart    = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+
+    const [{ data: online }, { data: recent }, { count: totalUsers }, { count: todayAnalyses }] = await Promise.all([
+      sbAdmin.from('user_presence').select('user_id,username,plan,tool,last_seen,ip')
+        .gte('last_seen', fiveMinsAgo).order('last_seen', { ascending: false }),
+      sbAdmin.from('user_presence').select('user_id,username,plan,tool,last_seen')
+        .lt('last_seen', fiveMinsAgo).gte('last_seen', thirtyDaysAgo)
+        .order('last_seen', { ascending: false }).limit(100),
+      sbAdmin.from('profiles').select('id', { count: 'exact', head: true }),
+      sbAdmin.from('analyses').select('id', { count: 'exact', head: true }).gte('created_at', todayStart),
+    ]);
+
+    res.json({ online: online || [], recent: recent || [], totalUsers: totalUsers || 0, todayAnalyses: todayAnalyses || 0 });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/admin/users', requireAdmin, (_req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Users Dashboard</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0c12;color:#e0e0e0;font-family:'DM Mono',monospace;padding:24px}
+  h1{color:#c9a84c;margin-bottom:8px;font-size:22px}
+  .subtitle{color:rgba(255,255,255,.35);font-size:12px;margin-bottom:24px}
+  .row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .stat{flex:1;min-width:110px;text-align:center;background:#0d0f18;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:14px 8px}
+  .stat .val{font-size:28px;font-weight:700;color:#c9a84c}
+  .stat .lbl{font-size:10px;color:rgba(255,255,255,.4);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+  .stat.green .val{color:#22c55e}
+  .stat.blue .val{color:#3b82f6}
+  .stat.purple .val{color:#a855f7}
+  .card{background:#13161f;border:1px solid rgba(201,168,76,.15);border-radius:8px;padding:20px;margin-bottom:16px}
+  h2{color:rgba(201,168,76,.8);font-size:14px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(201,168,76,.1);display:flex;align-items:center;gap:8px}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;animation:pulse 1.5s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{text-align:left;color:rgba(201,168,76,.7);border-bottom:1px solid rgba(255,255,255,.08);padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,.04);color:rgba(255,255,255,.65)}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .plan{display:inline-block;padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .p-free{background:rgba(100,116,139,.15);color:#64748b}
+  .p-starter{background:rgba(59,130,246,.15);color:#3b82f6}
+  .p-pro{background:rgba(201,168,76,.15);color:#c9a84c}
+  .p-mentor{background:rgba(168,85,247,.15);color:#a855f7}
+  .p-elite{background:rgba(234,179,8,.2);color:#eab308}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle;flex-shrink:0}
+  .dot-on{background:#22c55e}
+  .dot-off{background:#334155}
+  .empty{text-align:center;padding:32px;color:rgba(255,255,255,.2);font-size:12px}
+  .loading{text-align:center;padding:40px;color:rgba(255,255,255,.3)}
+  .ip{color:rgba(255,255,255,.25);font-size:10px}
+</style>
+</head>
+<body>
+<h1>Users Dashboard</h1>
+<p class="subtitle">Live presence &middot; Heartbeat tracking &middot; <span id="ts">Loading...</span></p>
+
+<div class="row">
+  <div class="stat"><div class="val" id="sTotal">—</div><div class="lbl">Total Users</div></div>
+  <div class="stat green"><div class="val" id="sOnline">—</div><div class="lbl">Online Now</div></div>
+  <div class="stat blue"><div class="val" id="sToday">—</div><div class="lbl">Analyses Today</div></div>
+  <div class="stat purple"><div class="val" id="sLive">—</div><div class="lbl">Live Connections</div></div>
+</div>
+
+<div class="card">
+  <h2><span class="live-dot"></span>Live Connections (Supabase Presence)</h2>
+  <div id="presenceTable"><div class="empty">Connecting to realtime channel...</div></div>
+</div>
+
+<div class="card">
+  <h2>Online Now <span style="font-size:10px;color:rgba(255,255,255,.3);font-weight:400">(last 5 min via heartbeat)</span></h2>
+  <div id="onlineTable"><div class="loading">Loading...</div></div>
+</div>
+
+<div class="card">
+  <h2>Recent Activity <span style="font-size:10px;color:rgba(255,255,255,.3);font-weight:400">(last 30 days)</span></h2>
+  <div id="recentTable"><div class="loading">Loading...</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const ADMIN_KEY = new URLSearchParams(location.search).get('key') || '';
+const sb = supabase.createClient('https://pvkweqyrwbmcsczpjvhj.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2a3dlcXlyd2JtY3NjenBqdmhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMjk5MTIsImV4cCI6MjA4OTYwNTkxMn0.RmyJM3wv63V57wnyGoFJ6q65UFoKccG91UdB683N284');
+
+function h(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function planBadge(p){
+  p = (p||'free').toLowerCase();
+  return '<span class="plan p-'+p+'">'+p+'</span>';
+}
+
+function ago(ts){
+  if(!ts) return '—';
+  var s = (Date.now() - new Date(ts).getTime()) / 1000;
+  if(s < 60)    return Math.round(s)+'s ago';
+  if(s < 3600)  return Math.round(s/60)+'m ago';
+  if(s < 86400) return Math.round(s/3600)+'h ago';
+  return Math.round(s/86400)+'d ago';
+}
+
+/* ── Supabase Presence (realtime) ── */
+var presence = {};
+function renderPresence(){
+  var keys = Object.keys(presence);
+  document.getElementById('sLive').textContent = keys.length;
+  if(!keys.length){ document.getElementById('presenceTable').innerHTML='<div class="empty">No live connections right now</div>'; return; }
+  document.getElementById('presenceTable').innerHTML =
+    '<table><thead><tr><th>User</th><th>ID</th><th>Connected</th></tr></thead><tbody>'+
+    keys.map(function(k){
+      var u=presence[k];
+      return '<tr><td><span class="dot dot-on"></span>'+h(u.username||u.user_id||k)+'</td>'+
+        '<td style="color:rgba(255,255,255,.3);font-size:10px">'+h(u.user_id||'')+'</td>'+
+        '<td>'+ago(u.online_at)+'</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+
+var ch = sb.channel('global-presence');
+ch.on('presence',{event:'sync'},function(){
+  var state = ch.presenceState();
+  presence = {};
+  Object.values(state).forEach(function(arr){ arr.forEach(function(u){ presence[u.user_id||u.presence_ref]=u; }); });
+  renderPresence();
+}).subscribe();
+
+/* ── Heartbeat data ── */
+async function load(){
+  try{
+    var r = await fetch('/api/admin/users?key='+ADMIN_KEY);
+    if(!r.ok){ document.getElementById('onlineTable').innerHTML='<p style="color:#f87171;padding:16px">Unauthorized</p>'; return; }
+    var d = await r.json();
+
+    document.getElementById('sTotal').textContent  = d.totalUsers||0;
+    document.getElementById('sOnline').textContent = d.online.length;
+    document.getElementById('sToday').textContent  = d.todayAnalyses||0;
+    document.getElementById('ts').textContent      = 'Updated '+new Date().toLocaleTimeString();
+
+    document.getElementById('onlineTable').innerHTML = d.online.length ? (
+      '<table><thead><tr><th>User</th><th>Plan</th><th>Tool</th><th>Last Seen</th><th>IP</th></tr></thead><tbody>'+
+      d.online.map(function(u){
+        return '<tr><td><span class="dot dot-on"></span>'+h(u.username)+'</td>'+
+          '<td>'+planBadge(u.plan)+'</td>'+
+          '<td>'+h(u.tool||'—')+'</td>'+
+          '<td>'+ago(u.last_seen)+'</td>'+
+          '<td class="ip">'+h(u.ip||'')+'</td></tr>';
+      }).join('')+'</tbody></table>'
+    ) : '<div class="empty">No users online right now</div>';
+
+    document.getElementById('recentTable').innerHTML = d.recent.length ? (
+      '<table><thead><tr><th>User</th><th>Plan</th><th>Last Tool</th><th>Last Seen</th></tr></thead><tbody>'+
+      d.recent.map(function(u){
+        return '<tr><td><span class="dot dot-off"></span>'+h(u.username)+'</td>'+
+          '<td>'+planBadge(u.plan)+'</td>'+
+          '<td>'+h(u.tool||'—')+'</td>'+
+          '<td>'+ago(u.last_seen)+'</td></tr>';
+      }).join('')+'</tbody></table>'
+    ) : '<div class="empty">No recent activity</div>';
+  } catch(e){
+    document.getElementById('onlineTable').innerHTML='<p style="color:#f87171;padding:16px">'+h(e.message)+'</p>';
+  }
+}
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>`);
 });
 
 /* ═══════════════════════════════════════════════════
