@@ -36,9 +36,10 @@ BUILT-IN FUNCTIONS:
 - ta.crossover(a, b), ta.crossunder(a, b), ta.change(src, len)
 - ta.cum(src), ta.valuewhen(cond, src, occurrence)
 - ta.pivothigh(src, leftbars, rightbars), ta.pivotlow(src, leftbars, rightbars)
-- ta.vwap(src), ta.supertrend(multiplier, period) → [st, dir]
-- ta.dmi(len, smooth) → [plus, minus, adx]
-- ta.mfi(src, len), ta.obv()
+- ta.vwap(src), ta.vwap_session(src, vol, time), ta.supertrend(multiplier, period) → [st, dir]
+- ta.dmi(len, smooth) → [plus, minus, adx], ta.donchian(len) → [up, low, mid]
+- ta.mfi(src, len), ta.obv(), ta.standardize(src, len)
+- ta.all(cond, len), ta.any(cond, len), ta.median(src, len), ta.range(src, len)
 
 PLOTTING:
 - plot(value, title="", color=color.blue, linewidth=1)

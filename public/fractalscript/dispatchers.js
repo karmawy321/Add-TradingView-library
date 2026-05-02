@@ -371,6 +371,11 @@
             case 'ta.percentrank': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.percentrank(s, Math.round(l), id); }
             case 'ta.median': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.median(s, Math.round(l), id); }
             case 'ta.range': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.range(s, Math.round(l), id); }
+            case 'ta.donchian': { var l = e(0); return FS.isNa(l) ? [FS.NA, FS.NA, FS.NA] : ta.donchian(Math.round(l), +ctx.curCandle.h, +ctx.curCandle.l, id); }
+            case 'ta.standardize': { var s = e(0), l = e(1); return FS.isNa(l) ? FS.NA : ta.standardize(s, Math.round(l), id); }
+            case 'ta.vwap_session': { var s = e(0), v = e(1), t = e(2); return ta.vwap_session(s, FS.isNa(v) ? +ctx.curCandle.v : v, FS.isNa(t) ? ctx.curCandle.t : t, id); }
+            case 'ta.all': { var c = e(0), l = e(1); return FS.isNa(l) ? false : ta.all(c, Math.round(l), id); }
+            case 'ta.any': { var c = e(0), l = e(1); return FS.isNa(l) ? false : ta.any(c, Math.round(l), id); }
             default:
                 return {
                     __error__: {

@@ -600,35 +600,29 @@
 
             /* ════════ P5: Volatility ════════ */
             stdev: function (source, length, biased, id) {
-                var c = getCache(id, function () { return { buf: [] }; });
-                if (FS.isNa(source)) return FS.NA;
-                c.buf.push(source);
-                if (c.buf.length > length) c.buf.shift();
-                if (c.buf.length < length) return FS.NA;
-                var mean = 0;
-                for (var i = 0; i < length; i++) mean += c.buf[i];
-                mean /= length;
-                var sq = 0;
-                for (var j = 0; j < length; j++) { var d = c.buf[j] - mean; sq += d * d; }
-                var divisor = biased === false ? (length - 1) : length;
-                if (divisor <= 0) return FS.NA;
-                return Math.sqrt(sq / divisor);
+                var v = this.variance(source, length, biased, id + '_v');
+                return FS.isNa(v) ? FS.NA : Math.sqrt(v);
             },
 
             variance: function (source, length, biased, id) {
-                var c = getCache(id, function () { return { buf: [] }; });
+                var c = getCache(id, function () { return { sum: 0, sumSq: 0, buf: [] }; });
                 if (FS.isNa(source)) return FS.NA;
                 c.buf.push(source);
-                if (c.buf.length > length) c.buf.shift();
+                c.sum += source;
+                c.sumSq += (source * source);
+                if (c.buf.length > length) {
+                    var old = c.buf.shift();
+                    c.sum -= old;
+                    c.sumSq -= (old * old);
+                }
                 if (c.buf.length < length) return FS.NA;
-                var mean = 0;
-                for (var i = 0; i < length; i++) mean += c.buf[i];
-                mean /= length;
-                var sq = 0;
-                for (var j = 0; j < length; j++) { var d = c.buf[j] - mean; sq += d * d; }
+                var mean = c.sum / length;
+                var vr = (c.sumSq / length) - (mean * mean);
+                // Biased variance is Population Variance, Unbiased is Sample Variance
                 var divisor = biased === false ? (length - 1) : length;
                 if (divisor <= 0) return FS.NA;
-                return sq / divisor;
+                if (biased === false) return vr * (length / (length - 1));
+                return vr;
             },
 
             dev: function (source, length, id) {
@@ -823,6 +817,51 @@
                 var lo = this.lowest(source, length, id + '_rlo');
                 if (FS.isNa(hi) || FS.isNa(lo)) return FS.NA;
                 return hi - lo;
+            },
+
+            donchian: function (length, high, low, id) {
+                var upper = this.highest(high, length, id + '_u');
+                var lower = this.lowest(low, length, id + '_l');
+                if (FS.isNa(upper) || FS.isNa(lower)) return [FS.NA, FS.NA, FS.NA];
+                return [upper, lower, (upper + lower) / 2];
+            },
+
+            standardize: function (source, length, id) {
+                var mean = this.sma(source, length, id + '_mean');
+                var dev = this.stdev(source, length, true, id + '_dev');
+                if (FS.isNa(mean) || FS.isNa(dev) || dev === 0) return FS.NA;
+                return (source - mean) / dev;
+            },
+
+            vwap_session: function (source, volume, time, id) {
+                var c = getCache(id, function () { return { sumPV: 0, sumV: 0, lastDay: -1 }; });
+                if (FS.isNa(source) || FS.isNa(volume) || FS.isNa(time)) return FS.NA;
+                var currentDay = new Date(time).getUTCDay();
+                if (c.lastDay !== -1 && currentDay !== c.lastDay) {
+                    c.sumPV = 0; c.sumV = 0;
+                }
+                c.lastDay = currentDay;
+                c.sumPV += (source * volume);
+                c.sumV += volume;
+                return c.sumV === 0 ? FS.NA : c.sumPV / c.sumV;
+            },
+
+            all: function (cond, length, id) {
+                var c = getCache(id, function () { return { buf: [] }; });
+                c.buf.push(!!cond);
+                if (c.buf.length > length) c.buf.shift();
+                if (c.buf.length < length) return false;
+                for (var i = 0; i < length; i++) if (!c.buf[i]) return false;
+                return true;
+            },
+
+            any: function (cond, length, id) {
+                var c = getCache(id, function () { return { buf: [] }; });
+                c.buf.push(!!cond);
+                if (c.buf.length > length) c.buf.shift();
+                var L = Math.min(c.buf.length, length);
+                for (var i = 0; i < L; i++) if (c.buf[c.buf.length - 1 - i]) return true;
+                return false;
             }
         };
 
