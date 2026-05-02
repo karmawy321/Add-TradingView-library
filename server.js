@@ -496,6 +496,7 @@ function getClientIp(req) { return req.headers['cf-connecting-ip'] || (req.heade
 function rateLimit(max, ms) {
   const map = new Map();
   return (req, res, next) => {
+    if (process.env.LOAD_TEST_KEY && req.headers['x-load-test-key'] === process.env.LOAD_TEST_KEY) return next();
     const ip = getClientIp(req), now = Date.now();
     let e = map.get(ip);
     if (!e || now > e.reset) { e = { count:0, reset:now+ms }; map.set(ip, e); }
@@ -684,8 +685,9 @@ app.get('/history/:symbol', rateLimit(30, 60000), async (req, res) => {
 const _sseConnCount = new Map();
 app.get('/subscribe/:symbol', rateLimit(60, 60000), (req, res) => {
   const ip  = getClientIp(req);
+  const isLoadTest = process.env.LOAD_TEST_KEY && req.headers['x-load-test-key'] === process.env.LOAD_TEST_KEY;
   const cur = _sseConnCount.get(ip) || 0;
-  if (cur >= 5) return res.status(429).json({ error: 'Too many SSE connections' });
+  if (!isLoadTest && cur >= 5) return res.status(429).json({ error: 'Too many SSE connections' });
   const sym = req.params.symbol.toUpperCase().replace('-', '/');
   if (!validSymbol(sym)) return res.status(400).json({ error: 'Invalid symbol' });
 
