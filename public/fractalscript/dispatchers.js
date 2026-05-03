@@ -100,6 +100,8 @@
         if (callName.indexOf('map.') === 0) return execMapCall(callName, args, node, ctx);
         /* ta.* */
         if (callName.indexOf('ta.') === 0) return execTaCall(callName, args, node, ctx);
+        /* matrix.* */
+        if (callName.indexOf('matrix.') === 0) return execMatrixCall(callName, args, node, ctx);
         /* strategy.* */
         if (callName.indexOf('strategy.') === 0) return execStrategyCall(callName, args, node, ctx);
 
@@ -168,11 +170,83 @@
         /* plotcandle — no-op */
         if (callName === 'plotcandle') return FS.NA;
 
-        /* request.security / request.security_lower_tf — stub */
+        /* request.security / request.security_lower_tf — Auto-Aggregator */
         if (callName === 'request.security' || callName === 'request.security_lower_tf') {
             if (args.length < 3) return FS.NA;
+            var symArg = execFn(args[0]);
+            var tfArg = execFn(args[1]);
             var srcArg = args[2];
-            return execFn(srcArg.type === 'NamedArg' ? srcArg.value : srcArg);
+            var srcAst = srcArg.type === 'NamedArg' ? srcArg.value : srcArg;
+
+            if (FS.isNa(tfArg) || typeof tfArg !== 'string') return execFn(srcAst);
+
+            var ms = 0;
+            if (tfArg === 'D' || tfArg === '1D') ms = 86400000;
+            else if (tfArg === 'W' || tfArg === '1W') ms = 86400000 * 7;
+            else if (tfArg === 'M' || tfArg === '1M') ms = 86400000 * 30;
+            else {
+                var mins = parseInt(tfArg);
+                if (!isNaN(mins)) ms = mins * 60000;
+            }
+
+            if (ms <= 0 || !ctx.candles || ctx.candles.length === 0) return execFn(srcAst);
+
+            // Avoid aggregation if requesting the same or lower timeframe
+            var currentMs = 0;
+            if (ctx._tfIsDaily) currentMs = 86400000 * ctx._tfMultiplier;
+            else if (ctx._tfIsMinutes) currentMs = 60000 * ctx._tfMultiplier;
+            else if (ctx._tfIsHours) currentMs = 3600000 * ctx._tfMultiplier;
+            else if (ctx._tfIsSeconds) currentMs = 1000 * ctx._tfMultiplier;
+            
+            if (currentMs > 0 && ms <= currentMs) return execFn(srcAst);
+
+            var cacheKey = tfArg + "_" + JSON.stringify(srcAst);
+            if (!ctx.securityCache) return execFn(srcAst); // Failsafe
+
+            if (!ctx.securityCache[cacheKey]) {
+                var aggCandles = [];
+                var curAgg = null;
+                for (var i = 0; i < ctx.candles.length; i++) {
+                    var c = ctx.candles[i];
+                    var chunk = Math.floor(c.t / ms);
+                    if (!curAgg || curAgg.chunk !== chunk) {
+                        if (curAgg) aggCandles.push(curAgg);
+                        curAgg = { o: c.o, h: c.h, l: c.l, c: c.c, v: c.v, t: chunk * ms, chunk: chunk };
+                    } else {
+                        curAgg.h = Math.max(curAgg.h, c.h);
+                        curAgg.l = Math.min(curAgg.l, c.l);
+                        curAgg.c = c.c;
+                        curAgg.v += c.v;
+                    }
+                }
+                if (curAgg) aggCandles.push(curAgg);
+
+                // Run a completely isolated sub-evaluation
+                var dummyAst = { type: 'Program', body: [ { type: 'VarDecl', name: '__sec_res', value: srcAst, persistent: false } ] };
+                var subOverrides = ctx.inputOverrides ? JSON.parse(JSON.stringify(ctx.inputOverrides)) : {};
+                var subRes = FS.evaluate(dummyAst, aggCandles, subOverrides);
+                
+                var aggResults = (subRes._seriesHistory && subRes._seriesHistory['__sec_res']) ? subRes._seriesHistory['__sec_res'] : [];
+
+                // Map results back to current candles
+                var mapped = new Array(ctx.candles.length);
+                var aIdx = 0;
+                for (var i = 0; i < ctx.candles.length; i++) {
+                    var c = ctx.candles[i];
+                    var chunk = Math.floor(c.t / ms);
+                    while (aIdx < aggCandles.length - 1 && aggCandles[aIdx].chunk < chunk) aIdx++;
+                    
+                    if (aggCandles[aIdx] && aggCandles[aIdx].chunk === chunk) {
+                        mapped[i] = aggResults[aIdx];
+                    } else {
+                        mapped[i] = aIdx > 0 ? aggResults[aIdx-1] : FS.NA;
+                    }
+                }
+                ctx.securityCache[cacheKey] = mapped;
+            }
+
+            var res = ctx.securityCache[cacheKey][ctx.barIndex];
+            return (res === undefined || FS.isNa(res)) ? FS.NA : res;
         }
         /* request.dividends/earnings/financial — no-op */
         if (callName.indexOf('request.') === 0) return FS.NA;
@@ -752,6 +826,14 @@
             case 'str.pos': { var s = e(0), sub = e(1); if (FS.isNa(s) || FS.isNa(sub)) return FS.NA; return String(s).indexOf(String(sub)); }
             case 'str.replace_all': { var s = e(0), pat = e(1), rep = e(2); if (FS.isNa(s) || FS.isNa(pat) || FS.isNa(rep)) return FS.NA; return String(s).split(String(pat)).join(String(rep)); }
             case 'str.match': { var s = e(0), rx = e(1); if (FS.isNa(s) || FS.isNa(rx)) return FS.NA; try { var m = String(s).match(new RegExp(String(rx))); return m ? m[0] : ''; } catch (e) { return FS.NA; } }
+            case 'str.new': { var v = e(0); return FS.isNa(v) ? "" : String(v); }
+            case 'str.new_float':
+            case 'str.new_int':
+            case 'str.new_bool':
+            case 'str.new_string': {
+                var v2 = e(0), fmt = args.length > 1 ? e(1) : undefined;
+                return toStr(v2, fmt);
+            }
             default:
                 return { __error__: { line: node.line, col: node.col, message: "Unknown str function '" + name + "'" } };
         }
@@ -787,17 +869,103 @@
             case 'array.pop': { var a = e(0); if (Array.isArray(a) && a.length > 0) return a.pop(); return FS.NA; }
             case 'array.shift': { var a = e(0); if (Array.isArray(a) && a.length > 0) return a.shift(); return FS.NA; }
             case 'array.unshift': { var a = e(0), v = e(1); if (Array.isArray(a)) a.unshift(v); return FS.NA; }
-            case 'array.set': { var a = e(0), idx = e(1), v = e(2); if (Array.isArray(a) && !FS.isNa(idx) && idx >= 0 && idx < a.length) a[idx] = v; return FS.NA; }
+            case 'array.set': { var a = e(0), idx = e(1), v = e(2); if (Array.isArray(a) && !FS.isNa(idx) && !FS.isNa(v) && idx >= 0 && idx < a.length) a[idx] = v; return FS.NA; }
             case 'array.get': { var a = e(0), idx = e(1); if (Array.isArray(a) && !FS.isNa(idx) && idx >= 0 && idx < a.length) return a[idx]; return FS.NA; }
             case 'array.size': { var a = e(0); return Array.isArray(a) ? a.length : FS.NA; }
             case 'array.clear': { var a = e(0); if (Array.isArray(a)) a.length = 0; return FS.NA; }
             case 'array.slice': { var a = e(0), from = e(1), to = e(2); return Array.isArray(a) ? a.slice(FS.isNa(from) ? 0 : from, FS.isNa(to) ? a.length : to) : []; }
-            case 'array.insert': { var a = e(0), idx = e(1), v = e(2); if (Array.isArray(a) && !FS.isNa(idx)) a.splice(Math.max(0, idx), 0, v); return FS.NA; }
+            case 'array.insert': { var a = e(0), idx = e(1), v = e(2); if (Array.isArray(a) && !FS.isNa(idx) && !FS.isNa(v)) a.splice(Math.max(0, idx), 0, v); return FS.NA; }
             case 'array.remove': { var a = e(0), idx = e(1); if (Array.isArray(a) && !FS.isNa(idx) && idx >= 0 && idx < a.length) return a.splice(idx, 1)[0]; return FS.NA; }
             case 'array.sum': { var a = e(0); if (!Array.isArray(a)) return FS.NA; var sum = 0; for (var i = 0; i < a.length; i++) if (!FS.isNa(a[i])) sum += a[i]; return sum; }
             case 'array.avg': { var a = e(0); if (!Array.isArray(a)) return FS.NA; var sum = 0, cnt = 0; for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i])) { sum += a[i]; cnt++; } } return cnt > 0 ? sum / cnt : FS.NA; }
             case 'array.max': { var a = e(0); if (!Array.isArray(a)) return FS.NA; var max = -Infinity; for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i]) && a[i] > max) max = a[i]; } return max === -Infinity ? FS.NA : max; }
             case 'array.min': { var a = e(0); if (!Array.isArray(a)) return FS.NA; var min = Infinity; for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i]) && a[i] < min) min = a[i]; } return min === Infinity ? FS.NA : min; }
+            case 'array.variance': {
+                var a = e(0), b = e(1);
+                if (!Array.isArray(a) || a.length === 0) return FS.NA;
+                var biased = FS.isNa(b) ? true : !!b;
+                var sum = 0, cnt = 0;
+                for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i])) { sum += a[i]; cnt++; } }
+                if (cnt === 0) return FS.NA;
+                var mean = sum / cnt;
+                var sqDiff = 0;
+                for (var j = 0; j < a.length; j++) { if (!FS.isNa(a[j])) sqDiff += Math.pow(a[j] - mean, 2); }
+                var div = biased ? cnt : cnt - 1;
+                return div <= 0 ? FS.NA : sqDiff / div;
+            }
+            case 'array.stdev': {
+                var a = e(0), b = e(1);
+                if (!Array.isArray(a) || a.length === 0) return FS.NA;
+                var biased = FS.isNa(b) ? true : !!b;
+                var sum = 0, cnt = 0;
+                for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i])) { sum += a[i]; cnt++; } }
+                if (cnt === 0) return FS.NA;
+                var mean = sum / cnt;
+                var sqDiff = 0;
+                for (var j = 0; j < a.length; j++) { if (!FS.isNa(a[j])) sqDiff += Math.pow(a[j] - mean, 2); }
+                var div = biased ? cnt : cnt - 1;
+                return div <= 0 ? FS.NA : Math.sqrt(sqDiff / div);
+            }
+            case 'array.standardize': {
+                var a = e(0);
+                if (!Array.isArray(a) || a.length === 0) return FS.NA;
+                var sum = 0, cnt = 0;
+                for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i])) { sum += a[i]; cnt++; } }
+                if (cnt === 0) return FS.NA;
+                var mean = sum / cnt;
+                var sqDiff = 0;
+                for (var j = 0; j < a.length; j++) { if (!FS.isNa(a[j])) sqDiff += Math.pow(a[j] - mean, 2); }
+                var sd = Math.sqrt(sqDiff / cnt);
+                if (sd === 0) return a.map(function(x) { return FS.isNa(x) ? FS.NA : 0; });
+                return a.map(function(x) { return FS.isNa(x) ? FS.NA : (x - mean) / sd; });
+            }
+            case 'array.mode': {
+                var a = e(0);
+                if (!Array.isArray(a) || a.length === 0) return FS.NA;
+                var counts = {}, maxFreq = 0;
+                for (var i = 0; i < a.length; i++) {
+                    var v = a[i];
+                    if (FS.isNa(v)) continue;
+                    counts[v] = (counts[v] || 0) + 1;
+                    if (counts[v] > maxFreq) maxFreq = counts[v];
+                }
+                if (maxFreq === 0) return FS.NA;
+                var modes = [];
+                for (var k in counts) { if (counts[k] === maxFreq) modes.push(Number(k)); }
+                modes.sort(function(x, y) { return x - y; });
+                return modes[0];
+            }
+            case 'array.percentile_linear_interpolation': {
+                var a = e(0), p = e(1);
+                if (!Array.isArray(a) || a.length === 0 || FS.isNa(p)) return FS.NA;
+                var filtered = [];
+                for (var i = 0; i < a.length; i++) { if (!FS.isNa(a[i])) filtered.push(a[i]); }
+                if (filtered.length === 0) return FS.NA;
+                filtered.sort(function(x, y) { return x - y; });
+                var perc = Math.max(0, Math.min(100, p));
+                var k = (perc / 100) * (filtered.length - 1);
+                var idx = Math.floor(k);
+                var rem = k - idx;
+                if (idx >= filtered.length - 1) return filtered[filtered.length - 1];
+                return filtered[idx] * (1 - rem) + filtered[idx + 1] * rem;
+            }
+            case 'array.covariance': {
+                var a1 = e(0), a2 = e(1), b = e(2);
+                if (!Array.isArray(a1) || !Array.isArray(a2) || a1.length === 0 || a1.length !== a2.length) return FS.NA;
+                var biased = FS.isNa(b) ? true : !!b;
+                var s1 = 0, s2 = 0, c = 0;
+                for (var i = 0; i < a1.length; i++) {
+                    if (!FS.isNa(a1[i]) && !FS.isNa(a2[i])) { s1 += a1[i]; s2 += a2[i]; c++; }
+                }
+                if (c === 0) return FS.NA;
+                var m1 = s1 / c, m2 = s2 / c;
+                var sumProd = 0;
+                for (var j = 0; j < a1.length; j++) {
+                    if (!FS.isNa(a1[j]) && !FS.isNa(a2[j])) sumProd += (a1[j] - m1) * (a2[j] - m2);
+                }
+                var div = biased ? c : c - 1;
+                return div <= 0 ? FS.NA : sumProd / div;
+            }
             case 'array.sort': {
                 var a = e(0), order = e(1);
                 if (Array.isArray(a)) {
@@ -976,27 +1144,36 @@
             }
             case 'strategy.exit': {
                 var eid = e(0) || n('id', 0);
-                var fromId = n('from_entry', -1);
-                if (FS.isNa(fromId)) fromId = eid;
-                var tp = n('profit', -1);
-                var sl = n('loss', -1);
-                if (FS.isNa(tp)) tp = FS.NA; else tp = +tp;
-                if (FS.isNa(sl)) sl = FS.NA; else sl = +sl;
+                var fromId = n('from_entry', 1);
+                if (FS.isNa(fromId) || typeof fromId !== 'string') fromId = eid;
+                
+                var tp = n('profit', 4);
+                var sl = n('loss', 6);
+                var limitPrice = n('limit', 5);
+                var stopPrice = n('stop', 7);
+
                 if (!fromId || !ctx.positions[fromId]) return FS.NA;
                 var epos = ctx.positions[fromId];
                 var hi = +ctx.curCandle.h, lo = +ctx.curCandle.l, op = +ctx.curCandle.o, cl = +ctx.curCandle.c;
+                
                 var tpPrice = FS.NA, slPrice = FS.NA;
-                if (!FS.isNa(tp)) tpPrice = epos.direction === 'long' ? epos.entryPrice + tp : epos.entryPrice - tp;
-                if (!FS.isNa(sl)) slPrice = epos.direction === 'long' ? epos.entryPrice - sl : epos.entryPrice + sl;
+
+                if (!FS.isNa(limitPrice)) tpPrice = +limitPrice;
+                else if (!FS.isNa(tp)) tpPrice = epos.direction === 'long' ? epos.entryPrice + (+tp) : epos.entryPrice - (+tp);
+
+                if (!FS.isNa(stopPrice)) slPrice = +stopPrice;
+                else if (!FS.isNa(sl)) slPrice = epos.direction === 'long' ? epos.entryPrice - (+sl) : epos.entryPrice + (+sl);
+
                 var tpHit = !FS.isNa(tpPrice) && (epos.direction === 'long' ? hi >= tpPrice : lo <= tpPrice);
                 var slHit = !FS.isNa(slPrice) && (epos.direction === 'long' ? lo <= slPrice : hi >= slPrice);
+                
                 var triggered = false, exitPrice = cl;
                 if (tpHit && slHit) {
                     var greenPath = cl >= op;
                     if (epos.direction === 'long') {
-                        if (greenPath) { exitPrice = slPrice; } else { exitPrice = tpPrice; }
+                        exitPrice = greenPath ? slPrice : tpPrice;
                     } else {
-                        if (greenPath) { exitPrice = tpPrice; } else { exitPrice = slPrice; }
+                        exitPrice = greenPath ? tpPrice : slPrice;
                     }
                     triggered = true;
                 } else if (tpHit) {
@@ -1004,7 +1181,9 @@
                 } else if (slHit) {
                     exitPrice = slPrice; triggered = true;
                 }
+                
                 if (!triggered) return FS.NA;
+                
                 var epnl = (epos.direction === 'long' ? exitPrice - epos.entryPrice : epos.entryPrice - exitPrice) * epos.qty;
                 var ecom = ctx.stratCommission * exitPrice * epos.qty / 100;
                 epnl -= (epos.commission + ecom);
@@ -1016,6 +1195,32 @@
                 var cancelId = e(0) || n('id', 0);
                 if (cancelId && ctx.positions[cancelId]) delete ctx.positions[cancelId];
                 return FS.NA;
+            }
+            case 'strategy.opentrades.entry_price': {
+                var tidx = Math.round(e(0));
+                var keys = Object.keys(ctx.positions);
+                if (FS.isNa(tidx) || tidx < 0 || tidx >= keys.length) return FS.NA;
+                return ctx.positions[keys[tidx]].entryPrice;
+            }
+            case 'strategy.opentrades.profit': {
+                var tidx = Math.round(e(0));
+                var keys = Object.keys(ctx.positions);
+                if (FS.isNa(tidx) || tidx < 0 || tidx >= keys.length) return FS.NA;
+                var p = ctx.positions[keys[tidx]];
+                return (p.direction === 'long' ? ec - p.entryPrice : p.entryPrice - ec) * p.qty;
+            }
+            case 'strategy.opentrades.size': {
+                var tidx = Math.round(e(0));
+                var keys = Object.keys(ctx.positions);
+                if (FS.isNa(tidx) || tidx < 0 || tidx >= keys.length) return FS.NA;
+                var p = ctx.positions[keys[tidx]];
+                return p.direction === 'long' ? p.qty : -p.qty;
+            }
+            case 'strategy.opentrades.entry_id': {
+                var tidx = Math.round(e(0));
+                var keys = Object.keys(ctx.positions);
+                if (FS.isNa(tidx) || tidx < 0 || tidx >= keys.length) return FS.NA;
+                return keys[tidx];
             }
             default: return FS.NA;
         }
@@ -1227,5 +1432,112 @@
 
     /* ── Export ── */
     FS.execCallDispatch = execCallDispatch;
+
+    /* ══════════════════════════════════════════════════════════════
+       matrix.* DISPATCH
+       ══════════════════════════════════════════════════════════════ */
+
+    function execMatrixCall(name, args, node, ctx) {
+        var execFn = ctx.execNode;
+        function e(idx) { return evalArg(args, idx, execFn); }
+        function n(aname, didx) { return getNamedArg(args, aname, didx, execFn); }
+
+        switch (name) {
+            case 'matrix.new':
+            case 'matrix.new_float':
+            case 'matrix.new_int':
+            case 'matrix.new_bool':
+            case 'matrix.new_string': {
+                var rows = Math.round(e(0)), cols = Math.round(e(1)), init = e(2);
+                if (isNaN(rows) || isNaN(cols) || rows < 0 || cols < 0) return FS.NA;
+                var data = [];
+                for (var r = 0; r < rows; r++) {
+                    var rowArr = [];
+                    for (var c = 0; c < cols; c++) rowArr.push(FS.isNa(init) ? FS.NA : init);
+                    data.push(rowArr);
+                }
+                return { __matrix__: true, data: data, rows: rows, cols: cols };
+            }
+            case 'matrix.get': {
+                var m = e(0), r = Math.round(e(1)), c = Math.round(e(2));
+                if (!m || !m.__matrix__ || isNaN(r) || isNaN(c)) return FS.NA;
+                if (r < 0 || r >= m.rows || c < 0 || c >= m.cols) return FS.NA;
+                return m.data[r][c];
+            }
+            case 'matrix.set': {
+                var m = e(0), r = Math.round(e(1)), c = Math.round(e(2)), val = e(3);
+                if (FS.isNa(m) || FS.isNa(r) || FS.isNa(c) || FS.isNa(val)) return FS.NA;
+                if (!m || !m.__matrix__) return FS.NA;
+                if (r < 0 || r >= m.rows || c < 0 || c >= m.cols) return FS.NA;
+                m.data[r][c] = val;
+                return FS.NA;
+            }
+            case 'matrix.rows': { var m = e(0); return (m && m.__matrix__) ? m.rows : FS.NA; }
+            case 'matrix.columns': { var m = e(0); return (m && m.__matrix__) ? m.cols : FS.NA; }
+            case 'matrix.transpose': {
+                var m = e(0);
+                if (!m || !m.__matrix__) return FS.NA;
+                var newData = [];
+                for (var c = 0; c < m.cols; c++) {
+                    var rowArr = [];
+                    for (var r = 0; r < m.rows; r++) rowArr.push(m.data[r][c]);
+                    newData.push(rowArr);
+                }
+                return { __matrix__: true, data: newData, rows: m.cols, cols: m.rows };
+            }
+            case 'matrix.mult': {
+                var m1 = e(0), m2 = e(1);
+                if (!m1 || !m1.__matrix__ || !m2 || !m2.__matrix__) return FS.NA;
+                if (m1.cols !== m2.rows) return FS.NA;
+                var r1 = m1.rows, c1 = m1.cols, c2 = m2.cols;
+                var resData = [];
+                for (var i = 0; i < r1; i++) {
+                    var rowArr = [];
+                    for (var j = 0; j < c2; j++) {
+                        var sum = 0;
+                        for (var k = 0; k < c1; k++) {
+                            var v1 = m1.data[i][k], v2 = m2.data[k][j];
+                            if (FS.isNa(v1) || FS.isNa(v2)) { sum = FS.NA; break; }
+                            sum += v1 * v2;
+                        }
+                        rowArr.push(sum);
+                    }
+                    resData.push(rowArr);
+                }
+                return { __matrix__: true, data: resData, rows: r1, cols: c2 };
+            }
+            case 'matrix.inv': {
+                var m = e(0);
+                if (!m || !m.__matrix__ || m.rows !== m.cols) return FS.NA;
+                var n = m.rows;
+                if (n === 0) return FS.NA;
+                var aug = m.data.map(function(row, i) {
+                    var r = row.slice();
+                    for (var j = 0; j < n; j++) r.push(i === j ? 1 : 0);
+                    return r;
+                });
+                for (var i = 0; i < n; i++) {
+                    var maxRow = i;
+                    for (var k = i + 1; k < n; k++) {
+                        if (Math.abs(aug[k][i]) > Math.abs(aug[maxRow][i])) maxRow = k;
+                    }
+                    var tmp = aug[i]; aug[i] = aug[maxRow]; aug[maxRow] = tmp;
+                    var pivot = aug[i][i];
+                    if (Math.abs(pivot) < 1e-10) return FS.NA;
+                    for (var j = i; j < 2 * n; j++) aug[i][j] /= pivot;
+                    for (var k = 0; k < n; k++) {
+                        if (k !== i) {
+                            var factor = aug[k][i];
+                            for (var j = i; j < 2 * n; j++) aug[k][j] -= factor * aug[i][j];
+                        }
+                    }
+                }
+                var invData = aug.map(function(row) { return row.slice(n); });
+                return { __matrix__: true, data: invData, rows: n, cols: n };
+            }
+            default:
+                return { __error__: { line: node.line, col: node.col, message: "Unknown matrix function '" + name + "'" } };
+        }
+    }
 
 })(typeof window !== 'undefined' ? window : this);

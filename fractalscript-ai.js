@@ -51,8 +51,11 @@ COLORS: color.red, color.green, color.blue, color.orange, color.purple, color.ye
 
 SERIES: open, high, low, close, volume, bar_index, time
 - math.abs(x), math.max(a,b), math.min(a,b), math.round(x), math.sqrt(x), math.pow(x,y), math.log(x), math.ceil(x), math.floor(x)
-- str.tostring(val), str.format(fmt, args...), str.contains(s, sub), str.length(s)
-- array.new_float(size, val), array.push(arr, val), array.get(arr, idx), array.set(arr, idx, val), array.size(arr)
+- str.tostring(val), str.format(fmt, args...), str.contains(s, sub), str.length(s), str.new(val)
+- array.new<float>(size, val), array.push(arr, val), array.get(arr, idx), array.set(arr, idx, val), array.size(arr)
+- array.standardize(arr), array.mode(arr), array.percentile_linear_interpolation(arr, perc), array.covariance(arr1, arr2)
+- array.variance(arr), array.stdev(arr)
+- matrix.new<float>(rows, cols, val), matrix.get(m, r, c), matrix.set(m, r, c, val), matrix.mult(m1, m2), matrix.transpose(m), matrix.inv(m)
 - nz(val, replacement), na(val) — check if NA
 - input(defval, title="", type=input.int) or input.int(defval, title="")
 - timestamp(year, month, day, hour, min, sec)

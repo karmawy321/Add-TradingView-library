@@ -685,9 +685,29 @@
                     expr = { type: 'MemberAccess', object: expr, member: member.value, line: l2.line, col: l2.col };
                     continue;
                 }
-                if (at(TT.LPAREN)) {
+                if (at(TT.LPAREN) || (at(TT.OP) && cur().value === '<')) {
                     var l3 = loc();
-                    pos++;
+                    var savedPos = pos;
+                    var isTemplate = false;
+                    
+                    /* Speculative lookahead for generic template: <type> */
+                    if (at(TT.OP) && cur().value === '<') {
+                        var depth = 1; pos++;
+                        while (!at(TT.EOF) && depth > 0 && cur().line === l3.line) {
+                            if (at(TT.OP) && cur().value === '<') depth++;
+                            else if (at(TT.OP) && cur().value === '>') depth--;
+                            pos++;
+                        }
+                        if (depth === 0 && at(TT.LPAREN)) {
+                            isTemplate = true;
+                        } else {
+                            pos = savedPos; // Rollback, it's just a 'less than' operator
+                        }
+                    }
+                    
+                    if (!at(TT.LPAREN) && !isTemplate) break; // Not a call or template
+                    
+                    pos++; // consume LPAREN
                     var args = parseArgList(); if (args && args.error) return args;
                     var r3 = eat(TT.RPAREN); if (r3 && r3.error) return r3;
                     expr = { type: 'Call', callee: expr, args: args, line: l3.line, col: l3.col };

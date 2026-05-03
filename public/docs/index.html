@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FractalScript Guide | Mastering Algorithmic Intelligence</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <title>FractalScript | The Advanced Algorithmic Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Outfit:wght@300;400;500;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
             --gold: #c9a84c;
@@ -17,86 +17,99 @@
             --border: rgba(255, 255, 255, 0.08);
             --accent: #26a69a;
             --accent2: #ef5350;
+            --ai-blue: #4f46e5;
+            --ai-glow: rgba(79, 70, 229, 0.3);
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
         body { 
             background: var(--dark); 
             color: var(--white); 
-            font-family: 'DM Sans', sans-serif; 
+            font-family: 'Outfit', sans-serif; 
             line-height: 1.6;
             overflow-x: hidden;
         }
 
-        .container { max-width: 1000px; margin: 0 auto; padding: 60px 20px; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
         
-        header { text-align: center; margin-bottom: 80px; position: relative; }
-        .logo-box { display: inline-block; margin-bottom: 32px; filter: drop-shadow(0 0 20px rgba(201, 168, 76, 0.2)); }
-        h1 { font-family: 'Cinzel', serif; font-size: 48px; letter-spacing: 0.15em; color: var(--gold); margin-bottom: 12px; font-weight: 900; }
-        .subtitle { color: var(--muted); font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 500; }
-        .back-link { display: inline-block; margin-top: 30px; color: var(--gold); text-decoration: none; font-weight: 600; font-size: 13px; letter-spacing: 0.05em; transition: 0.3s; opacity: 0.7; }
-        .back-link:hover { opacity: 1; transform: translateX(-5px); }
-
-        .nav-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 100px; }
-        .nav-item { background: var(--dark2); border: 1px solid var(--border); padding: 20px; border-radius: 12px; text-decoration: none; transition: 0.3s; }
-        .nav-item:hover { background: var(--dark3); border-color: var(--gold); transform: translateY(-3px); }
-        .nav-item h3 { color: var(--gold); font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
-        .nav-item p { color: var(--muted); font-size: 12px; }
-
-        .section { margin-bottom: 120px; }
-        .section h2 { font-family: 'Cinzel', serif; font-size: 28px; margin-bottom: 32px; color: var(--white); border-left: 5px solid var(--gold); padding-left: 20px; letter-spacing: 0.05em; }
-        .section p { margin-bottom: 24px; color: #b0b8c4; font-size: 18px; font-weight: 300; }
-
-        /* Learning Grid */
-        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-bottom: 60px; }
-        .tool-card { background: linear-gradient(145deg, var(--dark2), var(--dark)); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
-        .tool-card h4 { color: var(--gold); font-family: 'DM Mono', monospace; font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-        .tool-card h4::before { content: '>'; color: var(--accent); }
-        .tool-card p { font-size: 14px; color: var(--muted); margin-bottom: 0; }
-        .tool-list { margin-top: 16px; list-style: none; }
-        .tool-list li { font-family: 'DM Mono', monospace; font-size: 12px; color: #cbd5e0; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
-        .tool-list li span { color: var(--gold); }
-
-        /* Accordion Style Examples */
-        .example-accordion { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 16px; background: var(--dark2); transition: 0.3s; }
-        .example-accordion:hover { border-color: rgba(201, 168, 76, 0.4); }
-        
-        details summary { 
-            padding: 24px; 
-            cursor: pointer; 
-            outline: none; 
-            display: flex; 
-            align-items: center; 
-            justify-content: space-between;
-            font-weight: 700;
-            font-size: 18px;
-            color: var(--white);
-            user-select: none;
+        /* ── Header ── */
+        header { text-align: center; margin-bottom: 100px; position: relative; padding-top: 40px; }
+        .logo-box { display: inline-block; margin-bottom: 32px; filter: drop-shadow(0 0 30px rgba(201, 168, 76, 0.15)); }
+        h1 { font-family: 'Cinzel', serif; font-size: 56px; letter-spacing: 0.2em; color: var(--gold); margin-bottom: 12px; font-weight: 900; text-shadow: 0 0 20px rgba(201, 168, 76, 0.1); }
+        .subtitle { color: var(--muted); font-size: 16px; letter-spacing: 0.3em; text-transform: uppercase; font-weight: 600; margin-bottom: 24px; }
+        .version-badge { 
+            display: inline-flex; align-items: center; gap: 8px;
+            color: var(--gold); background: rgba(201,168,76,0.05); 
+            padding: 6px 16px; border-radius: 30px; font-size: 13px; 
+            border: 1px solid rgba(201,168,76,0.15); font-weight: 500;
         }
-        details summary::-webkit-details-marker { display: none; }
-        details summary::after { content: '+'; color: var(--gold); font-size: 24px; font-weight: 300; transition: 0.3s; }
-        details[open] summary::after { content: '−'; transform: rotate(180deg); }
+        .status-dot { width: 8px; height: 8px; background: #26a69a; border-radius: 50%; box-shadow: 0 0 10px #26a69a; }
+
+        .back-link { display: inline-block; margin-top: 40px; color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14px; letter-spacing: 0.1em; transition: 0.3s; opacity: 0.8; }
+        .back-link:hover { color: var(--gold); opacity: 1; transform: translateX(-5px); }
+
+        /* ── Feature Hero Grid ── */
+        .feature-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 120px; }
+        .hero-card { 
+            background: var(--dark2); border: 1px solid var(--border); padding: 32px; border-radius: 20px; 
+            position: relative; overflow: hidden; transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .hero-card:hover { border-color: var(--gold); transform: translateY(-8px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+        .hero-card h3 { font-family: 'Cinzel', serif; color: var(--gold); font-size: 18px; margin-bottom: 12px; letter-spacing: 0.05em; }
+        .hero-card p { font-size: 15px; color: var(--muted); font-weight: 300; }
+        .hero-card .icon { font-size: 24px; margin-bottom: 20px; display: block; }
         
-        .example-content { padding: 0 24px 24px 24px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2); }
-        .example-desc { color: var(--muted); font-size: 15px; margin: 20px 0; line-height: 1.5; }
-        .code-wrapper { position: relative; }
+        /* ── Sections ── */
+        .section { margin-bottom: 140px; }
+        .section-header { display: flex; align-items: center; gap: 24px; margin-bottom: 48px; }
+        .section-header h2 { font-family: 'Cinzel', serif; font-size: 32px; color: var(--white); letter-spacing: 0.1em; }
+        .line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--gold), transparent); }
+
+        /* ── AI Panel ── */
+        .ai-banner { 
+            background: linear-gradient(135deg, #1a1c2e, #0d1018); 
+            border: 1px solid rgba(79, 70, 229, 0.3); padding: 40px; border-radius: 24px; 
+            margin-bottom: 60px; position: relative; overflow: hidden;
+        }
+        .ai-banner::after { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle, var(--ai-glow) 0%, transparent 70%); pointer-events: none; }
+        .ai-badge { background: var(--ai-blue); color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 16px; display: inline-block; }
+        .ai-banner h3 { font-size: 24px; margin-bottom: 12px; }
+        .ai-banner p { font-size: 16px; color: #b0b8c4; max-width: 600px; margin-bottom: 24px; }
+
+        /* ── Grid Layouts ── */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+        @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+
+        .api-list { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+        .api-item { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 12px 16px; border-radius: 8px; font-family: 'Fira Code', monospace; font-size: 13px; color: var(--white); }
+        .api-item span { color: var(--gold); }
+
+        /* ── Code Blocks ── */
+        .example-card { background: var(--dark2); border: 1px solid var(--border); border-radius: 24px; overflow: hidden; margin-bottom: 40px; }
+        .example-header { padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .example-header h4 { font-size: 18px; font-weight: 600; color: var(--gold-bright); }
+        .code-container { position: relative; background: #020305; }
         .code-block { 
-            background: #020305; 
-            padding: 24px; 
-            border-radius: 8px; 
-            font-family: 'DM Mono', monospace; 
-            font-size: 13px; 
-            color: #d1d9e0; 
-            white-space: pre;
-            overflow-x: auto;
-            border: 1px solid rgba(255,255,255,0.03);
-            line-height: 1.7;
+            padding: 30px; font-family: 'Fira Code', monospace; font-size: 14px; 
+            line-height: 1.8; color: #d1d9e0; overflow-x: auto; white-space: pre;
         }
-        .copy-btn { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--muted); font-size: 10px; padding: 6px 12px; border-radius: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; transition: 0.2s; }
-        .copy-btn:hover { background: var(--gold); color: #000; border-color: var(--gold); }
+        .copy-btn { 
+            position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.05); 
+            border: 1px solid var(--border); color: var(--muted); padding: 8px 16px; 
+            border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.3s;
+        }
+        .copy-btn:hover { background: var(--gold); color: black; border-color: var(--gold); }
 
-        footer { text-align: center; padding: 80px 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
-        .version-badge { color: var(--gold); background: rgba(201,168,76,0.1); padding: 4px 12px; border-radius: 20px; font-size: 12px; border: 1px solid rgba(201,168,76,0.2); margin-top: 20px; display: inline-block; }
+        /* ── Feature Cards ── */
+        .sub-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 40px; }
+        .sub-card { background: rgba(255,255,255,0.02); border: 1px dotted var(--border); padding: 30px; border-radius: 20px; }
+        .sub-card h5 { color: var(--white); font-size: 18px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+        .sub-card h5 i { color: var(--gold); font-size: 20px; }
+        .sub-card p { font-size: 14px; color: var(--muted); }
+
+        footer { text-align: center; padding: 100px 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; letter-spacing: 0.1em; }
+        footer strong { color: var(--gold); }
     </style>
 </head>
 <body>
@@ -104,464 +117,190 @@
     <div class="container">
         <header>
             <div class="logo-box">
-                <img src="../fractalscript-logo.svg" width="140" height="140" style="display:block;">
+                <img src="../fractalscript-logo.svg" width="120" height="120">
             </div>
-            <h1>FractalScript</h1>
-            <p class="subtitle">The Guide to Algorithmic Mastery</p>
-            <div class="version-badge">Engine v2.0 • Pine v5 Compatible • All Phases Complete</div>
+            <h1>FRACTALSCRIPT</h1>
+            <p class="subtitle">The Advanced Algorithmic Intelligence</p>
+            <div class="version-badge">
+                <span class="status-dot"></span>
+                ENGINE V5.0 CORE • MULTI-PHASE ARCHITECTURE COMPLETE
+            </div>
             <br>
-            <a href="../index.html" class="back-link">← RETURN TO TERMINAL</a>
+            <a href="../index.html" class="back-link">← RETURN TO CORE TERMINAL</a>
         </header>
 
-        <!-- Tool Index -->
-        <nav class="nav-grid">
-            <a href="#how-it-works" class="nav-item">
-                <h3>Architecture</h3>
-                <p>How the engine executes code</p>
-            </a>
-            <a href="#logic-tools" class="nav-item">
-                <h3>Logic Tools</h3>
-                <p>Indicators, Math & Variables</p>
-            </a>
-            <a href="#visual-tools" class="nav-item">
-                <h3>Visual Tools</h3>
-                <p>Lines, Shapes & Colors</p>
-            </a>
-            <a href="#labels" class="nav-item">
-                <h3>Labels & Text</h3>
-                <p>Annotations, str.* & sub-panes</p>
-            </a>
-            <a href="#examples" class="nav-item">
-                <h3>Examples</h3>
-                <p>14+ drop-in script templates</p>
-            </a>
-        </nav>
+        <!-- ── Feature Hero ── -->
+        <div class="feature-hero">
+            <div class="hero-card">
+                <span class="icon">✨</span>
+                <h3>AI Co-Pilot</h3>
+                <p>Natural language generation and automated logic fixing powered by deep intelligence.</p>
+            </div>
+            <div class="hero-card">
+                <span class="icon">🧬</span>
+                <h3>Matrix Algebra</h3>
+                <p>High-speed linear calculations for complex correlation and statistical models.</p>
+            </div>
+            <div class="hero-card">
+                <span class="icon">🛰️</span>
+                <h3>Auto-MTF</h3>
+                <p>Built-in candle aggregator for true Multi-Timeframe analysis on any data stream.</p>
+            </div>
+            <div class="hero-card">
+                <span class="icon">⚡</span>
+                <h3>Bot Engine</h3>
+                <p>Full strategy support with backtesting, equity curves, and trade introspection.</p>
+            </div>
+        </div>
 
-        <section id="how-it-works" class="section">
-            <h2>The Execution Model</h2>
-            <p>FractalScript follows the <b>Bar-by-Bar</b> execution model. Every time the chart updates, the engine runs your entire script for every single candle on the chart, from left to right. This allows you to "remember" data from the past using history references or persistent variables.</p>
-            <p>Every script in this guide is <b>Pine Script v5 compatible</b> — paste any example directly into TradingView and it will produce identical results. Use <code>str.tostring(value, "#.##")</code> for all number-to-text formatting to stay compatible on both platforms.</p>
-        </section>
-
-        <section id="logic-tools" class="section">
-            <h2>The Toolbelt</h2>
-            <div class="tool-grid">
-                <!-- Indicators -->
-                <div class="tool-card">
-                    <h4>Technical Analysis</h4>
-                    <p>Production-grade math functions for market analysis.</p>
-                    <ul class="tool-list">
-                        <li><span>ta.sma / ta.ema / ta.wma</span> (Moving Averages)</li>
-                        <li><span>ta.rsi / ta.stoch</span> (Oscillators)</li>
-                        <li><span>ta.macd</span> (Trend Momentum)</li>
-                        <li><span>ta.atr</span> (Volatility Range)</li>
-                        <li><span>ta.vwap</span> (Volume Weighted Price)</li>
-                    </ul>
-                </div>
-                <!-- Core Logic -->
-                <div class="tool-card">
-                    <h4>Core Logic</h4>
-                    <p>The building blocks of your strategy logic.</p>
-                    <ul class="tool-list">
-                        <li><span>var</span> (Persistent variable across bars)</li>
-                        <li><span>[n]</span> (History reference, e.g. close[1])</li>
-                        <li><span>ta.crossover / ta.crossunder</span> (Signal logic)</li>
-                        <li><span>array.*</span> (Dynamic data storage)</li>
-                        <li><span>math.*</span> (Advanced math: floor, ceil, abs)</li>
-                    </ul>
-                </div>
-                <!-- Visuals -->
-                <div class="tool-card">
-                    <h4>Visual Control</h4>
-                    <p>Direct the canvas to draw your insights.</p>
-                    <ul class="tool-list">
-                        <li><span>line.new</span> (X/Y coordinates, custom styles)</li>
-                        <li><span>plot / plotshape</span> (Series & marker plotting)</li>
-                        <li><span>color.*</span> (Lime, Red, Aqua, Gold, Silver)</li>
-                        <li><span>extend.*</span> (Right, Left, Both, None)</li>
-                        <li><span>line.style_*</span> (Solid, Dashed, Dotted)</li>
-                        <li><span>overlay=false</span> (Separate sub-pane rendering)</li>
-                    </ul>
-                </div>
-                <!-- Labels -->
-                <div class="tool-card">
-                    <h4>Label System</h4>
-                    <p>Place and mutate text annotations at any price level.</p>
-                    <ul class="tool-list">
-                        <li><span>label.new(x, y, text)</span> (Create annotation)</li>
-                        <li><span>label.set_text / label.set_xy</span> (Mutate in-place)</li>
-                        <li><span>label.set_color / label.set_textcolor</span> (Style)</li>
-                        <li><span>label.set_size</span> (tiny, small, normal, large, huge)</li>
-                        <li><span>label.delete(id)</span> (Remove a label)</li>
-                        <li><span>label.style_label_up/down/left/right</span> (Arrow styles)</li>
-                        <li><span>label.style_circle/square/diamond/flag</span> (Markers)</li>
-                    </ul>
-                </div>
-                <!-- Strings -->
-                <div class="tool-card">
-                    <h4>String Tools</h4>
-                    <p>Format numbers and build text for labels and outputs.</p>
-                    <ul class="tool-list">
-                        <li><span>str.tostring(val)</span> (Number to string)</li>
-                        <li><span>str.tostring(val, "#.##")</span> (Formatted decimal)</li>
-                        <li><span>str.tostring(val, "#.0000")</span> (Fixed precision)</li>
-                        <li><span>str.length / str.upper / str.lower</span> (Text ops)</li>
-                        <li><span>"Label: " + str.tostring(n)</span> (Concatenation)</li>
-                    </ul>
+        <!-- ── Section: AI Intelligence ── -->
+        <section class="section" id="ai">
+            <div class="section-header">
+                <h2>AI Intelligence</h2>
+                <div class="line"></div>
+            </div>
+            <div class="ai-banner">
+                <div class="ai-badge">FRACTAL AI PRO</div>
+                <h3>The Intelligence Layer</h3>
+                <p>FractalScript is the first engine to integrate a native AI Code Generator and Fixer. Describe your strategy in English, and the engine generates valid Pine v5 logic instantly. Encounter an error? The AI Fixer analyzes the AST (Abstract Syntax Tree) to repair broken logic in real-time.</p>
+                <div class="api-list" style="margin-top: 20px;">
+                    <div class="api-item"><span>ai.generate</span>(prompt)</div>
+                    <div class="api-item"><span>ai.fix</span>(broken_code)</div>
+                    <div class="api-item"><span>ai.analyze</span>(ast_node)</div>
                 </div>
             </div>
         </section>
 
-        <section id="labels" class="section">
-            <h2>Labels &amp; Annotations</h2>
-            <p><b>label.new</b> places a text annotation at any bar and price. Unlike <code>plotshape</code>, labels carry arbitrary text — combine them with <code>str.tostring()</code> to display live values. Use <code>var label</code> + <code>label.set_*</code> to mutate a single label across bars instead of creating thousands of new ones.</p>
-            <p>The <code>max_labels_count</code> parameter in <code>indicator()</code> controls how many labels persist on screen at once (default 50, max 500). Older labels are automatically garbage-collected when the limit is reached.</p>
+        <!-- ── Section: Matrix Engine ── -->
+        <section class="section" id="matrices">
+            <div class="section-header">
+                <h2>The Matrix Engine</h2>
+                <div class="line"></div>
+            </div>
+            <div class="grid-2">
+                <div>
+                    <p>Unlock institutional-grade mathematics. The Matrix Engine supports multi-dimensional arrays for calculating covariance, eigenvalues, and complex price grids that are impossible with standard variables.</p>
+                    <ul class="api-list" style="margin-top: 24px;">
+                        <div class="api-item"><span>matrix.new</span>&lt;float&gt;(rows, cols)</div>
+                        <div class="api-item"><span>matrix.set</span>(m, r, c, val)</div>
+                        <div class="api-item"><span>matrix.get</span>(m, r, c)</div>
+                        <div class="api-item"><span>matrix.add</span>(m1, m2)</div>
+                    </ul>
+                </div>
+                <div class="example-card" style="margin-bottom: 0;">
+                    <div class="code-container">
+                        <div class="code-block">m = matrix.new<float>(2, 2, 0.0)
+matrix.set(m, 0, 0, close)
+matrix.set(m, 1, 1, close[1])
+
+// Perform linear calculations
+avg = matrix.avg(m)
+plot(avg, color=color.aqua)</div>
+                    </div>
+                </div>
+            </div>
         </section>
 
-        <section id="examples" class="section">
-            <h2>Script Library</h2>
-            <p>Click any title to expand the code. All scripts are compatible with the current engine version.</p>
-
-            <!-- 1 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>1. The Golden Cross Sniper</summary>
-                    <div class="example-content">
-                        <div class="example-desc">A classic trend-following strategy using two moving averages. Draws a signal when the fast trend crosses the slow trend.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("Golden Cross", overlay=true)
-
-fast = ta.ema(close, 50)
-slow = ta.ema(close, 200)
-
-plot(fast, color=color.aqua, linewidth=2)
-plot(slow, color=color.orange, linewidth=2)
-
-long = ta.crossover(fast, slow)
-plotshape(long, style=shape.triangleup, location=location.belowbar, color=color.green, text="BUY")</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
+        <!-- ── Section: Strategy backbone ── -->
+        <section class="section" id="strategy">
+            <div class="section-header">
+                <h2>Algorithmic Strategy</h2>
+                <div class="line"></div>
+            </div>
+            <p>Transform your indicators into automated bots. The Strategy Engine tracks every trade, manages positions, and generates professional equity metrics directly in the terminal.</p>
+            
+            <div class="sub-features">
+                <div class="sub-card">
+                    <h5><i>🎯</i> Position Tracking</h5>
+                    <p>Live introspection of entry price, profit, and trade duration using the <code>strategy.opentrades</code> suite.</p>
+                </div>
+                <div class="sub-card">
+                    <h5><i>🛡️</i> Risk Management</h5>
+                    <p>Support for exact <code>limit</code> and <code>stop</code> price exits, allowing for professional bracket orders.</p>
+                </div>
+                <div class="sub-card">
+                    <h5><i>📊</i> Performance Logs</h5>
+                    <p>Automated calculation of Win Rate, Net Profit, and Max Drawdown on every execution.</p>
+                </div>
             </div>
 
-            <!-- 2 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>2. RSI Overbought / Oversold</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Identifies momentum extremes. Draws a horizontal support level when RSI is oversold and resistance when overbought.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("RSI Extremes", overlay=true)
+            <div class="example-card" style="margin-top: 40px;">
+                <div class="example-header">
+                    <h4>The Autonomous Bracket Bot</h4>
+                    <span style="color: var(--muted); font-size: 12px;">Positional Price Exits</span>
+                </div>
+                <div class="code-container">
+                    <div class="code-block">//@version=5
+strategy("Bracket Bot", overlay=true)
 
-rsiVal = ta.rsi(close, 14)
+// Entry on Golden Cross
+if ta.crossover(ta.ema(close, 9), ta.ema(close, 21))
+    strategy.entry("Long", strategy.long)
 
-if rsiVal > 70
-    line.new(bar_index - 5, high, bar_index, high, color=color.red, width=2, extend=extend.right)
-
-if rsiVal < 30
-    line.new(bar_index - 5, low, bar_index, low, color=color.green, width=2, extend=extend.right)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
+// Manage the trade using introspection
+if strategy.opentrades > 0
+    entry = strategy.opentrades.entry_price(0)
+    // Exit at exactly +$10 TP or -$5 SL
+    strategy.exit("Exit", "Long", limit=entry + 10, stop=entry - 5)</div>
+                    <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
+                </div>
             </div>
+        </section>
 
-            <!-- 3 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>3. ATR Volatility Bands</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Draws dynamic channels based on market volatility. Great for setting stop losses or identifying break-outs.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("ATR Channels", overlay=true)
-
-ma = ta.sma(close, 20)
-atr = ta.atr(14)
-
-upper = ma + (atr * 2)
-lower = ma - (atr * 2)
-
-line.new(bar_index-1, upper[1], bar_index, upper, color=color.aqua)
-line.new(bar_index-1, lower[1], bar_index, lower, color=color.orange)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
+        <!-- ── Section: Multi-Timeframe ── -->
+        <section class="section" id="mtf">
+            <div class="section-header">
+                <h2>Multi-Timeframe Analysis</h2>
+                <div class="line"></div>
             </div>
+            <div class="grid-2">
+                <div class="example-card" style="margin-bottom: 0;">
+                    <div class="code-container">
+                        <div class="code-block">// Fetch RSI from the 1-hour timeframe
+// while trading on the 5-minute chart
+hrRsi = request.security("", "60", ta.rsi(close, 14))
 
-            <!-- 4 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>4. VWAP Trend Follower</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Uses Volume Weighted Average Price (VWAP) to find the institutional trend. Accurate only on charts with volume data.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("VWAP Power", overlay=true)
-
-v = ta.vwap(close, volume)
-isBull = close > v
-
-line.new(bar_index-1, v[1], bar_index, v, color=isBull ? color.lime : color.red, width=2)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
+plot(hrRsi, color=color.new(color.gold, 50))</div>
                     </div>
-                </details>
+                </div>
+                <div>
+                    <h3>Institutional Aggregation</h3>
+                    <p>The <b>Inception Auto-Aggregator</b> allows you to call <code>request.security</code> with zero configuration. It builds a virtual higher-timeframe history on the fly, evaluates your indicators in isolation, and maps the results back to your current timeline.</p>
+                </div>
             </div>
+        </section>
 
-            <!-- 5 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>5. MACD Momentum Histogram</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Calculates the full MACD suite. Draws vertical "bars" using lines to represent momentum strength.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("MACD Visual", overlay=true)
-
-// Calculate MACD manually for parser safety
-macdLine = ta.ema(close, 12) - ta.ema(close, 26)
-signalLine = ta.ema(macdLine, 9)
-hist = macdLine - signalLine
-
-// Draw histogram as vertical lines from high/low
-if bar_index % 2 == 0
-    col = hist > 0 ? color.lime : color.red
-    line.new(bar_index, high, bar_index, high + (hist * 10), color=col, width=2)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
+        <!-- ── Standard Library Index ── -->
+        <section class="section" id="api">
+            <div class="section-header">
+                <h2>Standard Library</h2>
+                <div class="line"></div>
             </div>
-
-            <!-- 6 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>6. Infinite Support Grid</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Tests the infinite clipping logic. Automatically draws a horizontal grid at every 100-point interval.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("Level Grid", overlay=true)
-
-// Using simple price to demonstrate infinite extension
-curPrice = close
-prevPrice = close[1]
-
-if curPrice != prevPrice
-    line.new(bar_index, curPrice, bar_index+1, curPrice, color=color.white, extend=extend.both)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
+            <div class="api-list">
+                <div class="api-item"><span>ta.sma</span> / ema / rma / wma</div>
+                <div class="api-item"><span>ta.rsi</span> / stoch / macd</div>
+                <div class="api-item"><span>ta.atr</span> / vwap / bbands</div>
+                <div class="api-item"><span>ta.crossover</span> / crossunder</div>
+                <div class="api-item"><span>label.new</span> / set_text / delete</div>
+                <div class="api-item"><span>line.new</span> / set_xy1 / delete</div>
+                <div class="api-item"><span>matrix.new</span> / set / get</div>
+                <div class="api-item"><span>strategy.entry</span> / exit / close</div>
+                <div class="api-item"><span>request.security</span> (Auto-Agg)</div>
+                <div class="api-item"><span>str.tostring</span> / lower / upper</div>
+                <div class="api-item"><span>math.abs</span> / round / sqrt</div>
+                <div class="api-item"><span>na</span> / isNa / nz</div>
             </div>
-
-            <!-- 7 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>7. Swing High/Low Breakouts</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Identifies structural break-outs. Plots a marker when price closes above the highest point of the last 50 bars.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("Structure Break", overlay=true)
-
-high50 = ta.highest(high, 50)
-if ta.crossover(close, high50[1])
-    plotshape(true, style=shape.labelup, location=location.belowbar, color=color.aqua, text="BOS")</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- 8 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>8. Rainbow Cascade</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Stress test for the renderer. Draws multiple offset moving averages to create a "ribbon" effect.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("MA Ribbon", overlay=true)
-
-for i = 1 to 10
-    ma = ta.sma(close, i * 10)
-    line.new(bar_index-1, ma[1], bar_index, ma, color=color.new(color.aqua, i * 5))</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- 9 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>9. Pulse Oscillator Connector</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Connects price action to a fixed-zero baseline. Great for visualizing "mean reversion."</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("Mean Pulse", overlay=true)
-
-ma = ta.sma(close, 50)
-if bar_index % 5 == 0
-    line.new(bar_index, ma, bar_index, close, color=color.gold, width=1, style=line.style_dotted)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- 10 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>10. AI Sentiment Filter</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Exclusive to Fractal AI. Uses the internal `ai.sentiment()` engine to color the chart based on market "vibe".</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("AI Heatmap", overlay=true)
-
-vibe = ai.sentiment()
-col = vibe > 0.5 ? color.new(color.green, 90) : vibe < -0.5 ? color.new(color.red, 90) : na
-bgcolor(col)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- 11 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>11. Swing Pivot Labels</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Detects local swing highs and lows using neighbor comparison, then places a price label at each pivot. Demonstrates label.new + str.tostring for live price display. Works identically on TradingView Pine v5.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("Swing Labels", overlay=true, max_labels_count=200)
-
-// Bar[2] is a pivot high if it's above both its neighbors
-isPivotHigh = high[2] > high[3] and high[2] > high[1]
-isPivotLow  = low[2]  < low[3]  and low[2]  < low[1]
-
-if isPivotHigh
-    label.new(bar_index - 2, high[2], str.tostring(high[2], "#.##"), style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
-
-if isPivotLow
-    label.new(bar_index - 2, low[2], str.tostring(low[2], "#.##"), style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- 12 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>12. RSI Sub-Pane (overlay=false)</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Renders RSI in its own dedicated pane below the price chart using overlay=false. The pane has its own scale (0–100). The color shifts red when overbought and green when oversold. Reference levels use hline() for full-width lines with right-axis labels — the same as TradingView.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("RSI Panel", overlay=false)
-
-rsiVal = ta.rsi(close, 14)
-
-// Color shifts based on RSI zone
-col = rsiVal > 70 ? color.red : rsiVal < 30 ? color.lime : color.aqua
-plot(rsiVal, color=col, linewidth=2)
-
-// Full-width reference lines with right-axis labels
-hline(70, color=color.red,  linestyle=hline.style_dashed)
-hline(50, color=color.gray, linestyle=hline.style_dotted)
-hline(30, color=color.lime, linestyle=hline.style_dashed)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- 13 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>13. MACD Signals via Tuple Destructuring</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Uses tuple destructuring [a, b, c] = ta.macd() to unpack all three MACD values in one line — the same syntax supported by TradingView Pine v5. Colors the price line by MACD momentum direction and fires signal markers on crossovers.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("MACD Signals", overlay=true)
-
-// Unpack all three MACD values in one line
-[macdLine, signalLine, hist] = ta.macd(close, 12, 26, 9)
-
-bullCross = ta.crossover(macdLine, signalLine)
-bearCross = ta.crossunder(macdLine, signalLine)
-
-// Price bar color follows MACD momentum
-plot(close, color=macdLine > signalLine ? color.lime : color.red, linewidth=2)
-
-plotshape(bullCross, style=shape.triangleup,   location=location.belowbar, color=color.lime, size=size.small, text="M+")
-plotshape(bearCross, style=shape.triangledown, location=location.abovebar, color=color.red,  size=size.small, text="M-")</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- 14 -->
-            <div class="example-accordion">
-                <details>
-                    <summary>14. Trend State Machine with Transition Labels</summary>
-                    <div class="example-content">
-                        <div class="example-desc">Demonstrates var persistence and := reassignment. A single integer tracks the current trend state across all bars. When the state flips, a label.new marks the exact bar of the transition — so you can see precisely when momentum changed.</div>
-                        <div class="code-wrapper">
-                            <div class="code-block">//@version=5
-indicator("Trend Engine", overlay=true, max_labels_count=100)
-
-fastMA = ta.ema(close, 9)
-slowMA = ta.ema(close, 21)
-
-// var persists the trend state across every bar
-var int trend = 0
-
-if ta.crossover(fastMA, slowMA)
-    trend := 1
-if ta.crossunder(fastMA, slowMA)
-    trend := -1
-
-col = trend == 1 ? color.lime : trend == -1 ? color.red : color.gray
-plot(fastMA, color=col, linewidth=2)
-plot(slowMA, color=color.gray, linewidth=1)
-
-// Drop a label only on the bar where the trend flips
-if ta.crossover(fastMA, slowMA)
-    label.new(bar_index, low, "BULL", style=label.style_label_up, color=color.lime, textcolor=color.black, size=size.normal)
-if ta.crossunder(fastMA, slowMA)
-    label.new(bar_index, high, "BEAR", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.normal)</div>
-                            <button class="copy-btn" onclick="copyCode(this)">Copy Script</button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
         </section>
 
         <footer>
-            <p>&copy; 2026 Fractal AI Agent • High-Performance Algo Engine</p>
-            <p>Not affiliated with TradingView® • Built for Professional Intelligence</p>
-            <p style="margin-top:16px;">Engine v2.0 — All scripts are Pine Script v5 compatible and verified on TradingView</p>
+            <p>FractalScript Engine &copy; 2026. Designed for <strong>Advanced Agentic Trading</strong>.</p>
+            <p style="margin-top: 12px; opacity: 0.5;">FRACTAL AI AGENT CLONE • TERMINAL V5.2.0 • PINE V5 COMPATIBLE</p>
         </footer>
     </div>
 
     <script>
         function copyCode(btn) {
-            const codeWrapper = btn.closest('.code-wrapper');
+            const codeWrapper = btn.closest('.code-container');
             const code = codeWrapper.querySelector('.code-block').innerText.trim();
             navigator.clipboard.writeText(code);
             const originalText = btn.innerText;

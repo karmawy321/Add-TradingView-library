@@ -112,6 +112,7 @@
         var typeRegistry = {};
         var fnCallDepth = 0;
         var seriesHistory = {};
+        var securityCache = {};
 
         /* Candle data for current bar */
         var barIndex = 0;
@@ -203,11 +204,12 @@
         var finalPlots = [];
         for (var pk in plotRegistry) {
             var p = plotRegistry[pk];
-            var vals = new Float64Array(N);
+            var vals = new Array(N);
             var cols = new Array(N);
             for (var vi = 0; vi < N; vi++) {
                 var v = p.values[vi];
-                vals[vi] = (v !== undefined && !FS.isNa(v)) ? v : NaN;
+                /* Use null for gaps to match TradingView behavior */
+                vals[vi] = (v === undefined || FS.isNa(v)) ? null : v;
                 cols[vi] = p.colors[vi] || null;
             }
             finalPlots.push({
@@ -233,7 +235,8 @@
             boxes: boxes,
             overlay: overlay,
             errors: [],
-            strategyResult: isStrategy ? buildStrategyResult() : null
+            strategyResult: isStrategy ? buildStrategyResult() : null,
+            _seriesHistory: seriesHistory
         };
 
         /* ── Strategy result builder ── */
@@ -464,6 +467,9 @@
             if (name === 'bar_index') return barIndex;
             if (name === 'last_bar_index') return N - 1;
             if (name === 'na') return FS.NA;
+            
+            if (name === 'strategy.opentrades') return Object.keys(positions).length;
+            if (name === 'strategy.closedtrades') return closedTrades.length;
 
             /* P6: time built-ins */
             if (name === 'time') return curCandle.t || 0;
@@ -492,7 +498,7 @@
                 name === 'line' || name === 'extend' || name === 'label' ||
                 name === 'position' || name === 'table' || name === 'text' ||
                 name === 'box' || name === 'syminfo' || name === 'barmerge' ||
-                name === 'plot' || name === 'order' || name === 'strategy') return name;
+                name === 'plot' || name === 'order' || name === 'strategy' || name === 'matrix') return name;
 
             return FS.NA;
         }
@@ -671,8 +677,13 @@
             if (series.type === 'Identifier') {
                 var name = series.name;
                 var targetBar = barIndex - offset;
+                
+                /* TradingView allows looking back beyond bar 0, it just returns 'na' */
                 if (targetBar < 0 || targetBar >= N) return FS.NA;
+                
                 var tc = candles[targetBar];
+                if (!tc) return FS.NA;
+
                 if (name === 'close') return +tc.c;
                 if (name === 'open') return +tc.o;
                 if (name === 'high') return +tc.h;
@@ -683,8 +694,8 @@
                 if (name === 'ohlc4') return (+tc.o + +tc.h + +tc.l + +tc.c) / 4;
 
                 if (seriesHistory[name]) {
-                    var idx = barIndex - offset;
-                    if (idx >= 0 && idx < seriesHistory[name].length) return seriesHistory[name][idx];
+                    var val = seriesHistory[name][targetBar];
+                    return (val === undefined) ? FS.NA : val;
                 }
             }
             return FS.NA;
@@ -724,10 +735,12 @@
 
                 if (Array.isArray(methodObj)) {
                     namespace = 'array';
+                } else if (methodObj && typeof methodObj === 'object' && methodObj.__matrix__) {
+                    namespace = 'matrix';
                 } else if (methodObj && typeof methodObj === 'object' && methodObj.__map__) {
                     namespace = 'map';
                 } else if (typeof methodObj === 'string' && !FS.isNa(methodObj) &&
-                           ['ta', 'strategy', 'math', 'color', 'input', 'str', 'array', 'map', 'box', 'table', 'label', 'line', 'shape', 'location', 'size', 'hline', 'barstate', 'timeframe', 'extend', 'position', 'text', 'syminfo', 'barmerge', 'plot', 'order'].indexOf(methodObj) === -1) {
+                           ['ta', 'strategy', 'math', 'color', 'input', 'str', 'array', 'map', 'box', 'table', 'label', 'line', 'shape', 'location', 'size', 'hline', 'barstate', 'timeframe', 'extend', 'position', 'text', 'syminfo', 'barmerge', 'plot', 'order', 'matrix'].indexOf(methodObj) === -1) {
                     namespace = 'str';
                 } else if (methodObj && typeof methodObj === 'object' && methodObj.id !== undefined) {
                     if (methodObj.hasOwnProperty('text') && methodObj.hasOwnProperty('x') && methodObj.hasOwnProperty('y')) namespace = 'label';
@@ -842,8 +855,8 @@
             if (!plotRegistry[pid]) {
                 plotRegistry[pid] = { label: label, values: new Array(N), colors: new Array(N), color: color, lineWidth: lineWidth, style: style };
             }
-            plotRegistry[pid].values[barIndex] = series;
-            plotRegistry[pid].colors[barIndex] = dynamicColor;
+            plotRegistry[pid].values[barIndex] = FS.isNa(series) ? null : series;
+            plotRegistry[pid].colors[barIndex] = FS.isNa(dynamicColor) ? null : dynamicColor;
 
             return series;
         }
@@ -896,28 +909,33 @@
         }
 
         function execHline(node) {
+            var price = FS.NA, title = "", color = "#787B86", lw = 1, linestyle = 'dashed';
             var args = node.args || [];
-            var price = args.length > 0 ? execNode(args[0].type === 'NamedArg' ? args[0].value : args[0]) : FS.NA;
-            if (FS.isNa(price)) return FS.NA;
-            if (barIndex > 0) return FS.NA;
-
-            var color = '#FF9800', lw = 1, title = '', linestyle = 'dashed';
+            
             for (var i = 0; i < args.length; i++) {
                 var a = args[i];
                 if (a.type === 'NamedArg') {
                     var v = execNode(a.value);
-                    if (a.name === 'color') color = (typeof v === 'string') ? v : color;
-                    if (a.name === 'linewidth') lw = v || 1;
-                    if (a.name === 'title') title = v || '';
-                    if (a.name === 'linestyle') {
+                    if (a.name === 'price') price = v;
+                    else if (a.name === 'title') title = String(v || "");
+                    else if (a.name === 'color') color = (typeof v === 'string') ? v : color;
+                    else if (a.name === 'linewidth') lw = v || 1;
+                    else if (a.name === 'linestyle') {
                         var ls = typeof v === 'string' ? v : 'dashed';
                         if (ls.indexOf('solid') >= 0) linestyle = 'solid';
                         else if (ls.indexOf('dotted') >= 0) linestyle = 'dotted';
                         else linestyle = 'dashed';
                     }
+                } else if (i === 0) {
+                    price = execNode(a);
                 }
             }
-            hlines.push({ price: price, color: color, lineWidth: lw, linestyle: linestyle, title: title });
+
+            if (FS.isNa(price)) return FS.NA;
+            /* hline is usually static; we only push it once to avoid duplicates */
+            if (barIndex === 0) {
+                hlines.push({ price: price, color: color, lineWidth: lw, linestyle: linestyle, title: title });
+            }
             return FS.NA;
         }
 
@@ -956,7 +974,9 @@
                 _tfIsIntraday: _tfIsIntraday, _tfIsDaily: _tfIsDaily,
                 _tfIsWeekly: _tfIsWeekly, _tfIsMonthly: _tfIsMonthly,
                 _tfIsSeconds: _tfIsSeconds, _tfIsMinutes: _tfIsMinutes,
-                _tfIsHours: _tfIsHours
+                _tfIsHours: _tfIsHours,
+                candles: candles,
+                securityCache: securityCache
             };
         }
     }
